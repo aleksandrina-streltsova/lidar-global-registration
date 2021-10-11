@@ -62,7 +62,7 @@ def _parse_conf(conf_path: str):
             transformation = np.eye(4)
             translation = list(map(float, line_list[2:5]))
             rotation_quat = list(map(float, line_list[5:9]))
-            rotation_mtx =  Rotation.from_quat(rotation_quat).as_matrix()
+            rotation_mtx = np.linalg.inv(Rotation.from_quat(rotation_quat).as_matrix())
             transformation[:3, :3] = rotation_mtx
             transformation[:3, 3] = translation
             data_rows.append([line_list[1]] + transformation.flatten().tolist())

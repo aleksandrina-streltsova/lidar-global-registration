@@ -17,12 +17,21 @@ RegistrationData = NamedTuple('RegistrationData', [
 ])
 
 
+def count_correct_correspondences(source: RegistrationData, target: RegistrationData,
+                                  correspondence_set: np.ndarray, transformation_gt: np.ndarray,
+                                  error_threshold: float):
+    source_correspondences = source.pcd_down.select_by_index(correspondence_set[:, 0]).transform(transformation_gt)
+    target_correspondences = target.pcd_down.select_by_index(correspondence_set[:, 1])
+    errors = np.linalg.norm(np.asarray(source_correspondences.points) - np.asarray(target_correspondences.points), axis=1)
+    return np.count_nonzero(errors < error_threshold)
+
+
 def get_transformation(csv_path: str, src_filename: str, tgt_filename: str):
     df = pd.read_csv(csv_path)
     gt = {}
     for _, row in df.iterrows():
         gt[row[0]] = np.array(list(map(float, row[1:].values))).reshape((4, 4))
-    return gt[tgt_filename] @ np.linalg.inv(gt[src_filename])
+    return np.linalg.inv(gt[tgt_filename]) @ gt[src_filename]
 
 
 def preprocess_point_cloud(pcd: PointCloud, voxel_size: int, model_size: float, config) -> Tuple[PointCloud, Feature]:
@@ -84,20 +93,26 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
             o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
         ],
         criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(config['iteration'], config['confidence']))
+    transformation_gt = get_transformation(config['ground_truth'], source.filename, target.filename)
     print("    Global registration took: %.3f sec." % (time.time() - start))
     print(f"    fitness: {result.fitness}\n"
           f"    inlier_rmse: {result.inlier_rmse}\n"
-          f"    inliers: {len(result.correspondence_set)}/{round(len(result.correspondence_set) / result.fitness)}")
-    print(result.transformation)
+          f"    inliers: {len(result.correspondence_set)}/{round(len(result.correspondence_set) / result.fitness)}"
+          f"    correct inliers: {count_correct_correspondences(source, target, np.asarray(result.correspondence_set), transformation_gt, float(config['error_thr']))}\n")
+    print(f"transformation: \n\n{result.transformation}\n")
+    print(f"transformation (ground truth): \n\n{transformation_gt}\n")
+    save_clouds(transformation_gt, config)
     return result
 
 
-def save_clouds(source_filename: str, target_filename: str, transformation: np.ndarray, config):
-    source_pcd = o3d.io.read_point_cloud(os.path.join(config['path'], source_filename))
-    target_pcd = o3d.io.read_point_cloud(os.path.join(config['path'], target_filename))
+def save_clouds(transformation: np.ndarray, config):
+    source_pcd = o3d.io.read_point_cloud(config['source'])
+    target_pcd = o3d.io.read_point_cloud(config['target'])
+    source_pcd.paint_uniform_color([1, 0.706, 0])
+    target_pcd.paint_uniform_color([0, 0.651, 0.929])
     source_pcd.transform(transformation)
     source_pcd += target_pcd
-    o3d.io.write_point_cloud(f"{source_filename[:-4]}_{target_filename[:-4]}.ply", source_pcd,
+    o3d.io.write_point_cloud(f"clouds_aligned_open3d.ply", source_pcd,
                              compressed=True, print_progress=True)
     del source_pcd, target_pcd
 
@@ -109,8 +124,7 @@ def run_global_registration_and_save_ply():
     for i in range(len(dataset) - 1):
         source = dataset[i]
         target = dataset[i + 1]
-        result = execute_global_registration(source, target, config['voxel_size'], config)
-        save_clouds(source.filename, target.filename, result.transformation, config)
+        execute_global_registration(source, target, config['voxel_size'], config)
 
 
 def run_global_registration():
@@ -118,7 +132,6 @@ def run_global_registration():
         config = yaml.load(stream, Loader=yaml.Loader)
     source, target = load_source_and_target(config['voxel_size'], config)
     execute_global_registration(source, target, config['voxel_size'], config)
-    print(get_transformation(config['ground_truth'], source.filename, target.filename))
 
 
 if __name__ == '__main__':
