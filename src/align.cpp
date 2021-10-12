@@ -1,30 +1,17 @@
-#include <Eigen/Core>
 #include <fstream>
-#include <string>
 
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-#include <pcl/common/time.h>
-#include <pcl/common/norms.h>
 #include <pcl/console/print.h>
-#include <pcl/features/normal_3d_omp.h>
-#include <pcl/features/fpfh_omp.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/registration/correspondence_estimation.h>
-#include <pcl/registration/sample_consensus_prerejective.h>
+#include <pcl/common/transforms.h>
+#include <pcl/common/norms.h>
 #include <pcl/features/moment_of_inertia_estimation.h>
+#include <pcl/features/normal_3d_omp.h>
+#include <pcl/registration/sample_consensus_prerejective.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/common/time.h>
+#include <pcl/registration/correspondence_estimation.h>
 
-#include "config.h"
+#include "align.h"
 #include "csv_parser.h"
-
-// Types
-typedef pcl::PointXYZ PointT;
-typedef pcl::PointCloud<pcl::Normal> PointCloudN;
-typedef pcl::PointCloud<PointT> PointCloudT;
-typedef pcl::FPFHSignature33 FeatureT;
-typedef pcl::FPFHEstimationOMP<PointT, pcl::Normal, FeatureT> FeatureEstimationT;
-typedef pcl::PointCloud<FeatureT> FeatureCloudT;
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -91,158 +78,101 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
     return tgt_position.inverse() * src_position;
 }
 
-void filterReciprocalCorrespondences(PointCloudT::Ptr &src, FeatureCloudT::Ptr &src_features,
-                                     PointCloudT::Ptr &tgt, FeatureCloudT::Ptr &tgt_features) {
+void filterReciprocalCorrespondences(PointCloudT::Ptr &src, FeatureCloudT::Ptr &features_src,
+                                     PointCloudT::Ptr &tgt, FeatureCloudT::Ptr &features_tgt) {
     pcl::registration::CorrespondenceEstimation<FeatureT, FeatureT> est;
-    est.setInputSource(src_features);
-    est.setInputTarget(tgt_features);
+    est.setInputSource(features_src);
+    est.setInputTarget(features_tgt);
     pcl::CorrespondencesPtr reciprocal_correspondences(new pcl::Correspondences);
     est.determineReciprocalCorrespondences(*reciprocal_correspondences);
 
     PointCloudT::Ptr src_reciprocal(new PointCloudT), tgt_reciprocal(new PointCloudT);
-    FeatureCloudT::Ptr src_reciprocal_features(new FeatureCloudT), tgt_reciprocal_features(new FeatureCloudT);
+    FeatureCloudT::Ptr reciprocal_features_src(new FeatureCloudT), reciprocal_features_tgt(new FeatureCloudT);
     src_reciprocal->resize(reciprocal_correspondences->size());
     tgt_reciprocal->resize(reciprocal_correspondences->size());
-    src_reciprocal_features->resize(reciprocal_correspondences->size());
-    tgt_reciprocal_features->resize(reciprocal_correspondences->size());
+    reciprocal_features_src->resize(reciprocal_correspondences->size());
+    reciprocal_features_tgt->resize(reciprocal_correspondences->size());
     for (std::size_t i = 0; i < reciprocal_correspondences->size(); ++i) {
         pcl::Correspondence correspondence = (*reciprocal_correspondences)[i];
         src_reciprocal->points[i] = src->points[correspondence.index_query];
         tgt_reciprocal->points[i] = tgt->points[correspondence.index_match];
-        src_reciprocal_features->points[i] = src_features->points[correspondence.index_query];
-        tgt_reciprocal_features->points[i] = tgt_features->points[correspondence.index_match];
+        reciprocal_features_src->points[i] = features_src->points[correspondence.index_query];
+        reciprocal_features_tgt->points[i] = features_tgt->points[correspondence.index_match];
     }
     src = src_reciprocal;
     tgt = tgt_reciprocal;
-    src_features = src_reciprocal_features;
-    tgt_features = tgt_reciprocal_features;
+    features_src = reciprocal_features_src;
+    features_tgt = reciprocal_features_tgt;
 }
 
-int main(int argc, char **argv) {
-    // Point clouds
-    PointCloudT::Ptr src_initial(new PointCloudT);
-    PointCloudT::Ptr src(new PointCloudT);
-    PointCloudT::Ptr src_aligned_gt(new PointCloudT);
-    PointCloudT::Ptr src_aligned(new PointCloudT);
-    PointCloudT::Ptr tgt(new PointCloudT);
-    FeatureCloudT::Ptr src_features(new FeatureCloudT);
-    FeatureCloudT::Ptr tgt_features(new FeatureCloudT);
-
-    // Get input src and tgt
-    if (argc != 2) {
-        pcl::console::print_error("Syntax is: %s config.yaml\n", argv[0]);
-        return (1);
-    }
-
-    // Load parameters from config
-    YamlConfig config;
-    config.init(argv[1]);
-    float voxel_size = config.get<float>("voxel_size", 0.001f);
-    int iteration = config.get<int>("iteration", 1e5);
-
-
-    // Load src and tgt
-    pcl::console::print_highlight("Loading point clouds...\n");
-    std::string src_path = config.get<std::string>("source", "source.ply");
-    std::string tgt_path = config.get<std::string>("target", "target.ply");
-
-    if (pcl::io::loadPLYFile<PointT>(src_path, *src_initial) < 0 ||
-        pcl::io::loadPLYFile<PointT>(tgt_path, *tgt) < 0) {
-        pcl::console::print_error("Error loading src/tgt file!\n");
-        return (1);
-    }
-
-    // Downsample
-    pcl::console::print_highlight("Downsampling...\n");
+void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size) {
     pcl::VoxelGrid<PointT> grid;
     grid.setLeafSize(voxel_size, voxel_size, voxel_size);
-    grid.setInputCloud(src_initial);
-    pcl::console::print_highlight("Point cloud downsampled from %zu...", src_initial->size());
-    grid.filter(*src);
-    pcl::console::print_highlight("to %zu\n", src->size());
-    grid.setInputCloud(tgt);
-    grid.filter(*tgt);
+    grid.setInputCloud(pcd_fullsize);
+    pcl::console::print_highlight("Point cloud downsampled from %zu...", pcd_fullsize->size());
+    grid.filter(*pcd_down);
+    pcl::console::print_highlight("to %zu\n", pcd_down->size());
+}
 
-    float model_size = getAABBDiagonal(src);
-
-    // Estimate normals for tgt
-    pcl::console::print_highlight("Estimating normals...\n");
-    PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
+void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals) {
     pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> normal_est;
-    normal_est.setRadiusSearch(config.get<float>("normal_radius", 0.13f) * model_size);
+    normal_est.setRadiusSearch(radius_search);
 
-    normal_est.setInputCloud(src);
-    pcl::search::KdTree<PointT>::Ptr tree_src(new pcl::search::KdTree<PointT>());
-    normal_est.setSearchMethod(tree_src);
-    normal_est.compute(*normals_src);
+    normal_est.setInputCloud(pcd);
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>());
+    normal_est.setSearchMethod(tree);
+    normal_est.compute(*normals);
+}
 
-    normal_est.setInputCloud(tgt);
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree_tgt(new pcl::search::KdTree<PointT>());
-    normal_est.setSearchMethod(tree_tgt);
-    normal_est.compute(*normals_tgt);
-
-    // Estimate features
-    pcl::console::print_highlight("Estimating features...\n");
+void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
+                      FeatureCloudT::Ptr &features) {
     FeatureEstimationT fest;
-    fest.setRadiusSearch(config.get<float>("feature_radius", 0.13f) * model_size);
-    fest.setInputCloud(src);
-    fest.setInputNormals(normals_src);
-    fest.compute(*src_features);
-    fest.setInputCloud(tgt);
-    fest.setInputNormals(normals_tgt);
-    fest.compute(*tgt_features);
+    fest.setRadiusSearch(radius_search);
+    fest.setInputCloud(pcd);
+    fest.setInputNormals(normals);
+    fest.compute(*features);
+}
 
-    if (config.get<bool>("reciprocal", true)) {
-        pcl::console::print_highlight("Filtering features (reciprocal)...\n");
-        filterReciprocalCorrespondences(src, src_features, tgt, tgt_features);
-    }
-
-    // Perform alignment
-    pcl::console::print_highlight("Starting alignment...\n");
-    std::cout << "    iteration: " << iteration << std::endl;
-    std::cout << "    voxel size: " << voxel_size << std::endl;
+Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                      const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
+                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config) {
     pcl::SampleConsensusPrerejective<PointT, PointT, FeatureT> align;
 
     align.setInputSource(src);
-    align.setSourceFeatures(src_features);
+    align.setSourceFeatures(features_src);
 
     align.setInputTarget(tgt);
-    align.setTargetFeatures(tgt_features);
+    align.setTargetFeatures(features_tgt);
 
-    align.setMaximumIterations(iteration); // Number of RANSAC iterations
-    align.setNumberOfSamples(config.get<int>("n_samples", 3)); // Number of points to sample for generating/prerejecting a pose
-    align.setCorrespondenceRandomness(config.get<int>("randomness", 1)); // Number of nearest features to use
-    align.setSimilarityThreshold(config.get<float>("edge_thr", 0.95)); // Polygonal edge length similarity threshold
-    align.setMaxCorrespondenceDistance(config.get<float>("distance_thr", 1.5) * voxel_size); // Inlier threshold
-    align.setInlierFraction(config.get<float>("inlier_fraction", 0.05)); // Required inlier fraction for accepting a pose hypothesis
+    float voxel_size = config.get<float>("voxel_size").value();
+
+    align.setMaximumIterations(config.get<int>("iteration").value()); // Number of RANSAC iterations
+    align.setNumberOfSamples(config.get<int>("n_samples").value()); // Number of points to sample for generating/prerejecting a pose
+    align.setCorrespondenceRandomness(config.get<int>("randomness").value()); // Number of nearest features to use
+    align.setSimilarityThreshold(config.get<float>("edge_thr").value()); // Polygonal edge length similarity threshold
+    align.setMaxCorrespondenceDistance(config.get<float>("distance_thr").value() * voxel_size); // Inlier threshold
+    align.setInlierFraction(config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
     {
         pcl::ScopeTime t("Alignment");
-        align.align(*src_aligned);
+        align.align(*src);
     }
 
-    std::string csv_path = config.get<std::string>("ground_truth", "");
-    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
-    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
-    Eigen::Matrix4f transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
-
-    pcl::transformPointCloud(*src_initial, *src_aligned, align.getFinalTransformation());
-    pcl::transformPointCloud(*src_initial, *src_aligned_gt, transformation_gt);
-    pcl::io::savePLYFileBinary("source_aligned.ply", *src_aligned);
-    pcl::io::savePLYFileBinary("source_aligned_gt.ply", *src_aligned_gt);
+    float error_thr = config.get<float>("error_thr").value();
+    int correct_inliers = countCorrectCorrespondences(transformation_gt, src, tgt, align.getInliers(), error_thr);
 
     if (align.hasConverged()) {
         // Print results
         printf("\n");
         printTransformation(align.getFinalTransformation());
         printTransformation(transformation_gt);
-        pcl::console::print_info("fitness: %0.7f\n", (float) align.getInliers().size() / (float) src_features->size());
+        pcl::console::print_info("fitness: %0.7f\n", (float) align.getInliers().size() / (float) features_src->size());
         pcl::console::print_info("inliers_rmse: %0.7f\n", align.getFitnessScore());
         pcl::console::print_info("inliers: %i/%i\n", align.getInliers().size(), src->size());
-        pcl::console::print_info("correct inliers: %i/%i\n", countCorrectCorrespondences(transformation_gt, src, tgt, align.getInliers(), 0.5f * voxel_size), src->size());
+        pcl::console::print_info("correct inliers: %i/%i\n", correct_inliers, src->size());
     } else {
         pcl::console::print_error("Alignment failed!\n");
-        return (1);
+        exit(1);
     }
-    return (0);
+    return align.getFinalTransformation();
 }
 
