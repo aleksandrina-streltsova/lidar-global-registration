@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 project(registration)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -10,5 +10,6 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 add_executable(registration src/main.cpp src/config.cpp src/csv_parser.cpp src/align.cpp)
+target_precompile_headers(registration PRIVATE include/common.h)
 target_link_libraries(registration ${PCL_LIBRARIES} yaml-cpp)
 target_include_directories(registration PUBLIC include/)

@@ -2,10 +2,8 @@
 #define REGISTRATION_ALIGN_H
 
 #include <Eigen/Core>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-#include <pcl/features/fpfh_omp.h>
 
+#include "common.h"
 #include "config.h"
 
 // Types

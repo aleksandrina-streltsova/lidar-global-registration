@@ -1,12 +1,8 @@
 #include <Eigen/Core>
 #include <string>
 
-#include <pcl/point_cloud.h>
-#include <pcl/console/print.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/common/transforms.h>
-
 #include "config.h"
+#include "common.h"
 #include "align.h"
 
 int main(int argc, char **argv) {
