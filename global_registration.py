@@ -83,8 +83,8 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
     print(f"::  RANSAC global registration on downsampled point clouds: {source.filename} and {target.filename}.")
     start = time.time()
     distance_threshold = config['distance_thr'] * voxel_size
-    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-        source.pcd_down, target.pcd_down, source.pcd_fpfh, target.pcd_fpfh, True,
+    result: RegistrationResult = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source.pcd_down, target.pcd_down, source.pcd_fpfh, target.pcd_fpfh, config['reciprocal'],
         distance_threshold,
         o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
         ransac_n=3,
@@ -101,7 +101,7 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
           f"    correct inliers: {count_correct_correspondences(source, target, np.asarray(result.correspondence_set), transformation_gt, float(config['error_thr']))}\n")
     print(f"transformation: \n\n{result.transformation}\n")
     print(f"transformation (ground truth): \n\n{transformation_gt}\n")
-    save_clouds(transformation_gt, config)
+    save_clouds(result.transformation, config)
     return result
 
 

@@ -4,6 +4,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/features/fpfh_omp.h>
+#include <pcl/features/shot_omp.h>
 #include <pcl/console/print.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>

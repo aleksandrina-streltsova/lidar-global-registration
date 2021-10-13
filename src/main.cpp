@@ -57,8 +57,9 @@ int main(int argc, char **argv) {
     estimateFeatures(feature_radius, tgt, normals_tgt, features_tgt);
 
     if (config.get<bool>("reciprocal").value()) {
-        pcl::console::print_highlight("Filtering features (reciprocal)...\n");
+        pcl::console::print_highlight("Features filtered (reciprocal) from from %zu...", src->size());
         filterReciprocalCorrespondences(src, features_src, tgt, features_tgt);
+        pcl::console::print_highlight("to %zu\n", src->size());
     }
 
     // Read ground truth transformation

@@ -1,6 +1,7 @@
 #include <fstream>
 
 #include "align.h"
+#include "sac_prerejective_omp.h"
 #include "csv_parser.h"
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
@@ -126,7 +127,7 @@ void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const Po
 Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                       const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config) {
-    pcl::SampleConsensusPrerejective<PointT, PointT, FeatureT> align;
+    SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
 
     align.setInputSource(src);
     align.setSourceFeatures(features_src);
