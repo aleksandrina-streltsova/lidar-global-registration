@@ -6,6 +6,8 @@
 #include "align.h"
 
 int main(int argc, char **argv) {
+    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
+
     // Point clouds
     PointCloudT::Ptr src_fullsize(new PointCloudT), src(new PointCloudT), tgt(new PointCloudT);
     PointCloudT::Ptr src_aligned_gt(new PointCloudT), src_aligned(new PointCloudT);
@@ -56,12 +58,6 @@ int main(int argc, char **argv) {
     estimateFeatures(feature_radius, src, normals_src, features_src);
     estimateFeatures(feature_radius, tgt, normals_tgt, features_tgt);
 
-    if (config.get<bool>("reciprocal").value()) {
-        pcl::console::print_highlight("Features filtered (reciprocal) from from %zu...", src->size());
-        filterReciprocalCorrespondences(src, features_src, tgt, features_tgt);
-        pcl::console::print_highlight("to %zu\n", src->size());
-    }
-
     // Read ground truth transformation
     std::string csv_path = config.get<std::string>("ground_truth").value();
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
@@ -74,10 +70,12 @@ int main(int argc, char **argv) {
     std::cout << "    voxel size: " << voxel_size << std::endl;
     Eigen::Matrix4f transformation = align(src, tgt, features_src, features_tgt, transformation_gt, config);
 
+    std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
+                           tgt_filename.substr(0, tgt_filename.find_last_of('.'));
     pcl::transformPointCloud(*src_fullsize, *src_aligned, transformation);
     pcl::transformPointCloud(*src_fullsize, *src_aligned_gt, transformation_gt);
-    pcl::io::savePLYFileBinary("source_aligned.ply", *src_aligned);
-    pcl::io::savePLYFileBinary("source_aligned_gt.ply", *src_aligned_gt);
+    pcl::io::savePLYFileBinary(testname + "_aligned.ply", *src_aligned);
+    pcl::io::savePLYFileBinary(testname + "_aligned_gt.ply", *src_aligned_gt);
 
     return (0);
 }

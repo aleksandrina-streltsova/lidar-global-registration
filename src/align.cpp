@@ -17,23 +17,6 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("\n");
 }
 
-int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
-                                const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                                std::vector<int> inliers, float error_threshold) {
-    PointCloudT::Ptr src_aligned(new PointCloudT);
-    pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
-
-    int correct_correspondences = 0;
-    for (int i = 0; i < inliers.size(); ++i) {
-        int idx = inliers[i];
-        float e = pcl::L1_Norm(src_aligned->points[idx].data, tgt->points[idx].data, 3);
-        if (e < error_threshold) {
-            correct_correspondences++;
-        }
-    }
-    return correct_correspondences;
-}
-
 float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
     pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
     feature_extractor.setInputCloud(pcd);
@@ -69,33 +52,6 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
     return tgt_position.inverse() * src_position;
 }
 
-void filterReciprocalCorrespondences(PointCloudT::Ptr &src, FeatureCloudT::Ptr &features_src,
-                                     PointCloudT::Ptr &tgt, FeatureCloudT::Ptr &features_tgt) {
-    pcl::registration::CorrespondenceEstimation<FeatureT, FeatureT> est;
-    est.setInputSource(features_src);
-    est.setInputTarget(features_tgt);
-    pcl::CorrespondencesPtr reciprocal_correspondences(new pcl::Correspondences);
-    est.determineReciprocalCorrespondences(*reciprocal_correspondences);
-
-    PointCloudT::Ptr src_reciprocal(new PointCloudT), tgt_reciprocal(new PointCloudT);
-    FeatureCloudT::Ptr reciprocal_features_src(new FeatureCloudT), reciprocal_features_tgt(new FeatureCloudT);
-    src_reciprocal->resize(reciprocal_correspondences->size());
-    tgt_reciprocal->resize(reciprocal_correspondences->size());
-    reciprocal_features_src->resize(reciprocal_correspondences->size());
-    reciprocal_features_tgt->resize(reciprocal_correspondences->size());
-    for (std::size_t i = 0; i < reciprocal_correspondences->size(); ++i) {
-        pcl::Correspondence correspondence = (*reciprocal_correspondences)[i];
-        src_reciprocal->points[i] = src->points[correspondence.index_query];
-        tgt_reciprocal->points[i] = tgt->points[correspondence.index_match];
-        reciprocal_features_src->points[i] = features_src->points[correspondence.index_query];
-        reciprocal_features_tgt->points[i] = features_tgt->points[correspondence.index_match];
-    }
-    src = src_reciprocal;
-    tgt = tgt_reciprocal;
-    features_src = reciprocal_features_src;
-    features_tgt = reciprocal_features_tgt;
-}
-
 void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size) {
     pcl::VoxelGrid<PointT> grid;
     grid.setLeafSize(voxel_size, voxel_size, voxel_size);
@@ -129,6 +85,10 @@ Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config) {
     SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
 
+    if (config.get<bool>("reciprocal").value()) {
+        align.enableMutualFiltering();
+    }
+
     align.setInputSource(src);
     align.setSourceFeatures(features_src);
 
@@ -138,28 +98,32 @@ Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
     float voxel_size = config.get<float>("voxel_size").value();
 
     align.setMaximumIterations(config.get<int>("iteration").value()); // Number of RANSAC iterations
-    align.setNumberOfSamples(config.get<int>("n_samples").value()); // Number of points to sample for generating/prerejecting a pose
+    align.setNumberOfSamples(
+            config.get<int>("n_samples").value()); // Number of points to sample for generating/prerejecting a pose
     align.setCorrespondenceRandomness(config.get<int>("randomness").value()); // Number of nearest features to use
     align.setSimilarityThreshold(config.get<float>("edge_thr").value()); // Polygonal edge length similarity threshold
     align.setMaxCorrespondenceDistance(config.get<float>("distance_thr").value() * voxel_size); // Inlier threshold
-    align.setInlierFraction(config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
+    align.setInlierFraction(
+            config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
     {
         pcl::ScopeTime t("Alignment");
         align.align(*src);
     }
 
     float error_thr = config.get<float>("error_thr").value();
-    int correct_inliers = countCorrectCorrespondences(transformation_gt, src, tgt, align.getInliers(), error_thr);
 
     if (align.hasConverged()) {
         // Print results
         printf("\n");
         printTransformation(align.getFinalTransformation());
         printTransformation(transformation_gt);
-        pcl::console::print_info("fitness: %0.7f\n", (float) align.getInliers().size() / (float) features_src->size());
-        pcl::console::print_info("inliers_rmse: %0.7f\n", align.getFitnessScore());
-        pcl::console::print_info("inliers: %i/%i\n", align.getInliers().size(), src->size());
-        pcl::console::print_info("correct inliers: %i/%i\n", correct_inliers, src->size());
+        pcl::console::print_info("fitness: %0.7f\n",
+                                 (float) align.getInliers().size() / (float) align.getCorrespondences().size());
+        pcl::console::print_info("inliers_rmse: %0.7f\n", align.getRMSEScore());
+        pcl::console::print_info("inliers: %i/%i\n", align.getInliers().size(), align.getCorrespondences().size());
+        pcl::console::print_info("correct inliers: %i/%i\n",
+                                 align.countCorrectCorrespondences(transformation_gt, error_thr),
+                                 align.getCorrespondences().size());
     } else {
         pcl::console::print_error("Alignment failed!\n");
         exit(1);

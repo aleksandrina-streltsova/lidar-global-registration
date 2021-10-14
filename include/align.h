@@ -16,17 +16,10 @@ typedef pcl::PointCloud<FeatureT> FeatureCloudT;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
-int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
-                                const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                                std::vector<int> inliers, float error_threshold);
-
 float getAABBDiagonal(const PointCloudT::Ptr &pcd);
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
-
-void filterReciprocalCorrespondences(PointCloudT::Ptr &src, FeatureCloudT::Ptr &features_src,
-                                     PointCloudT::Ptr &tgt, FeatureCloudT::Ptr &features_tgt);
 
 void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size);
 
