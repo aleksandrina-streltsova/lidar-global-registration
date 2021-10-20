@@ -21,7 +21,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setNumb
 template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIndices(
         const pcl::Indices &sample_indices,
-        std::vector<MultivaluedCorrespondence> &correspondences,
+        const std::vector<MultivaluedCorrespondence> &correspondences,
         pcl::Indices &source_indices,
         pcl::Indices &target_indices) {
     // Allocate results
@@ -45,6 +45,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIn
 template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE(pcl::Indices &inliers,
                                                                                  const std::vector<MultivaluedCorrespondence> &correspondences,
+                                                                                 const Matrix4 &transformation,
                                                                                  float &rmse_score) {
     // Initialize variables
     inliers.clear();
@@ -54,7 +55,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
     // Transform the input dataset using the final transformation
     PointCloudSource input_transformed;
     input_transformed.resize(this->input_->size());
-    transformPointCloud(*(this->input_), input_transformed, this->final_transformation_);
+    transformPointCloud(*(this->input_), input_transformed, transformation);
 
     // For each point from correspondences in the source dataset
     for (int i = 0; i < correspondences.size(); ++i) {
@@ -114,7 +115,8 @@ template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectCorrespondences(
         int nr_correspondences,
         int nr_samples,
-        pcl::Indices &sample_indices) {
+        pcl::Indices &sample_indices,
+        UniformRandIntGenerator &rand_generator) {
     if (nr_samples > nr_correspondences) {
         PCL_ERROR("[%s::selectCorrespondences] ", this->getClassName().c_str());
         PCL_ERROR("The number of samples (%d) must not be greater than the number of correspondences (%zu)!\n",
@@ -129,7 +131,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectC
     // Draw random samples until n samples is reached
     for (int i = 0; i < nr_samples; i++) {
         // Select a random number
-        sample_indices[i] = this->getRandomIndex(nr_correspondences - i);
+        sample_indices[i] = rand_generator();
 
         // Run trough list of numbers, starting at the lowest, to avoid duplicates
         for (int j = 0; j < i; j++) {
@@ -219,7 +221,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     this->final_transformation_ = guess;
     this->inliers_.clear();
     this->rmse_ = std::numeric_limits<float>::max();
-    float lowest_error = std::numeric_limits<float>::max();
+    float min_error = std::numeric_limits<float>::max();
     this->converged_ = false;
 
     int threads = threads_;
@@ -240,123 +242,151 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     std::vector<MultivaluedCorrespondence> correspondences_ij(this->input_->size());
 
     // Build correspondences
-#pragma omp parallel for num_threads(threads_) default(none) shared(correspondences_ij)
-    for (int i = 0; i < this->input_->size(); i++) {
-        correspondences_ij[i].query_idx = i;
-        pcl::Indices &match_indices = correspondences_ij[i].match_indices;
-        match_indices.resize(this->k_correspondences_);
-        std::vector<float> match_distances(this->k_correspondences_);
-        this->feature_tree_->nearestKSearch(*(this->input_features_),
-                                            i,
-                                            this->k_correspondences_,
-                                            match_indices,
-                                            match_distances);
-    }
+    {
+        pcl::ScopeTime t("Correspondence search");
+#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij)
+        for (int i = 0; i < this->input_->size(); i++) {
+            correspondences_ij[i].query_idx = i;
+            pcl::Indices &match_indices = correspondences_ij[i].match_indices;
+            match_indices.resize(this->k_correspondences_);
+            std::vector<float> match_distances(this->k_correspondences_);
+            this->feature_tree_->nearestKSearch(*(this->input_features_),
+                                                i,
+                                                this->k_correspondences_,
+                                                match_indices,
+                                                match_distances);
+        }
 
-    if (reciprocal_) {
-        pcl::KdTreeFLANN<FeatureT> feature_tree_src_(new pcl::KdTreeFLANN<FeatureT>);
-        feature_tree_src_.setInputCloud(this->input_features_);
-        std::vector<MultivaluedCorrespondence> correspondences_ji(this->target_->size());
+        if (reciprocal_) {
+            pcl::KdTreeFLANN<FeatureT> feature_tree_src_(new pcl::KdTreeFLANN<FeatureT>);
+            feature_tree_src_.setInputCloud(this->input_features_);
+            std::vector<MultivaluedCorrespondence> correspondences_ji(this->target_->size());
 
 #pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ji, feature_tree_src_)
-        for (int j = 0; j < this->target_->size(); ++j) {
-            correspondences_ji[j].query_idx = j;
-            pcl::Indices &match_indices = correspondences_ji[j].match_indices;
-            match_indices.resize(1);
-            std::vector<float> match_distances(1);
-            feature_tree_src_.nearestKSearch(*(this->target_features_),
-                                             j,
-                                             1,
-                                             match_indices,
-                                             match_distances);
-        }
+            for (int j = 0; j < this->target_->size(); ++j) {
+                correspondences_ji[j].query_idx = j;
+                pcl::Indices &match_indices = correspondences_ji[j].match_indices;
+                match_indices.resize(1);
+                std::vector<float> match_distances(1);
+                feature_tree_src_.nearestKSearch(*(this->target_features_),
+                                                 j,
+                                                 1,
+                                                 match_indices,
+                                                 match_distances);
+            }
 
-        std::vector<MultivaluedCorrespondence> correspondences_mutual;
-        for (int i = 0; i < this->input_->size(); ++i) {
-            bool reciprocal = false;
-            MultivaluedCorrespondence corr = correspondences_ij[i];
-            for (const int &j: corr.match_indices) {
-                if (correspondences_ji[j].match_indices[0] == i) {
-                    reciprocal = true;
+            std::vector<MultivaluedCorrespondence> correspondences_mutual;
+            for (int i = 0; i < this->input_->size(); ++i) {
+                bool reciprocal = false;
+                MultivaluedCorrespondence corr = correspondences_ij[i];
+                for (const int &j: corr.match_indices) {
+                    if (correspondences_ji[j].match_indices[0] == i) {
+                        reciprocal = true;
+                    }
+                }
+                if (reciprocal) {
+                    correspondences_mutual.emplace_back(corr);
                 }
             }
-            if (reciprocal) {
-                correspondences_mutual.emplace_back(corr);
-            }
+            correspondences_ij = correspondences_mutual;
+            PCL_DEBUG("[%s::computeTransformation] %i correspondences remain after mutual filter.\n",
+                      this->getClassName().c_str(),
+                      correspondences_mutual.size());
         }
-        correspondences_ij = correspondences_mutual;
-        PCL_DEBUG("[%s::computeTransformation] %i correspondences remain after mutual filter.\n",
-                  this->getClassName().c_str(),
-                  correspondences_mutual.size());
+
+        this->multivalued_correspondences_ = correspondences_ij;
     }
 
-    this->multivalued_correspondences_ = correspondences_ij;
+    {
+        pcl::Indices inliers;
+        float inlier_fraction, error;
 
-    // Temporaries
-    pcl::Indices inliers;
-    float inlier_fraction;
-    float error;
+        // If guess is not the Identity matrix we check it
+        if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
+            this->getRMSE(inliers, correspondences_ij, guess, error);
+            inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(this->input_->size());
 
-    // If guess is not the Identity matrix we check it
-    if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
-        this->getRMSE(inliers, correspondences_ij, error);
-        inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(this->input_->size());
-
-        if (inlier_fraction >= this->inlier_fraction_ && error < lowest_error) {
-            this->inliers_ = inliers;
-            this->rmse_ = error;
-            lowest_error = error;
-            this->converged_ = true;
+            if (inlier_fraction >= this->inlier_fraction_ && error < min_error) {
+                this->inliers_ = inliers;
+                this->rmse_ = error;
+                min_error = error;
+                this->converged_ = true;
+                this->final_transformation_ = guess;
+            }
         }
     }
 
     // Start
-    for (int i = 0; i < this->max_iterations_; ++i) {
-        // Temporary containers
-        pcl::Indices sample_indices;
-        pcl::Indices source_indices;
-        pcl::Indices target_indices;
+    {
+        pcl::ScopeTime t("RANSAC");
+#if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
+#pragma omp parallel \
+    num_threads(threads) \
+    default(none) \
+    shared(correspondences_ij, min_error) \
+    reduction(+:num_rejections)
+#endif
+        {
+            // Local best results
+            pcl::Indices best_inliers;
+            float min_error_local = std::numeric_limits<float>::max();
+            Matrix4 best_transformation;
 
-        // Draw nr_samples_ random samples
-        selectCorrespondences(correspondences_ij.size(), this->nr_samples_, sample_indices);
+            // Temporaries
+            pcl::Indices inliers;
+            float inlier_fraction, error;
 
-        // Find corresponding features in the target cloud
-        buildIndices(sample_indices, correspondences_ij, source_indices, target_indices);
+            UniformRandIntGenerator rand_generator(0, (int) correspondences_ij.size() - 1);
 
-        // Apply prerejection
-        if (!this->correspondence_rejector_poly_->thresholdPolygon(source_indices, target_indices)) {
-            ++num_rejections;
-            continue;
+#pragma omp for nowait
+            for (int i = 0; i < this->max_iterations_; ++i) {
+                // Temporary containers
+                pcl::Indices sample_indices;
+                pcl::Indices source_indices;
+                pcl::Indices target_indices;
+
+                // Draw nr_samples_ random samples
+                selectCorrespondences(correspondences_ij.size(), this->nr_samples_, sample_indices, rand_generator);
+
+                // Find corresponding features in the target cloud
+                buildIndices(sample_indices, correspondences_ij, source_indices, target_indices);
+
+                // Apply prerejection
+                if (!this->correspondence_rejector_poly_->thresholdPolygon(source_indices, target_indices)) {
+                    ++num_rejections;
+                    continue;
+                }
+
+                Matrix4 transformation;
+                // Estimate the transform from the correspondences, write to transformation_
+                this->transformation_estimation_->estimateRigidTransformation(*(this->input_), source_indices,
+                                                                              *(this->target_),
+                                                                              target_indices, transformation);
+
+                // Transform the input and compute the error (uses input_filtered_)
+                this->getRMSE(inliers, correspondences_ij, transformation, error);
+
+                // If the new fit is better, update results
+                inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(correspondences_ij.size());
+
+                if (inlier_fraction >= this->inlier_fraction_ && error < min_error_local) {
+                    min_error_local = error;
+                    best_inliers = inliers;
+                    best_transformation = transformation;
+                }
+            } // for
+#pragma omp critical(registration_result)
+            {
+                if (min_error_local < min_error) {
+                    this->inliers_ = best_inliers;
+                    this->rmse_ = min_error_local;
+                    min_error = min_error_local;
+                    this->converged_ = true;
+                    this->final_transformation_ = best_transformation;
+                }
+            }
         }
-
-        // Estimate the transform from the correspondences, write to transformation_
-        this->transformation_estimation_->estimateRigidTransformation(
-                *(this->input_), source_indices, *(this->target_), target_indices, this->transformation_);
-
-        // Take a backup of previous result
-        const Matrix4 final_transformation_prev = this->final_transformation_;
-
-        // Set final result to current transformation
-        this->final_transformation_ = this->transformation_;
-
-        // Transform the input and compute the error (uses input_ and final_transformation_)
-        this->getRMSE(inliers, correspondences_ij, error);
-
-        // Restore previous result
-        this->final_transformation_ = final_transformation_prev;
-
-        // If the new fit is better, update results
-        inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(correspondences_ij.size());
-
-        // Update result if pose hypothesis is better
-        if (inlier_fraction >= this->inlier_fraction_ && error < lowest_error) {
-            this->inliers_ = inliers;
-            this->rmse_ = error;
-            lowest_error = error;
-            this->converged_ = true;
-            this->final_transformation_ = this->transformation_;
-        }
-    } // for
+    }
 
     // Apply the final transformation
     if (this->converged_)

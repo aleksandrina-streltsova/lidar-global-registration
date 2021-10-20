@@ -7,6 +7,7 @@
 #ifdef _OPENMP
 
 #include <omp.h>
+#include <utils.h>
 
 #endif
 
@@ -38,8 +39,7 @@ public:
 
     float getRMSEScore();
 
-    inline const std::vector<MultivaluedCorrespondence> getCorrespondences() const
-    {
+    inline const std::vector<MultivaluedCorrespondence> getCorrespondences() const {
         return multivalued_correspondences_;
     }
 
@@ -49,17 +49,21 @@ protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;
 
     void buildIndices(const pcl::Indices &sample_indices,
-                      std::vector<MultivaluedCorrespondence> &correspondences,
+                      const std::vector<MultivaluedCorrespondence> &correspondences,
                       pcl::Indices &source_indices,
                       pcl::Indices &target_indices);
 
     void selectCorrespondences(int nr_correspondences,
                                int nr_samples,
-                               pcl::Indices &sample_indices);
+                               pcl::Indices &sample_indices,
+                               UniformRandIntGenerator &rand_generator);
 
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
-    void getRMSE(pcl::Indices &inliers, const std::vector<MultivaluedCorrespondence> &correspondences, float &rmse_score);
+    void getRMSE(pcl::Indices &inliers,
+                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                 const Matrix4 &transformation,
+                 float &rmse_score);
 
     bool reciprocal_ = false;
     float rmse_ = std::numeric_limits<float>::max();
