@@ -4,21 +4,6 @@
 #include "sac_prerejective_omp.h"
 #include "csv_parser.h"
 
-float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
-    pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
-    feature_extractor.setInputCloud(pcd);
-    feature_extractor.compute();
-
-    PointT min_pointAABB, max_point_AABB;
-
-    feature_extractor.getAABB(min_pointAABB, max_point_AABB);
-
-    Eigen::Vector3f min_point(min_pointAABB.x, min_pointAABB.y, min_pointAABB.z);
-    Eigen::Vector3f max_point(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
-
-    return (max_point - min_point).norm();
-}
-
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename) {
     std::ifstream file(csv_path);
@@ -116,6 +101,8 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         pcl::console::print_error("Alignment failed!\n");
         exit(1);
     }
+    saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname);
+    saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
     saveColorizedPointCloud(src, align.getCorrespondences(), align.getInliers(), testname);
     return align.getFinalTransformation();
 }
