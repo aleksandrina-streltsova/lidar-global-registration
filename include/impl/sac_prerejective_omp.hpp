@@ -221,7 +221,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     this->final_transformation_ = guess;
     this->inliers_.clear();
     this->rmse_ = std::numeric_limits<float>::max();
-    float min_error = std::numeric_limits<float>::max();
+    float max_inlier_fraction = 0.0f;
     this->converged_ = false;
 
     int threads = threads_;
@@ -306,10 +306,10 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
             this->getRMSE(inliers, correspondences_ij, guess, error);
             inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(this->input_->size());
 
-            if (inlier_fraction >= this->inlier_fraction_ && error < min_error) {
+            if (inlier_fraction >= max_inlier_fraction) {
                 this->inliers_ = inliers;
                 this->rmse_ = error;
-                min_error = error;
+                max_inlier_fraction = inlier_fraction;
                 this->converged_ = true;
                 this->final_transformation_ = guess;
             }
@@ -323,13 +323,14 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 #pragma omp parallel \
     num_threads(threads) \
     default(none) \
-    shared(correspondences_ij, min_error) \
+    shared(correspondences_ij, max_inlier_fraction) \
     reduction(+:num_rejections)
 #endif
         {
             // Local best results
             pcl::Indices best_inliers;
             float min_error_local = std::numeric_limits<float>::max();
+            float max_inlier_fraction_local = 0.0f;
             Matrix4 best_transformation;
 
             // Temporaries
@@ -369,18 +370,19 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                 // If the new fit is better, update results
                 inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(correspondences_ij.size());
 
-                if (inlier_fraction >= this->inlier_fraction_ && error < min_error_local) {
+                if (inlier_fraction >= max_inlier_fraction_local) {
                     min_error_local = error;
+                    max_inlier_fraction_local = inlier_fraction;
                     best_inliers = inliers;
                     best_transformation = transformation;
                 }
             } // for
 #pragma omp critical(registration_result)
             {
-                if (min_error_local < min_error) {
+                if (max_inlier_fraction < max_inlier_fraction_local) {
                     this->inliers_ = best_inliers;
                     this->rmse_ = min_error_local;
-                    min_error = min_error_local;
+                    max_inlier_fraction = max_inlier_fraction_local;
                     this->converged_ = true;
                     this->final_transformation_ = best_transformation;
                 }
