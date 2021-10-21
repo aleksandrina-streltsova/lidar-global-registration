@@ -4,19 +4,6 @@
 #include "sac_prerejective_omp.h"
 #include "csv_parser.h"
 
-void printTransformation(const Eigen::Matrix4f &transformation) {
-    pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
-                             transformation(0, 2));
-    pcl::console::print_info("R = | %6.3f %6.3f %6.3f | \n", transformation(1, 0), transformation(1, 1),
-                             transformation(1, 2));
-    pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(2, 0), transformation(2, 1),
-                             transformation(2, 2));
-    pcl::console::print_info("\n");
-    pcl::console::print_info("t = < %0.3f, %0.3f, %0.3f >\n", transformation(0, 3), transformation(1, 3),
-                             transformation(2, 3));
-    pcl::console::print_info("\n");
-}
-
 float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
     pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
     feature_extractor.setInputCloud(pcd);
@@ -80,10 +67,11 @@ void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const Po
     fest.compute(*features);
 }
 
-Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                       const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config) {
+                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config, const std::string &testname) {
     SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
+    PointCloudT src_aligned;
 
     if (config.get<bool>("reciprocal").value()) {
         align.enableMutualFiltering();
@@ -107,7 +95,7 @@ Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
             config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
     {
         pcl::ScopeTime t("Alignment");
-        align.align(*src);
+        align.align(src_aligned);
     }
 
     float error_thr = config.get<float>("error_thr").value();
@@ -128,6 +116,7 @@ Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         pcl::console::print_error("Alignment failed!\n");
         exit(1);
     }
+    saveColorizedPointCloud(src, align.getCorrespondences(), align.getInliers(), testname);
     return align.getFinalTransformation();
 }
 

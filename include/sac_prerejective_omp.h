@@ -3,12 +3,11 @@
 
 #include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/common/norms.h>
+#include <utils.h>
+#include <common.h>
 
 #ifdef _OPENMP
-
 #include <omp.h>
-#include <utils.h>
-
 #endif
 
 #if defined _OPENMP && _OPENMP >= 201107 // We need OpenMP 3.1 for the atomic constructs
@@ -16,11 +15,6 @@
 #else
 #define OPENMP_AVAILABLE_RANSAC_PREREJECTIVE false
 #endif
-
-struct MultivaluedCorrespondence {
-    int query_idx;
-    pcl::Indices match_indices;
-};
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
 class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT> {

@@ -2,7 +2,7 @@
 #include <string>
 
 #include "config.h"
-#include "common.h"
+#include "pch.h"
 #include "align.h"
 
 int main(int argc, char **argv) {
@@ -64,14 +64,14 @@ int main(int argc, char **argv) {
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
     Eigen::Matrix4f transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
 
+    std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
+                           tgt_filename.substr(0, tgt_filename.find_last_of('.'));
     // Perform alignment
     pcl::console::print_highlight("Starting alignment...\n");
     std::cout << "    iteration: " << iteration << std::endl;
     std::cout << "    voxel size: " << voxel_size << std::endl;
-    Eigen::Matrix4f transformation = align(src, tgt, features_src, features_tgt, transformation_gt, config);
+    Eigen::Matrix4f transformation = align(src, tgt, features_src, features_tgt, transformation_gt, config, testname);
 
-    std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
-                           tgt_filename.substr(0, tgt_filename.find_last_of('.'));
     pcl::transformPointCloud(*src_fullsize, *src_aligned, transformation);
     pcl::transformPointCloud(*src_fullsize, *src_aligned_gt, transformation_gt);
     pcl::io::savePLYFileBinary(testname + "_aligned.ply", *src_aligned);

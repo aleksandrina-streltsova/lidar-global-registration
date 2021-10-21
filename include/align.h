@@ -3,18 +3,9 @@
 
 #include <Eigen/Core>
 
-#include "common.h"
+#include "pch.h"
 #include "config.h"
-
-// Types
-typedef pcl::PointXYZ PointT;
-typedef pcl::PointCloud<pcl::Normal> PointCloudN;
-typedef pcl::PointCloud<PointT> PointCloudT;
-typedef pcl::FPFHSignature33 FeatureT;
-typedef pcl::FPFHEstimationOMP<PointT, pcl::Normal, FeatureT> FeatureEstimationT;
-typedef pcl::PointCloud<FeatureT> FeatureCloudT;
-
-void printTransformation(const Eigen::Matrix4f &transformation);
+#include "common.h"
 
 float getAABBDiagonal(const PointCloudT::Ptr &pcd);
 
@@ -28,7 +19,8 @@ void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointClou
 void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
                       FeatureCloudT::Ptr &features);
 
-Eigen::Matrix4f align(PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                       const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config);
+                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config, const std::string &testname);
+
 #endif
