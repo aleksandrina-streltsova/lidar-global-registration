@@ -74,8 +74,8 @@ int main(int argc, char **argv) {
 
     pcl::transformPointCloud(*src_fullsize, *src_aligned, transformation);
     pcl::transformPointCloud(*src_fullsize, *src_aligned_gt, transformation_gt);
-    pcl::io::savePLYFileBinary(testname + "_aligned.ply", *src_aligned);
-    pcl::io::savePLYFileBinary(testname + "_aligned_gt.ply", *src_aligned_gt);
+    pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_aligned);
+    pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_aligned_gt);
 
     return (0);
 }

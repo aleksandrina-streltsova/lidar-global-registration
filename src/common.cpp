@@ -1,4 +1,10 @@
 #include "common.h"
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
+const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
+const std::string VERSION = "00";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -31,11 +37,15 @@ void saveColorizedPointCloud(const PointCloudT::Ptr &src,
     for (const auto &idx: inliers) {
         setPointColor(dst.points[idx], COLOR_PURPLE);
     }
-    pcl::io::savePLYFileBinary(testname + "_downsampled.ply", dst);
+    pcl::io::savePLYFileBinary(constructPath(testname, "downsampled"), dst);
 }
 
 void setPointColor(PointColoredT &point, int color) {
     point.r = (color >> 16) & 0xff;
     point.g = (color >> 8) & 0xff;
     point.b = (color >> 0) & 0xff;
+}
+
+std::string constructPath(const std::string &test, const std::string &name, const std::string &extension) {
+    return fs::path(DATA_DEBUG_PATH) / fs::path(test + "_" + name + "_" + VERSION + "." + extension);
 }

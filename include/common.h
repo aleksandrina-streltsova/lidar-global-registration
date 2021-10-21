@@ -22,6 +22,9 @@ struct MultivaluedCorrespondence {
     pcl::Indices match_indices;
 };
 
+extern const std::string DATA_DEBUG_PATH;
+extern const std::string VERSION;
+
 void printTransformation(const Eigen::Matrix4f &transformation);
 
 void saveColorizedPointCloud(const PointCloudT::Ptr &src,
@@ -30,5 +33,7 @@ void saveColorizedPointCloud(const PointCloudT::Ptr &src,
                              const std::string &testname);
 
 void setPointColor(PointColoredT &point, int color);
+
+std::string constructPath(const std::string &test, const std::string &name, const std::string &extension = "ply");
 
 #endif
