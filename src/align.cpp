@@ -58,6 +58,8 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
     SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
     PointCloudT src_aligned;
 
+//    saveFeatureUniquenesses(features_src);
+
     if (config.get<bool>("reciprocal").value()) {
         align.enableMutualFiltering();
     }
@@ -103,6 +105,7 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
     }
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname);
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
+    saveCorrespondenceDistances(src, tgt, align.getCorrespondences(), transformation_gt, voxel_size, testname);
     saveColorizedPointCloud(src, align.getCorrespondences(), align.getInliers(), testname);
     return align.getFinalTransformation();
 }

@@ -39,6 +39,11 @@ void saveCorrespondences(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tg
                          const Eigen::Matrix4f &transformation_gt,
                          const std::string &testname, bool sparse = false);
 
+void saveCorrespondenceDistances(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                                 const Eigen::Matrix4f &transformation_gt, float voxel_size,
+                                 const std::string &testname);
+
 void setPointColor(PointColoredT &point, int color);
 
 void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);

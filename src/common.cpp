@@ -133,6 +133,27 @@ void saveCorrespondences(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tg
     }
 }
 
+void saveCorrespondenceDistances(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                                 const Eigen::Matrix4f &transformation_gt, float voxel_size,
+                                 const std::string &testname) {
+    std::string filepath = constructPath(testname, "distances", "csv");
+    std::fstream fout(filepath, std::ios_base::out);
+    if (!fout.is_open())
+        perror(("error while opening file " + filepath).c_str());
+    PointCloudT src_aligned_gt;
+    pcl::transformPointCloud(*src, src_aligned_gt, transformation_gt);
+
+    fout << "distance\n";
+    for (const auto &correspondence: correspondences) {
+        PointT source_point(src_aligned_gt.points[correspondence.query_idx]);
+        PointT target_point(tgt->points[correspondence.match_indices[0]]);
+        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
+        fout << dist << "\n";
+    }
+    fout.close();
+}
+
 void setPointColor(PointColoredT &point, int color) {
     point.r = (color >> 16) & 0xff;
     point.g = (color >> 8) & 0xff;

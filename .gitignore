@@ -34,5 +34,8 @@
 # Point clouds
 *.ply
 
+# Data
+*.csv
+
 build/
 /data/

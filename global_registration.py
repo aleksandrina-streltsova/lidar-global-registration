@@ -2,6 +2,7 @@ import time
 import os
 import sys
 import yaml
+import copy
 from typing import NamedTuple, List, Tuple
 
 import numpy as np
@@ -20,9 +21,9 @@ RegistrationData = NamedTuple('RegistrationData', [
 def count_correct_correspondences(source: RegistrationData, target: RegistrationData,
                                   correspondence_set: np.ndarray, transformation_gt: np.ndarray,
                                   error_threshold: float):
-    source_correspondences = source.pcd_down.select_by_index(correspondence_set[:, 0]).transform(transformation_gt)
-    target_correspondences = target.pcd_down.select_by_index(correspondence_set[:, 1])
-    errors = np.linalg.norm(np.asarray(source_correspondences.points) - np.asarray(target_correspondences.points), axis=1)
+    source_correspondences = np.asarray(copy.deepcopy(source.pcd_down).transform(transformation_gt).points)[correspondence_set[:, 0]]
+    target_correspondences = np.asarray(target.pcd_down.points)[correspondence_set[:, 1]]
+    errors = np.linalg.norm(source_correspondences - target_correspondences, axis=1)
     return np.count_nonzero(errors < error_threshold)
 
 
@@ -79,7 +80,7 @@ def load_source_and_target(voxel_size: int, config) -> Tuple[RegistrationData, R
 
 
 def execute_global_registration(source: RegistrationData, target: RegistrationData,
-                                voxel_size: int, config) -> RegistrationResult:
+                                voxel_size: int, config, testname: str) -> RegistrationResult:
     print(f"::  RANSAC global registration on downsampled point clouds: {source.filename} and {target.filename}.")
     start = time.time()
     distance_threshold = config['distance_thr'] * voxel_size
@@ -94,27 +95,38 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
         ],
         criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(config['iteration'], config['confidence']))
     transformation_gt = get_transformation(config['ground_truth'], source.filename, target.filename)
+    correspondence_set = np.asarray(result.correspondence_set)
     print("    Global registration took: %.3f sec." % (time.time() - start))
     print(f"    fitness: {result.fitness}\n"
           f"    inlier_rmse: {result.inlier_rmse}\n"
-          f"    inliers: {len(result.correspondence_set)}/{round(len(result.correspondence_set) / result.fitness)}"
+          f"    inliers: {len(result.correspondence_set)}/{round(len(result.correspondence_set) / result.fitness)}\n"
           f"    correct inliers: {count_correct_correspondences(source, target, np.asarray(result.correspondence_set), transformation_gt, float(config['error_thr']))}\n")
     print(f"transformation: \n\n{result.transformation}\n")
     print(f"transformation (ground truth): \n\n{transformation_gt}\n")
-    save_clouds(result.transformation, config)
+    save_clouds(result.transformation, config, testname)
+    save_correspondence_distances(source, target, correspondence_set, transformation_gt, voxel_size, testname)
     return result
 
 
-def save_clouds(transformation: np.ndarray, config):
+def save_clouds(transformation: np.ndarray, config, testname: str):
     source_pcd = o3d.io.read_point_cloud(config['source'])
     target_pcd = o3d.io.read_point_cloud(config['target'])
     source_pcd.paint_uniform_color([1, 0.706, 0])
     target_pcd.paint_uniform_color([0, 0.651, 0.929])
     source_pcd.transform(transformation)
     source_pcd += target_pcd
-    o3d.io.write_point_cloud(f"clouds_aligned_open3d.ply", source_pcd,
+    o3d.io.write_point_cloud(testname + "_aligned_open3d.ply", source_pcd,
                              compressed=True, print_progress=True)
     del source_pcd, target_pcd
+
+
+def save_correspondence_distances(source: RegistrationData, target: RegistrationData, correspondence_set: np.ndarray,
+                                  transformation_gt: np.ndarray, voxel_size: float, testname: str):
+    source_correspondences = np.asarray(copy.deepcopy(source.pcd_down).transform(transformation_gt).points)[correspondence_set[:, 0]]
+    target_correspondences = np.asarray(target.pcd_down.points)[correspondence_set[:, 1]]
+    errors = np.linalg.norm(source_correspondences - target_correspondences, axis=1) / voxel_size
+    df = pd.DataFrame(errors, columns=['distance'])
+    df.to_csv(testname + '_distances.csv', index=False)
 
 
 def run_global_registration_and_save_ply():
@@ -130,8 +142,9 @@ def run_global_registration_and_save_ply():
 def run_global_registration():
     with open(sys.argv[1], 'r') as stream:
         config = yaml.load(stream, Loader=yaml.Loader)
+    testname = os.path.basename(sys.argv[1])[:-5]
     source, target = load_source_and_target(config['voxel_size'], config)
-    execute_global_registration(source, target, config['voxel_size'], config)
+    execute_global_registration(source, target, config['voxel_size'], config, testname)
 
 
 if __name__ == '__main__':
