@@ -1,9 +1,8 @@
-voxel_size: 0.05
-normal_radius: 0.05
-feature_radius: 0.05
-distance_thr: 1.5
+voxel_size: 0.06
+normal_radius_coef: 4
+feature_radius_coef: 5
+distance_thr_coef: 1.5
 edge_thr: 0.95
-error_thr: 0.05
 iteration: 20000000
 confidence: 0.999
 n_samples: 3
@@ -13,3 +12,4 @@ inlier_fraction: 0.01
 source: data/Hokuyo/Hokuyo_4.ply
 target: data/Hokuyo/Hokuyo_8.ply
 ground_truth: data/Hokuyo/ground_truth.csv
+use_open3d: false
