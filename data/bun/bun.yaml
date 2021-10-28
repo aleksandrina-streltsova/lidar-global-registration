@@ -1,0 +1,15 @@
+voxel_size: 0.003
+normal_radius: 0.13
+feature_radius: 0.13
+distance_thr: 1.5
+edge_thr: 0.95
+error_thr: 0.003
+iteration: 50000
+confidence: 0.999
+n_samples: 3
+reciprocal: true
+randomness: 1
+inlier_fraction: 0.1
+source: data/bun/bun000.ply
+target: data/bun/bun045.ply
+ground_truth: data/bun/ground_truth.csv
