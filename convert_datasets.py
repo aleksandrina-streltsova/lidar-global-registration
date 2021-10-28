@@ -6,7 +6,6 @@ from scipy.spatial.transform import Rotation
 
 from typing import List
 
-import open3d as o3d
 from tqdm import tqdm
 from pyntcloud import PyntCloud
 
@@ -94,9 +93,7 @@ def stanford_to_common(input_dir, output_dir):
     for filename in iter_pbar:
         iter_pbar.set_description(f'Copying {filename}..')
         cloud = PyntCloud.from_file(os.path.join(input_dir, filename))
-        cloud_open3d = cloud.to_instance("open3d", mesh=False)
-        cloud_open3d.remove_non_finite_points()
-        cloud = PyntCloud.from_instance("open3d", cloud_open3d)
+        cloud.points = cloud.points.dropna()
         cloud.to_file(os.path.join(output_dir, filename))
     gt_df.to_csv(os.path.join(output_dir, COMMON_GT_FILENAME), index=False)
 
