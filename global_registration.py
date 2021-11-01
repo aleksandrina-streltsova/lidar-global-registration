@@ -35,14 +35,14 @@ def get_transformation(csv_path: str, src_filename: str, tgt_filename: str):
     return np.linalg.inv(gt[tgt_filename]) @ gt[src_filename]
 
 
-def preprocess_point_cloud(pcd: PointCloud, voxel_size: int, model_size: float, config) -> Tuple[PointCloud, Feature]:
+def preprocess_point_cloud(pcd: PointCloud, voxel_size: int, config) -> Tuple[PointCloud, Feature]:
     pcd_down = pcd.voxel_down_sample(voxel_size)
     print(f"    Pointcloud down sampled from {len(pcd.points)} points to {len(pcd_down.points)} points.")
 
-    radius_normal = config['normal_radius'] * model_size
+    radius_normal = config['normal_radius_coef'] * voxel_size
     pcd_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
 
-    radius_feature = config['feature_radius'] * model_size
+    radius_feature = config['feature_radius_coef'] * voxel_size
     pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
         pcd_down,
         o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
@@ -54,10 +54,7 @@ def load_dataset(voxel_size: int, config) -> List[RegistrationData]:
     for i, filename in enumerate(sorted(os.listdir(config['path']))):
         print(f"::  Processing {filename}")
         pcd = o3d.io.read_point_cloud(os.path.join(config['path'], filename))
-        if i == 0:
-            bbox = AxisAlignedBoundingBox().create_from_points(pcd.points)
-            model_size = np.linalg.norm(bbox.get_max_bound() - bbox.get_min_bound())
-        pcd_down, pcd_fpfh = preprocess_point_cloud(pcd, voxel_size, model_size, config)
+        pcd_down, pcd_fpfh = preprocess_point_cloud(pcd, voxel_size, config)
         dataset.append(RegistrationData(pcd_down, pcd_fpfh, filename))
         del pcd
     return dataset
@@ -70,10 +67,7 @@ def load_source_and_target(voxel_size: int, config) -> Tuple[RegistrationData, R
         filename = os.path.basename(filepath)
         print(f"::  Processing {filename}")
         pcd = o3d.io.read_point_cloud(filepath)
-        if i == 0:
-            bbox = AxisAlignedBoundingBox().create_from_points(pcd.points)
-            model_size = np.linalg.norm(bbox.get_max_bound() - bbox.get_min_bound())
-        pcd_down, pcd_fpfh = preprocess_point_cloud(pcd, voxel_size, model_size, config)
+        pcd_down, pcd_fpfh = preprocess_point_cloud(pcd, voxel_size, config)
         dataset.append(RegistrationData(pcd_down, pcd_fpfh, filename))
         del pcd
     return dataset[0], dataset[1]
@@ -83,7 +77,7 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
                                 voxel_size: int, config, testname: str) -> RegistrationResult:
     print(f"::  RANSAC global registration on downsampled point clouds: {source.filename} and {target.filename}.")
     start = time.time()
-    distance_threshold = config['distance_thr'] * voxel_size
+    distance_threshold = config['distance_thr_coef'] * voxel_size
     result: RegistrationResult = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
         source.pcd_down, target.pcd_down, source.pcd_fpfh, target.pcd_fpfh, config['reciprocal'],
         distance_threshold,
@@ -100,7 +94,7 @@ def execute_global_registration(source: RegistrationData, target: RegistrationDa
     print(f"    fitness: {result.fitness}\n"
           f"    inlier_rmse: {result.inlier_rmse}\n"
           f"    inliers: {len(result.correspondence_set)}/{round(len(result.correspondence_set) / result.fitness)}\n"
-          f"    correct inliers: {count_correct_correspondences(source, target, np.asarray(result.correspondence_set), transformation_gt, float(config['error_thr']))}\n")
+          f"    correct inliers: {count_correct_correspondences(source, target, np.asarray(result.correspondence_set), transformation_gt, distance_threshold)}\n")
     print(f"transformation: \n\n{result.transformation}\n")
     print(f"transformation (ground truth): \n\n{transformation_gt}\n")
     save_clouds(result.transformation, config, testname)

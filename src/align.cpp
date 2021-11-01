@@ -77,7 +77,7 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
             config.get<int>("n_samples").value()); // Number of points to sample for generating/prerejecting a pose
     align.setCorrespondenceRandomness(config.get<int>("randomness").value()); // Number of nearest features to use
     align.setSimilarityThreshold(config.get<float>("edge_thr").value()); // Polygonal edge length similarity threshold
-    align.setMaxCorrespondenceDistance(config.get<float>("distance_thr").value() * voxel_size); // Inlier threshold
+    align.setMaxCorrespondenceDistance(config.get<float>("distance_thr_coef").value() * voxel_size); // Inlier threshold
     align.setInlierFraction(
             config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
     {
@@ -85,7 +85,7 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         align.align(src_aligned);
     }
 
-    float error_thr = config.get<float>("error_thr").value();
+    float error_thr = config.get<float>("distance_thr_coef").value() * voxel_size;
 
     if (align.hasConverged()) {
         // Print results

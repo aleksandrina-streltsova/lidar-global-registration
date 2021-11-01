@@ -44,9 +44,8 @@ int main(int argc, char **argv) {
     downsamplePointCloud(src_fullsize, src, voxel_size);
     downsamplePointCloud(tgt, tgt, voxel_size);
 
-    float model_size = getAABBDiagonal(src);
-    float normal_radius = config.get<float>("normal_radius").value() * model_size;
-    float feature_radius = config.get<float>("feature_radius").value() * model_size;
+    float normal_radius = config.get<float>("normal_radius_coef").value() * voxel_size;
+    float feature_radius = config.get<float>("feature_radius_coef").value() * voxel_size;
 
     // Estimate normals
     pcl::console::print_highlight("Estimating normals...\n");
