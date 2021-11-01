@@ -97,6 +97,9 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         pcl::console::print_info("inliers_rmse: %0.7f\n", align.getRMSEScore());
         pcl::console::print_info("inliers: %i/%i\n", align.getInliers().size(), align.getCorrespondences().size());
         pcl::console::print_info("correct inliers: %i/%i\n",
+                                 align.countCorrectCorrespondences(transformation_gt, error_thr, true),
+                                 align.getCorrespondences().size());
+        pcl::console::print_info("correct correspondences: %i/%i\n",
                                  align.countCorrectCorrespondences(transformation_gt, error_thr),
                                  align.getCorrespondences().size());
     } else {

@@ -37,7 +37,8 @@ public:
         return multivalued_correspondences_;
     }
 
-    int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt, float error_threshold);
+    int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
+                                    float error_threshold, bool check_inlier = false);
 
 protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;

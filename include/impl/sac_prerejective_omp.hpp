@@ -91,7 +91,7 @@ float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMS
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
 int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::countCorrectCorrespondences(
-        const Eigen::Matrix4f &transformation_gt, float error_threshold) {
+        const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier) {
     PointCloudSource input_transformed;
     input_transformed.resize(this->input_->size());
     pcl::transformPointCloud(*(this->input_), input_transformed, transformation_gt);
@@ -100,12 +100,14 @@ int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::countCor
     int correct_correspondences = 0;
     for (const auto &correspondence: this->multivalued_correspondences_) {
         int query_idx = correspondence.query_idx;
-        int match_idx = correspondence.match_indices[0];
-        PointT source_point(input_transformed.points[query_idx]);
-        PointT target_point(this->target_->points[match_idx]);
-        float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
-        if (e < error_threshold) {
-            correct_correspondences++;
+        if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
+            int match_idx = correspondence.match_indices[0];
+            PointT source_point(input_transformed.points[query_idx]);
+            PointT target_point(this->target_->points[match_idx]);
+            float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
+            if (e < error_threshold) {
+                correct_correspondences++;
+            }
         }
     }
     return correct_correspondences;
