@@ -167,6 +167,11 @@ void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, s
 }
 
 
-std::string constructPath(const std::string &test, const std::string &name, const std::string &extension) {
-    return fs::path(DATA_DEBUG_PATH) / fs::path(test + "_" + name + "_" + VERSION + "." + extension);
+std::string constructPath(const std::string &test, const std::string &name, const std::string &extension, bool with_version) {
+    std::string filename =  test + "_" + name;
+    if (with_version) {
+        filename += "_" + VERSION;
+    }
+    filename += "." + extension;
+    return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
 }

@@ -48,6 +48,7 @@ void setPointColor(PointColoredT &point, int color);
 
 void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
-std::string constructPath(const std::string &test, const std::string &name, const std::string &extension = "ply");
+std::string constructPath(const std::string &test, const std::string &name,
+                          const std::string &extension = "ply", bool with_version = true);
 
 #endif

@@ -1,4 +1,5 @@
 #include <fstream>
+#include <filesystem>
 
 #include "align.h"
 #include "sac_prerejective_omp.h"
@@ -58,8 +59,6 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
     SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
     PointCloudT src_aligned;
 
-//    saveFeatureUniquenesses(features_src);
-
     if (config.get<bool>("reciprocal").value()) {
         align.enableMutualFiltering();
     }
@@ -87,25 +86,58 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
 
     float error_thr = config.get<float>("distance_thr_coef").value() * voxel_size;
 
+    int inlier_count = align.getInliers().size();
+    int correct_inlier_count = align.countCorrectCorrespondences(transformation_gt, error_thr, true);
+    int correspondence_count = align.getCorrespondences().size();
+    int correct_correspondence_count = align.countCorrectCorrespondences(transformation_gt, error_thr);
+    float fitness = (float)inlier_count / (float)correspondence_count;
+    float rmse = align.getRMSEScore();
+
     if (align.hasConverged()) {
         // Print results
         printf("\n");
         printTransformation(align.getFinalTransformation());
         printTransformation(transformation_gt);
-        pcl::console::print_info("fitness: %0.7f\n",
-                                 (float) align.getInliers().size() / (float) align.getCorrespondences().size());
-        pcl::console::print_info("inliers_rmse: %0.7f\n", align.getRMSEScore());
-        pcl::console::print_info("inliers: %i/%i\n", align.getInliers().size(), align.getCorrespondences().size());
-        pcl::console::print_info("correct inliers: %i/%i\n",
-                                 align.countCorrectCorrespondences(transformation_gt, error_thr, true),
-                                 align.getCorrespondences().size());
+        pcl::console::print_info("fitness: %0.7f\n", fitness);
+        pcl::console::print_info("inliers_rmse: %0.7f\n", rmse);
+        pcl::console::print_info("inliers: %i/%i\n", inlier_count, correspondence_count);
+        pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_count, inlier_count);
         pcl::console::print_info("correct correspondences: %i/%i\n",
-                                 align.countCorrectCorrespondences(transformation_gt, error_thr),
-                                 align.getCorrespondences().size());
+                                 correct_correspondence_count, correspondence_count);
     } else {
         pcl::console::print_error("Alignment failed!\n");
         exit(1);
     }
+    // Save test parameters and results
+    std::string filepath = constructPath("test", "results", "csv", false);
+    bool file_exists = std::filesystem::exists(filepath);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(filepath, std::ios_base::out);
+    } else {
+        fout.open(filepath, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        if (!file_exists) {
+            fout << "version,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
+            fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
+            fout << "iteration,reciprocal,randomness\n";
+        }
+        fout << VERSION << "," << testname << "," << fitness << "," << rmse << ",";
+        fout << correspondence_count << "," << correct_correspondence_count << ",";
+        fout << inlier_count << "," << correct_inlier_count << ",";
+        fout << voxel_size << ",";
+        fout << config.get<float>("normal_radius_coef").value() << ",";
+        fout << config.get<float>("feature_radius_coef").value() << ",";
+        fout << config.get<float>("distance_thr_coef").value() << ",";
+        fout << config.get<float>("edge_thr").value() << ",";
+        fout << config.get<int>("iteration").value() << ",";
+        fout << config.get<bool>("reciprocal").value() << ",";
+        fout << config.get<int>("randomness").value() << "\n";
+    } else {
+        perror(("error while opening file " + filepath).c_str());
+    }
+
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname);
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
     saveCorrespondenceDistances(src, tgt, align.getCorrespondences(), transformation_gt, voxel_size, testname);
