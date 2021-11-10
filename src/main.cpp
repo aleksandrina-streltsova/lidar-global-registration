@@ -4,6 +4,7 @@
 #include "config.h"
 #include "pch.h"
 #include "align.h"
+#include "filter.h"
 
 int main(int argc, char **argv) {
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
@@ -65,6 +66,20 @@ int main(int argc, char **argv) {
 
     std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
                            tgt_filename.substr(0, tgt_filename.find_last_of('.'));
+
+    std::cout << src->size() << " " << tgt->size() << std::endl;
+    // Filter point clouds
+    auto func_id = config.get<std::string>("filter", "");
+    auto func = getUniquenessFunction(func_id);
+    if (func != nullptr) {
+        std::cout << "Point cloud downsampled after filtration (" <<  func_id << ") from " << src->size();
+        filterPointCloud(func, func_id, src, features_src, src, features_src, transformation_gt, testname, true);
+        std::cout << " to " << src->size() << "\n";
+        std::cout << "Point cloud downsampled after filtration (" <<  func_id << ") from " << tgt->size();
+        filterPointCloud(func, func_id, tgt, features_tgt, tgt, features_tgt, transformation_gt, testname, false);
+        std::cout << " to " << tgt->size() << "\n";
+    }
+
     // Perform alignment
     pcl::console::print_highlight("Starting alignment...\n");
     std::cout << "    iteration: " << iteration << std::endl;
