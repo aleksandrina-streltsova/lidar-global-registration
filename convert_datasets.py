@@ -121,5 +121,16 @@ def eth_to_common(input_dir, output_dir):
     gt_df.to_csv(os.path.join(output_dir, COMMON_GT_FILENAME), index=False)
 
 
+@cli.command('other')
+@click.argument('input-dir', type=click.Path(exists=True, file_okay=False))
+def other_to_common(input_dir):
+    output_dir = input_dir
+    for filename in sorted(os.listdir(input_dir)):
+        if filename[-4:] == '.ply':
+            cloud = PyntCloud.from_file(os.path.join(input_dir, filename))
+            cloud.points = cloud.points.dropna()
+            cloud.to_file(os.path.join(output_dir, filename))
+
+
 if __name__ == '__main__':
     cli()
