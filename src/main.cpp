@@ -41,9 +41,13 @@ int main(int argc, char **argv) {
     }
 
     // Downsample
-    pcl::console::print_highlight("Downsampling...\n");
-    downsamplePointCloud(src_fullsize, src, voxel_size);
-    downsamplePointCloud(tgt, tgt, voxel_size);
+    if (config.get<bool>("downsample", true)) {
+        pcl::console::print_highlight("Downsampling...\n");
+        downsamplePointCloud(src_fullsize, src, voxel_size);
+        downsamplePointCloud(tgt, tgt, voxel_size);
+    } else {
+        pcl::copyPointCloud(*src_fullsize, *src);
+    }
 
     float normal_radius = config.get<float>("normal_radius_coef").value() * voxel_size;
     float feature_radius = config.get<float>("feature_radius_coef").value() * voxel_size;
