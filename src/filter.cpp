@@ -1,6 +1,9 @@
-#include <pcl/filters/extract_indices.h>
 #include <algorithm>
 #include <fstream>
+
+#include <pcl/common/transforms.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/io/ply_io.h>
 
 #include "filter.h"
 #include "utils.h"

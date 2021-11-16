@@ -2,6 +2,9 @@
 #define REGISTRATION_COMMON_H
 
 #include <pcl/types.h>
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/features/fpfh_omp.h>
 
 #define COLOR_BEIGE 0xf8c471
 #define COLOR_BROWN 0xd68910

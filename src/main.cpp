@@ -1,8 +1,11 @@
 #include <Eigen/Core>
 #include <string>
 
+#include <pcl/common/transforms.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/common/io.h>
+
 #include "config.h"
-#include "pch.h"
 #include "align.h"
 #include "filter.h"
 

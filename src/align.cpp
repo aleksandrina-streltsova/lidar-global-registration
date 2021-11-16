@@ -1,6 +1,10 @@
 #include <fstream>
 #include <filesystem>
 
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/features/normal_3d_omp.h>
+#include <pcl/common/time.h>
+
 #include "align.h"
 #include "sac_prerejective_omp.h"
 #include "csv_parser.h"

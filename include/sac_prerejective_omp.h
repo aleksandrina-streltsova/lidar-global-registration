@@ -3,8 +3,9 @@
 
 #include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/common/norms.h>
-#include <utils.h>
-#include <common.h>
+#include <pcl/common/time.h>
+#include "utils.h"
+#include "common.h"
 
 #ifdef _OPENMP
 #include <omp.h>

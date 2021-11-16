@@ -1,7 +1,13 @@
-#include "common.h"
 #include <filesystem>
 #include <fstream>
 #include <random>
+
+#include <pcl/common/transforms.h>
+#include <pcl/common/norms.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/features/moment_of_inertia_estimation.h>
+
+#include "common.h"
 #include "utils.h"
 
 namespace fs = std::filesystem;

@@ -18,6 +18,5 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 add_executable(registration src/main.cpp src/config.cpp src/csv_parser.cpp src/align.cpp src/common.cpp src/filter.cpp)
-target_precompile_headers(registration PRIVATE include/pch.h)
 target_link_libraries(registration ${PCL_LIBRARIES} yaml-cpp)
 target_include_directories(registration PUBLIC include/)

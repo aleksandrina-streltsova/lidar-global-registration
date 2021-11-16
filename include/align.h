@@ -3,7 +3,6 @@
 
 #include <Eigen/Core>
 
-#include "pch.h"
 #include "config.h"
 #include "common.h"
 
