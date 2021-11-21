@@ -253,7 +253,8 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     // Build correspondences
     {
         pcl::ScopeTime t("Correspondence search");
-#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij)
+        float dists_sum = 0.f;
+#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij) reduction(+:dists_sum)
         for (int i = 0; i < this->input_->size(); i++) {
             correspondences_ij[i].query_idx = i;
             pcl::Indices &match_indices = correspondences_ij[i].match_indices;
@@ -264,7 +265,11 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                                                 this->k_correspondences_,
                                                 match_indices,
                                                 match_distances);
+            dists_sum += match_distances[0];
         }
+        PCL_DEBUG("[%s::computeTransformation] average distance to nearest neighbour: %0.7f.\n",
+                  this->getClassName().c_str(),
+                  dists_sum / (float) this->input_->size());
 
         if (reciprocal_) {
             pcl::KdTreeFLANN<FeatureT> feature_tree_src_(new pcl::KdTreeFLANN<FeatureT>);
