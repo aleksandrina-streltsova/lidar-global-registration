@@ -140,17 +140,24 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectC
             // Move value up if it is higher than previous selections to ensure true
             // randomness
             if (sample_indices[i] >= sample_indices[j]) {
-                sample_indices[i]++;
-            } else {
-                // The new number is lower, place it at the correct point and break for a sorted
-                // list
-                temp_sample = sample_indices[i];
-                for (int k = i; k > j; k--)
-                    sample_indices[k] = sample_indices[k - 1];
-
-                sample_indices[j] = temp_sample;
-                break;
+                if (sample_indices[i] < nr_correspondences - 1) {
+                    sample_indices[i]++;
+                    continue;
+                } else if (sample_indices[j] == 0) {
+                    sample_indices[i] = 1;
+                    continue;
+                } else {
+                    sample_indices[i] = 0;
+                }
             }
+            // The new number is lower, place it at the correct point and break for a sorted
+            // list
+            temp_sample = sample_indices[i];
+            for (int k = i; k > j; k--)
+                sample_indices[k] = sample_indices[k - 1];
+
+            sample_indices[j] = temp_sample;
+            break;
         }
     }
 }
