@@ -1,7 +1,6 @@
 #include <Eigen/Core>
 #include <string>
 
-#include <pcl/common/transforms.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/common/io.h>
 
@@ -14,7 +13,6 @@ int main(int argc, char **argv) {
 
     // Point clouds
     PointCloudT::Ptr src_fullsize(new PointCloudT), src(new PointCloudT), tgt(new PointCloudT);
-    PointCloudT::Ptr src_aligned_gt(new PointCloudT), src_aligned(new PointCloudT);
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
     FeatureCloudT::Ptr features_src(new FeatureCloudT), features_tgt(new FeatureCloudT);
@@ -91,13 +89,8 @@ int main(int argc, char **argv) {
     pcl::console::print_highlight("Starting alignment...\n");
     std::cout << "    iteration: " << iteration << std::endl;
     std::cout << "    voxel size: " << voxel_size << std::endl;
-    Eigen::Matrix4f transformation = align(src, tgt, features_src, features_tgt, transformation_gt, config, testname);
-
-    pcl::transformPointCloud(*src_fullsize, *src_aligned, transformation);
-    pcl::transformPointCloud(*src_fullsize, *src_aligned_gt, transformation_gt);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_aligned);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_aligned_gt);
-
+    auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
+    analyze_alignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
     return (0);
 }
 

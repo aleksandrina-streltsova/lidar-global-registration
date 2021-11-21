@@ -3,11 +3,13 @@
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d_omp.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/common/time.h>
 
 #include "align.h"
-#include "sac_prerejective_omp.h"
 #include "csv_parser.h"
+#include "analysis.h"
+#include "filter.h"
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename) {
@@ -57,9 +59,11 @@ void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const Po
     fest.compute(*features);
 }
 
-Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                      const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config, const std::string &testname) {
+SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(const PointCloudT::Ptr &src,
+                                                                            const PointCloudT::Ptr &tgt,
+                                                                            const FeatureCloudT::Ptr &features_src,
+                                                                            const FeatureCloudT::Ptr &features_tgt,
+                                                                            const YamlConfig &config) {
     SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
     PointCloudT src_aligned;
 
@@ -88,19 +92,32 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         align.align(src_aligned);
     }
 
+    return align;
+}
+
+void analyze_alignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                       SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
+                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
+                       const std::string &testname) {
+    PointCloudT::Ptr src_fullsize_aligned_gt(new PointCloudT), src_fullsize_aligned(new PointCloudT);
+
+    float voxel_size = config.get<float>("voxel_size").value();
     float error_thr = config.get<float>("distance_thr_coef").value() * voxel_size;
+    auto transformation = align.getFinalTransformation();
 
     int inlier_count = align.getInliers().size();
     int correct_inlier_count = align.countCorrectCorrespondences(transformation_gt, error_thr, true);
     int correspondence_count = align.getCorrespondences().size();
     int correct_correspondence_count = align.countCorrectCorrespondences(transformation_gt, error_thr);
-    float fitness = (float)inlier_count / (float)correspondence_count;
+    float fitness = (float) inlier_count / (float) correspondence_count;
     float rmse = align.getRMSEScore();
+    float pcd_error = calculate_point_cloud_mean_error(src, transformation, transformation_gt);
+    auto[r_error, t_error] = calculate_rotation_and_translation_errors(transformation, transformation_gt);
 
     if (align.hasConverged()) {
         // Print results
         printf("\n");
-        printTransformation(align.getFinalTransformation());
+        printTransformation(transformation);
         printTransformation(transformation_gt);
         pcl::console::print_info("fitness: %0.7f\n", fitness);
         pcl::console::print_info("inliers_rmse: %0.7f\n", rmse);
@@ -108,6 +125,9 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_count, inlier_count);
         pcl::console::print_info("correct correspondences: %i/%i\n",
                                  correct_correspondence_count, correspondence_count);
+        pcl::console::print_info("rotation error: %0.7f\n", r_error);
+        pcl::console::print_info("translation error: %0.7f\n", t_error);
+        pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error);
     } else {
         pcl::console::print_error("Alignment failed!\n");
         exit(1);
@@ -125,7 +145,7 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         if (!file_exists) {
             fout << "version,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
             fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-            fout << "iteration,reciprocal,randomness\n";
+            fout << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
         }
         fout << VERSION << "," << testname << "," << fitness << "," << rmse << ",";
         fout << correspondence_count << "," << correct_correspondence_count << ",";
@@ -137,7 +157,16 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
         fout << config.get<float>("edge_thr").value() << ",";
         fout << config.get<int>("iteration").value() << ",";
         fout << config.get<bool>("reciprocal").value() << ",";
-        fout << config.get<int>("randomness").value() << "\n";
+        fout << config.get<int>("randomness").value() << ",";
+
+        auto func_id = config.get<std::string>("filter", "");
+        auto func = getUniquenessFunction(func_id);
+        if (func != nullptr) {
+            fout << func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
+        } else {
+            fout << ",,,";
+        }
+        fout << r_error << "," << t_error << "," << pcd_error << "\n";
     } else {
         perror(("error while opening file " + filepath).c_str());
     }
@@ -146,6 +175,11 @@ Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
     saveCorrespondenceDistances(src, tgt, align.getCorrespondences(), transformation_gt, voxel_size, testname);
     saveColorizedPointCloud(src, align.getCorrespondences(), align.getInliers(), testname);
-    return align.getFinalTransformation();
+
+    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
+    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);
+    pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_fullsize_aligned);
+    pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_fullsize_aligned_gt);
+
 }
 

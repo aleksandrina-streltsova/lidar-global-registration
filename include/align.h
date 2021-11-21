@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "common.h"
+#include "sac_prerejective_omp.h"
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
@@ -16,8 +17,15 @@ void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointClou
 void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
                       FeatureCloudT::Ptr &features);
 
-Eigen::Matrix4f align(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                      const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config, const std::string &testname);
+SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(const PointCloudT::Ptr &src,
+                                                                            const PointCloudT::Ptr &tgt,
+                                                                            const FeatureCloudT::Ptr &features_src,
+                                                                            const FeatureCloudT::Ptr &features_tgt,
+                                                                            const YamlConfig &config);
+
+void analyze_alignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                       SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
+                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
+                       const std::string &testname);
 
 #endif
