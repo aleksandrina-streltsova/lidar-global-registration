@@ -8,7 +8,6 @@
 #include <pcl/features/moment_of_inertia_estimation.h>
 
 #include "common.h"
-#include "utils.h"
 
 namespace fs = std::filesystem;
 

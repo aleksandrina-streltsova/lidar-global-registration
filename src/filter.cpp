@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <fstream>
+#include <unordered_set>
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
@@ -7,6 +8,7 @@
 
 #include "filter.h"
 #include "utils.h"
+#include "common.h"
 
 std::vector<float> computeDistanceNN(const FeatureCloudT::Ptr &features);
 
@@ -156,4 +158,11 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     }
     filepath = constructPath(testname, name);
     pcl::io::savePLYFileASCII(filepath, dst);
+}
+
+void filter_duplicate_points(PointCloudT::Ptr &pcd) {
+    std::unordered_set<PointT, PointHash, PointEqual> unique_points;
+    std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
+    pcd->points.clear();
+    std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));
 }

@@ -47,6 +47,8 @@ int main(int argc, char **argv) {
         downsamplePointCloud(src_fullsize, src, voxel_size);
         downsamplePointCloud(tgt, tgt, voxel_size);
     } else {
+        pcl::console::print_highlight("Filtering duplicate points...\n");
+        filter_duplicate_points(src_fullsize);
         pcl::copyPointCloud(*src_fullsize, *src);
     }
 

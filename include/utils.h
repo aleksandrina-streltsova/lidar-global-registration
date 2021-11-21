@@ -2,6 +2,7 @@
 #define REGISTRATION_UTILS_H
 
 #include <random>
+#include <functional>
 
 class UniformRandIntGenerator {
 public:
@@ -14,5 +15,11 @@ protected:
     std::uniform_int_distribution<int> distribution_;
     std::mt19937 generator_;
 };
+
+template<typename T>
+inline void combineHash(std::size_t& seed, const T& val) {
+    std::hash<T> hasher;
+    seed ^= hasher(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 
 #endif

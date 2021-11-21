@@ -16,4 +16,6 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
                       const Eigen::Matrix4f &transformation_gt,
                       const std::string &testname, bool is_source);
 
+void filter_duplicate_points(PointCloudT::Ptr &pcd);
+
 #endif

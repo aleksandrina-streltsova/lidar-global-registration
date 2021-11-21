@@ -6,6 +6,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/features/fpfh_omp.h>
 
+#include "utils.h"
+
 #define COLOR_BEIGE 0xf8c471
 #define COLOR_BROWN 0xd68910
 #define COLOR_PURPLE 0xaf7ac5
@@ -23,6 +25,27 @@ typedef pcl::PointCloud<FeatureT> FeatureCloudT;
 struct MultivaluedCorrespondence {
     int query_idx;
     pcl::Indices match_indices;
+};
+
+struct PointHash {
+    inline size_t operator()(const PointT &point) const
+    {
+        size_t seed = 0;
+        combineHash(seed, point.x);
+        combineHash(seed, point.y);
+        combineHash(seed, point.z);
+        return seed;
+    }
+};
+
+struct PointEqual {
+public:
+    bool operator()(const PointT &point1, const PointT &point2) const {
+        if (point1.x == point2.x && point1.y == point2.y && point1.z == point2.z)
+            return true;
+        else
+            return false;
+    }
 };
 
 extern const std::string DATA_DEBUG_PATH;
