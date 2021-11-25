@@ -22,4 +22,15 @@ inline void combineHash(std::size_t& seed, const T& val) {
     seed ^= hasher(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
+template <typename T>
+T calculate_combination_or_max(T n, T k) {
+    double result = 1.0;
+    for (int i = 0; i < k; ++i) {
+        result *= n - i;
+        result /= i + 1;
+    }
+    T max = std::numeric_limits<T>::max();
+    return result > max ? max : (T)result;
+}
+
 #endif

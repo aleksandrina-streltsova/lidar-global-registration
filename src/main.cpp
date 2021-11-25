@@ -27,8 +27,6 @@ int main(int argc, char **argv) {
     YamlConfig config;
     config.init(argv[1]);
     float voxel_size = config.get<float>("voxel_size").value();
-    int iteration = config.get<int>("iteration").value();
-
 
     // Load src and tgt
     pcl::console::print_highlight("Loading point clouds...\n");
@@ -89,8 +87,6 @@ int main(int argc, char **argv) {
 
     // Perform alignment
     pcl::console::print_highlight("Starting alignment...\n");
-    std::cout << "    iteration: " << iteration << std::endl;
-    std::cout << "    voxel size: " << voxel_size << std::endl;
     auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
     analyze_alignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
     return (0);

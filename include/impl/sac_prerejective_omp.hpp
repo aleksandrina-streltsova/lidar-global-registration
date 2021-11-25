@@ -85,6 +85,24 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
+int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::estimateMaxIterations(float inlier_fraction) {
+    if (inlier_fraction <= 0.0) {
+        return std::numeric_limits<int>::max();
+    }
+    double iterations = std::log(1.0 - confidence_) / std::log(1.0 - std::pow(inlier_fraction, this->nr_samples_));
+    return static_cast<int>(std::min((double)std::numeric_limits<int>::max(), iterations));
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
+void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setConfidence(float confidence) {
+    if (confidence > 0.0 && confidence < 1.0) {
+        confidence_ = confidence;
+    } else {
+        PCL_ERROR("The confidence must be greater than 0.0 and less than 1.0!\n");
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
 float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSEScore() {
     return rmse_;
 }
@@ -225,6 +243,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     this->correspondence_rejector_poly_->setInputTarget(this->target_);
     this->correspondence_rejector_poly_->setCardinality(this->nr_samples_);
     int num_rejections = 0; // For debugging
+    int ransac_iterations = 0;
 
     // Initialize results
     this->final_transformation_ = guess;
@@ -310,7 +329,9 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 
         this->multivalued_correspondences_ = correspondences_ij;
     }
-
+    this->max_iterations_ = std::min(calculate_combination_or_max<int>(correspondences_ij.size(), this->nr_samples_),
+                                     this->max_iterations_);
+    int estimated_iters = this->max_iterations_; // For debugging
     {
         pcl::Indices inliers;
         float inlier_fraction, error;
@@ -337,14 +358,15 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 #pragma omp parallel \
     num_threads(threads) \
     default(none) \
-    shared(correspondences_ij, max_inlier_fraction) \
-    reduction(+:num_rejections)
+    shared(correspondences_ij, max_inlier_fraction, estimated_iters) \
+    reduction(+:num_rejections, ransac_iterations)
 #endif
         {
             // Local best results
             pcl::Indices best_inliers;
             float min_error_local = std::numeric_limits<float>::max();
             float max_inlier_fraction_local = 0.0f;
+            int estimated_iters_local = this->max_iterations_;
             Matrix4 best_transformation;
 
             // Temporaries
@@ -355,6 +377,11 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
+                if (i >= estimated_iters_local) {
+                    continue;
+                }
+                ++ransac_iterations;
+
                 // Temporary containers
                 pcl::Indices sample_indices;
                 pcl::Indices source_indices;
@@ -384,11 +411,12 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                 // If the new fit is better, update results
                 inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(correspondences_ij.size());
 
-                if (inlier_fraction >= max_inlier_fraction_local) {
+                if (inlier_fraction > max_inlier_fraction_local) {
                     min_error_local = error;
                     max_inlier_fraction_local = inlier_fraction;
                     best_inliers = inliers;
                     best_transformation = transformation;
+                    estimated_iters_local = std::min(estimateMaxIterations(inlier_fraction), estimated_iters_local);
                 }
             } // for
 #pragma omp critical(registration_result)
@@ -400,20 +428,28 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                     this->converged_ = true;
                     this->final_transformation_ = best_transformation;
                 }
+                if (estimated_iters_local < estimated_iters) {
+                    estimated_iters = estimated_iters_local;
+                }
             }
         }
     }
+    this->ransac_iterations_ = ransac_iterations;
 
     // Apply the final transformation
     if (this->converged_)
         transformPointCloud(*(this->input_), output, this->final_transformation_);
 
     // Debug output
-    PCL_DEBUG("[%s::computeTransformation] Rejected %i out of %i generated pose "
-              "hypotheses.\n",
+    PCL_DEBUG("[%s::computeTransformation] RANSAC exits at %i-th iteration: "
+              "rejected %i out of %i generated pose hypotheses.\n",
               this->getClassName().c_str(),
+              this->ransac_iterations_,
               num_rejections,
-              this->max_iterations_);
+              this->ransac_iterations_);
+    PCL_DEBUG("[%s::computeTransformation] Minimum of estimated iterations: %i\n",
+              this->getClassName().c_str(),
+              estimated_iters);
 }
 
 #endif

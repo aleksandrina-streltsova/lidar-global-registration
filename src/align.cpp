@@ -78,15 +78,18 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(cons
     align.setTargetFeatures(features_tgt);
 
     float voxel_size = config.get<float>("voxel_size").value();
-
-    align.setMaximumIterations(config.get<int>("iteration").value()); // Number of RANSAC iterations
-    align.setNumberOfSamples(
-            config.get<int>("n_samples").value()); // Number of points to sample for generating/prerejecting a pose
+    int n_samples = config.get<int>("n_samples").value();
+    int iteration_brute_force = calculate_combination_or_max<int>((int) std::min(src->size(), tgt->size()), n_samples);
+    align.setMaximumIterations(config.get<int>("iteration", iteration_brute_force)); // Number of RANSAC iterations
+    align.setNumberOfSamples(n_samples); // Number of points to sample for generating/prerejecting a pose
     align.setCorrespondenceRandomness(config.get<int>("randomness").value()); // Number of nearest features to use
     align.setSimilarityThreshold(config.get<float>("edge_thr").value()); // Polygonal edge length similarity threshold
     align.setMaxCorrespondenceDistance(config.get<float>("distance_thr_coef").value() * voxel_size); // Inlier threshold
+    align.setConfidence(config.get<float>("confidence").value()); // Confidence in adaptive RANSAC
     align.setInlierFraction(
             config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
+    std::cout << "    iteration: " << align.getMaximumIterations() << std::endl;
+    std::cout << "    voxel size: " << voxel_size << std::endl;
     {
         pcl::ScopeTime t("Alignment");
         align.align(src_aligned);
@@ -155,7 +158,7 @@ void analyze_alignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::
         fout << config.get<float>("feature_radius_coef").value() << ",";
         fout << config.get<float>("distance_thr_coef").value() << ",";
         fout << config.get<float>("edge_thr").value() << ",";
-        fout << config.get<int>("iteration").value() << ",";
+        fout << align.getRANSACIterations() << ",";
         fout << config.get<bool>("reciprocal").value() << ",";
         fout << config.get<int>("randomness").value() << ",";
 

@@ -32,6 +32,8 @@ public:
         reciprocal_ = true;
     }
 
+    void setConfidence(float confidence);
+
     float getRMSEScore();
 
     inline const std::vector<MultivaluedCorrespondence> getCorrespondences() const {
@@ -61,8 +63,11 @@ protected:
                  const Matrix4 &transformation,
                  float &rmse_score);
 
+    int estimateMaxIterations(float inlier_fraction);
+
     bool reciprocal_ = false;
     float rmse_ = std::numeric_limits<float>::max();
+    float confidence_ = 0.999f;
     unsigned int threads_{};
 
     std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
