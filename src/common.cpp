@@ -5,7 +5,6 @@
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
 #include <pcl/io/ply_io.h>
-#include <pcl/features/moment_of_inertia_estimation.h>
 
 #include "common.h"
 
@@ -27,16 +26,25 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("\n");
 }
 
+std::pair<PointT, PointT> calculateBoundingBox(const PointCloudT::Ptr &pcd) {
+    float min = std::numeric_limits<float>::min(), max = std::numeric_limits<float>::max();
+    PointT min_point_AABB(max, max, max);
+    PointT max_point_AABB(min, min, min);
+    for (auto p: pcd->points) {
+        min_point_AABB.x = std::min(min_point_AABB.x, p.x);
+        min_point_AABB.y = std::min(min_point_AABB.y, p.y);
+        min_point_AABB.z = std::min(min_point_AABB.z, p.z);
+        max_point_AABB.x = std::max(max_point_AABB.x, p.x);
+        max_point_AABB.y = std::max(max_point_AABB.y, p.y);
+        max_point_AABB.z = std::max(max_point_AABB.z, p.z);
+    }
+    return {min_point_AABB, max_point_AABB};
+}
+
 float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
-    pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
-    feature_extractor.setInputCloud(pcd);
-    feature_extractor.compute();
+    auto [min_point_AABB, max_point_AABB] = calculateBoundingBox(pcd);
 
-    PointT min_pointAABB, max_point_AABB;
-
-    feature_extractor.getAABB(min_pointAABB, max_point_AABB);
-
-    Eigen::Vector3f min_point(min_pointAABB.x, min_pointAABB.y, min_pointAABB.z);
+    Eigen::Vector3f min_point(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z);
     Eigen::Vector3f max_point(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
 
     return (max_point - min_point).norm();

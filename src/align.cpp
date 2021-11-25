@@ -1,7 +1,6 @@
 #include <fstream>
 #include <filesystem>
 
-#include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/common/time.h>
@@ -29,15 +28,6 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
         }
     }
     return tgt_position.inverse() * src_position;
-}
-
-void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size) {
-    pcl::VoxelGrid<PointT> grid;
-    grid.setLeafSize(voxel_size, voxel_size, voxel_size);
-    grid.setInputCloud(pcd_fullsize);
-    pcl::console::print_highlight("Point cloud downsampled from %zu...", pcd_fullsize->size());
-    grid.filter(*pcd_down);
-    pcl::console::print_highlight("to %zu\n", pcd_down->size());
 }
 
 void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals) {
@@ -98,10 +88,10 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(cons
     return align;
 }
 
-void analyze_alignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                       SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
-                       const std::string &testname) {
+void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                      SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
+                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
+                      const std::string &testname) {
     PointCloudT::Ptr src_fullsize_aligned_gt(new PointCloudT), src_fullsize_aligned(new PointCloudT);
 
     float voxel_size = config.get<float>("voxel_size").value();

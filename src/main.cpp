@@ -7,6 +7,7 @@
 #include "config.h"
 #include "align.h"
 #include "filter.h"
+#include "downsample.h"
 
 int main(int argc, char **argv) {
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
@@ -88,7 +89,7 @@ int main(int argc, char **argv) {
     // Perform alignment
     pcl::console::print_highlight("Starting alignment...\n");
     auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
-    analyze_alignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
+    analyzeAlignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
     return (0);
 }
 

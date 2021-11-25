@@ -10,8 +10,6 @@
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
 
-void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size);
-
 void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals);
 
 void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
@@ -23,9 +21,9 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(cons
                                                                             const FeatureCloudT::Ptr &features_tgt,
                                                                             const YamlConfig &config);
 
-void analyze_alignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                       SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                       const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
-                       const std::string &testname);
+void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                      SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
+                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
+                      const std::string &testname);
 
 #endif

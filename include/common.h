@@ -6,6 +6,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/features/fpfh_omp.h>
 
+#include <Eigen/Core>
+
 #include "utils.h"
 
 #define COLOR_BEIGE 0xf8c471
@@ -38,6 +40,19 @@ struct PointHash {
     }
 };
 
+template <typename T>
+struct HashEigen {
+    std::size_t operator()(T const& matrix) const {
+        size_t seed = 0;
+        for (int i = 0; i < (int)matrix.size(); i++) {
+            auto elem = *(matrix.data() + i);
+            seed ^= std::hash<typename T::Scalar>()(elem) + 0x9e3779b9 +
+                    (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
+
 struct PointEqual {
 public:
     bool operator()(const PointT &point1, const PointT &point2) const {
@@ -52,6 +67,8 @@ extern const std::string DATA_DEBUG_PATH;
 extern const std::string VERSION;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
+
+std::pair<PointT, PointT> calculateBoundingBox(const PointCloudT::Ptr &pcd);
 
 float getAABBDiagonal(const PointCloudT::Ptr &pcd);
 
