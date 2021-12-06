@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <string>
+#include <fstream>
 
 #include <pcl/io/ply_io.h>
 #include <pcl/common/io.h>
@@ -8,6 +9,41 @@
 #include "align.h"
 #include "filter.h"
 #include "downsample.h"
+#include "feature_analysis.h"
+
+void startAlignment(PointCloudT::Ptr &src_fullsize, PointCloudT::Ptr &src, PointCloudT::Ptr &tgt,
+                    FeatureCloudT::Ptr &features_src, FeatureCloudT::Ptr &features_tgt,
+                    const Eigen::Matrix4f &transformation_gt, const std::string &testname, const YamlConfig &config) {
+    // Filter point clouds
+    auto func_id = config.get<std::string>("filter", "");
+    auto func = getUniquenessFunction(func_id);
+    if (func != nullptr) {
+        std::cout << "Point cloud downsampled after filtration (" << func_id << ") from " << src->size();
+        filterPointCloud(func, func_id, src, features_src, src, features_src, transformation_gt, testname, true);
+        std::cout << " to " << src->size() << "\n";
+        std::cout << "Point cloud downsampled after filtration (" << func_id << ") from " << tgt->size();
+        filterPointCloud(func, func_id, tgt, features_tgt, tgt, features_tgt, transformation_gt, testname, false);
+        std::cout << " to " << tgt->size() << "\n";
+    }
+
+    // Perform alignment
+    pcl::console::print_highlight("Starting alignment...\n");
+    auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
+    analyzeAlignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
+}
+
+void saveFeatureHistograms(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                           const FeatureCloudT::Ptr &features_src, const FeatureCloudT::Ptr &features_tgt,
+                           const PointCloudN::Ptr &normals_src, const PointCloudN::Ptr &normals_tgt,
+                           float feature_radius, const Eigen::Matrix4f &transformation_gt,
+                           const std::string &testname) {
+    saveFeatures(feature_radius, src, normals_src, testname, true);
+    saveFeatures(feature_radius, tgt, normals_tgt, testname, false);
+    saveNormals(src, normals_src, transformation_gt, true, testname);
+    saveNormals(tgt, normals_tgt, Eigen::Matrix4f::Identity(), false, testname);
+    saveHistograms(features_src, testname, true);
+    saveHistograms(features_tgt, testname, false);
+}
 
 int main(int argc, char **argv) {
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
@@ -73,23 +109,7 @@ int main(int argc, char **argv) {
     std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
                            tgt_filename.substr(0, tgt_filename.find_last_of('.'));
 
-    std::cout << src->size() << " " << tgt->size() << std::endl;
-    // Filter point clouds
-    auto func_id = config.get<std::string>("filter", "");
-    auto func = getUniquenessFunction(func_id);
-    if (func != nullptr) {
-        std::cout << "Point cloud downsampled after filtration (" <<  func_id << ") from " << src->size();
-        filterPointCloud(func, func_id, src, features_src, src, features_src, transformation_gt, testname, true);
-        std::cout << " to " << src->size() << "\n";
-        std::cout << "Point cloud downsampled after filtration (" <<  func_id << ") from " << tgt->size();
-        filterPointCloud(func, func_id, tgt, features_tgt, tgt, features_tgt, transformation_gt, testname, false);
-        std::cout << " to " << tgt->size() << "\n";
-    }
-
-    // Perform alignment
-    pcl::console::print_highlight("Starting alignment...\n");
-    auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
-    analyzeAlignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
+    startAlignment(src_fullsize, src, tgt, features_src, features_tgt, transformation_gt, testname, config);
     return (0);
 }
 
