@@ -40,8 +40,13 @@ public:
         return multivalued_correspondences_;
     }
 
-    int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
-                                    float error_threshold, bool check_inlier = false);
+    std::vector<MultivaluedCorrespondence> getCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
+                                                                     float error_threshold, bool check_inlier = false);
+
+    inline int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
+                                           float error_threshold, bool check_inlier = false) {
+        return getCorrectCorrespondences(transformation_gt, error_threshold, check_inlier).size();
+    };
 
 protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;

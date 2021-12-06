@@ -52,6 +52,7 @@ float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
 
 void saveColorizedPointCloud(const PointCloudT::Ptr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
+                             const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers,
                              const std::string &testname) {
     PointCloudColoredT dst;
@@ -63,10 +64,13 @@ void saveColorizedPointCloud(const PointCloudT::Ptr &src,
         setPointColor(dst.points[i], COLOR_BEIGE);
     }
     for (const auto &correspondence: correspondences) {
-        setPointColor(dst.points[correspondence.query_idx], COLOR_BROWN);
+        setPointColor(dst.points[correspondence.query_idx], COLOR_RED);
     }
     for (const auto &idx: inliers) {
-        setPointColor(dst.points[idx], COLOR_PURPLE);
+        setPointColor(dst.points[idx], COLOR_BLUE);
+    }
+    for (const auto &correspondence: correct_correspondences) {
+        mixPointColor(dst.points[correspondence.query_idx], COLOR_WHITE);
     }
     pcl::io::savePLYFileBinary(constructPath(testname, "downsampled"), dst);
 }
@@ -171,6 +175,12 @@ void setPointColor(PointColoredT &point, int color) {
     point.r = (color >> 16) & 0xff;
     point.g = (color >> 8) & 0xff;
     point.b = (color >> 0) & 0xff;
+}
+
+void mixPointColor(PointColoredT &point, int color) {
+    point.r = point.r / 2 + ((color >> 16) & 0xff) / 2;
+    point.g = point.g / 2 + ((color >> 8) & 0xff) / 2;
+    point.b = point.b / 2 + ((color >> 0) & 0xff) / 2;
 }
 
 void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue) {

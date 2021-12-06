@@ -97,11 +97,12 @@ void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::P
     float voxel_size = config.get<float>("voxel_size").value();
     float error_thr = config.get<float>("distance_thr_coef").value() * voxel_size;
     auto transformation = align.getFinalTransformation();
+    auto correct_correspondences = align.getCorrectCorrespondences(transformation_gt, error_thr);
 
     int inlier_count = align.getInliers().size();
     int correct_inlier_count = align.countCorrectCorrespondences(transformation_gt, error_thr, true);
     int correspondence_count = align.getCorrespondences().size();
-    int correct_correspondence_count = align.countCorrectCorrespondences(transformation_gt, error_thr);
+    int correct_correspondence_count = correct_correspondences.size();
     float fitness = (float) inlier_count / (float) correspondence_count;
     float rmse = align.getRMSEScore();
     float pcd_error = calculate_point_cloud_mean_error(src, transformation, transformation_gt);
@@ -167,7 +168,7 @@ void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::P
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname);
     saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
     saveCorrespondenceDistances(src, tgt, align.getCorrespondences(), transformation_gt, voxel_size, testname);
-    saveColorizedPointCloud(src, align.getCorrespondences(), align.getInliers(), testname);
+    saveColorizedPointCloud(src, align.getCorrespondences(), correct_correspondences, align.getInliers(), testname);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);

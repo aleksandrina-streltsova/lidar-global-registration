@@ -13,6 +13,9 @@
 #define COLOR_BEIGE 0xf8c471
 #define COLOR_BROWN 0xd68910
 #define COLOR_PURPLE 0xaf7ac5
+#define COLOR_RED 0xff0000
+#define COLOR_BLUE 0x0000ff
+#define COLOR_WHITE 0xffffff
 #define DEBUG_N_EDGES 100ul
 // Types
 typedef pcl::PointXYZ PointT;
@@ -74,6 +77,7 @@ float getAABBDiagonal(const PointCloudT::Ptr &pcd);
 
 void saveColorizedPointCloud(const PointCloudT::Ptr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
+                             const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers,
                              const std::string &testname);
 
@@ -88,6 +92,8 @@ void saveCorrespondenceDistances(const PointCloudT::Ptr &src, const PointCloudT:
                                  const std::string &testname);
 
 void setPointColor(PointColoredT &point, int color);
+
+void mixPointColor(PointColoredT &point, int color);
 
 void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 

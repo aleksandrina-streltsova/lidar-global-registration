@@ -90,7 +90,7 @@ int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::estimate
         return std::numeric_limits<int>::max();
     }
     double iterations = std::log(1.0 - confidence_) / std::log(1.0 - std::pow(inlier_fraction, this->nr_samples_));
-    return static_cast<int>(std::min((double)std::numeric_limits<int>::max(), iterations));
+    return static_cast<int>(std::min((double) std::numeric_limits<int>::max(), iterations));
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
@@ -108,14 +108,14 @@ float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMS
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
-int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::countCorrectCorrespondences(
+std::vector<MultivaluedCorrespondence> SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getCorrectCorrespondences(
         const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier) {
     PointCloudSource input_transformed;
     input_transformed.resize(this->input_->size());
     pcl::transformPointCloud(*(this->input_), input_transformed, transformation_gt);
 
     std::set<int> inliers(this->inliers_.begin(), this->inliers_.end());
-    int correct_correspondences = 0;
+    std::vector<MultivaluedCorrespondence> correct_correspondences;
     for (const auto &correspondence: this->multivalued_correspondences_) {
         int query_idx = correspondence.query_idx;
         if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
@@ -124,7 +124,7 @@ int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::countCor
             PointT target_point(this->target_->points[match_idx]);
             float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
             if (e < error_threshold) {
-                correct_correspondences++;
+                correct_correspondences.push_back(correspondence);
             }
         }
     }
