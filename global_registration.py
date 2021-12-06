@@ -1,15 +1,19 @@
 import time
 import os
 import sys
+
+import pyntcloud
 import yaml
 import copy
+
+from open3d.cuda.pybind.geometry import PointCloud
+from open3d.cuda.pybind.pipelines.registration import Feature, RegistrationResult
 from typing import NamedTuple, List, Tuple, Optional
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
 import open3d as o3d
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.pipelines.registration import Feature, RegistrationResult
 
 RegistrationData = NamedTuple('RegistrationData', [
     ('pcd', PointCloud),
@@ -213,35 +217,37 @@ def estimate_and_save_ground_truth():
 
     values = []
     for filename, transformation in zip(filenames, transformations):
-         values.append([filename] + list(transformation.flatten()))
+        values.append([filename] + list(transformation.flatten()))
     df = pd.DataFrame(values, columns=GROUND_TRUTH_COLUMNS, index=None)
     df.to_csv(os.path.join(config['path'], 'ground_truth.csv'), index=False)
 
 
-def downsample_and_transform_point_clouds():
+def downsample_and_transform_point_clouds(with_transformation: bool = True):
     with open(sys.argv[1], 'r') as stream:
         config = yaml.load(stream, Loader=yaml.Loader)
-    testname = os.path.basename(sys.argv[1])[:-5]
-    filenames = list(sorted(filter(lambda f: f[-4:] == '.ply' and f.startswith(testname), os.listdir(config['path']))))
+    dataset_name = os.path.basename(sys.argv[1])[:-5]
+    filenames = list(sorted(filter(lambda f: f[-4:] == '.ply' and f.startswith(dataset_name), os.listdir(config['path']))))
     voxel_size = config['voxel_size']
 
-    df = pd.read_csv(config['ground_truth'])
     gt = {}
-    for _, row in df.iterrows():
-        gt[row[0]] = np.array(list(map(float, row[1:].values))).reshape((4, 4))
+    if with_transformation:
+        df = pd.read_csv(config['ground_truth'])
+        for _, row in df.iterrows():
+            gt[row[0]] = np.array(list(map(float, row[1:].values))).reshape((4, 4))
 
-    path = os.path.join(config['path'], 'downsampled')
+    path = os.path.join(config['path'], 'downsampled_' + str(voxel_size))
     if not os.path.exists(path):
         os.mkdir(path)
 
-    for i, filename in enumerate(filenames):
-        print(f"::  Processing {filename}")
+    iter_pbar = tqdm(filenames)
+    for i, filename in enumerate(iter_pbar):
+        iter_pbar.set_description(f'Processing {filename}..')
         pcd = o3d.io.read_point_cloud(os.path.join(config['path'], filename))
         pcd_down = pcd.voxel_down_sample(voxel_size)
-        pcd_down = pcd_down.transform(gt[filename])
+        if with_transformation:
+            pcd_down = pcd_down.transform(gt[filename])
         pcd_down.paint_uniform_color([np.random.rand(), np.random.rand(), np.random.rand()])
-        o3d.io.write_point_cloud(os.path.join(path, filename), pcd_down,
-                                 compressed=True, print_progress=True)
+        pyntcloud.PyntCloud.from_instance("open3d", pcd_down).to_file(os.path.join(path, filename))
 
 
 if __name__ == '__main__':

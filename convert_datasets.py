@@ -1,5 +1,7 @@
 import os
+
 import click
+import yaml
 import pandas as pd
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -130,6 +132,65 @@ def other_to_common(input_dir):
             cloud = PyntCloud.from_file(os.path.join(input_dir, filename))
             cloud.points = cloud.points.dropna()
             cloud.to_file(os.path.join(output_dir, filename))
+
+
+def transform_and_save(load_from: str, save_to: str, transformation: np.ndarray):
+    pynt_cloud = PyntCloud.from_file(load_from)
+    points = pynt_cloud.points[['x', 'y', 'z']].values
+    points = (transformation[:3, :3] @ points.T).T + transformation[:3, 3]
+    pynt_cloud.points = pd.DataFrame(points, columns=['x', 'y', 'z'], index=None)
+    pynt_cloud.to_file(save_to)
+
+
+@cli.command('perturb')
+@click.argument('config-path', type=click.File())
+@click.option('--with-translation/--without-translation', default=False)
+@click.option('--with-rotation/--without-rotation', default=True)
+def generate_and_save_random_perturbation(config_path, with_translation: bool = False, with_rotation: bool = True):
+    config = yaml.load(config_path, Loader=yaml.Loader)
+    if with_rotation:
+        rmat = Rotation.from_euler('zyx', angles=180 * np.random.rand(3), degrees=True).as_matrix()
+    else:
+        rmat = np.eye(3)
+    if with_translation:
+        tvec = np.random.rand(3)
+    else:
+        tvec = np.zeros(3)
+    transformation = np.eye(4)
+    transformation[:3, :3] = rmat
+    transformation[:3, 3] = tvec
+    dirpath = os.path.dirname(config['transform'])
+    suffix = ("_r" if with_rotation else "") + ("_t" if with_translation else "")
+    filename = os.path.basename(config['transform'])[:-4] + f'_transformed{suffix}.ply'
+    transform_and_save(config['transform'], os.path.join(dirpath, filename), transformation)
+    df = pd.read_csv(config['ground_truth'])
+    df.drop(df[df['reading'] == filename].index, inplace=True)
+    df = df.append(pd.DataFrame([[filename] + np.linalg.inv(transformation).flatten().tolist()], columns=df.columns))
+    df.to_csv(config['ground_truth'], index=False)
+
+
+@cli.command('transform')
+@click.argument('config-path', type=click.Path(dir_okay=False, exists=True))
+@click.option('--current', type=click.Choice(['local', 'global'], case_sensitive=False), default='global')
+def transform(config_path, current):
+    with open(config_path, 'r') as stream:
+        config = yaml.load(stream, Loader=yaml.Loader)
+    dirpath = os.path.dirname(str(config_path))
+    dataset_name = os.path.basename(str(config_path))[:-5]
+    filenames = list(sorted(filter(lambda f: f[-4:] == '.ply' and f.startswith(dataset_name), os.listdir(dirpath))))
+
+    gt = {}
+    df = pd.read_csv(config['ground_truth'])
+    for _, row in df.iterrows():
+        gt[row[0]] = np.array(list(map(float, row[1:].values))).reshape((4, 4))
+
+    for filename in tqdm(filenames):
+        if current == "local":
+            transformation = gt[filename]
+        else:
+            transformation = np.linalg.inv(gt[filename])
+        filepath = os.path.join(dirpath, filename)
+        transform_and_save(filepath, filepath, transformation)
 
 
 if __name__ == '__main__':
