@@ -75,18 +75,18 @@ std::pair<PointT, PointT> calculateBoundingBox(const PointCloudT::Ptr &pcd);
 
 float getAABBDiagonal(const PointCloudT::Ptr &pcd);
 
-void saveColorizedPointCloud(const PointCloudT::Ptr &src,
+void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers,
                              const std::string &testname);
 
-void saveCorrespondences(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const std::string &testname, bool sparse = false);
 
-void saveCorrespondenceDistances(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const std::string &testname);

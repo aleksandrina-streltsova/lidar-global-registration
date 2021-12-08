@@ -9,6 +9,7 @@
 #include "align.h"
 #include "filter.h"
 #include "downsample.h"
+#include "analysis.h"
 #include "feature_analysis.h"
 
 void startAlignment(PointCloudT::Ptr &src_fullsize, PointCloudT::Ptr &src, PointCloudT::Ptr &tgt,
@@ -29,7 +30,17 @@ void startAlignment(PointCloudT::Ptr &src_fullsize, PointCloudT::Ptr &src, Point
     // Perform alignment
     pcl::console::print_highlight("Starting alignment...\n");
     auto align = align_point_clouds(src, tgt, features_src, features_tgt, config);
-    analyzeAlignment(src_fullsize, src, tgt, align, transformation_gt, config, testname);
+    if (align.hasConverged()) {
+        // Analyze results
+        AlignmentAnalysis analysis(align, config);
+        analysis.start(transformation_gt, testname);
+        if (config.get<bool>("debug", false)) {
+            analysis.saveFilesForDebug(src_fullsize, testname);
+        }
+    } else {
+        pcl::console::print_error("Alignment failed!\n");
+        exit(1);
+    }
 }
 
 void saveFeatureHistograms(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,

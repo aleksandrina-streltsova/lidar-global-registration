@@ -50,7 +50,7 @@ float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
     return (max_point - min_point).norm();
 }
 
-void saveColorizedPointCloud(const PointCloudT::Ptr &src,
+void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers,
@@ -105,7 +105,7 @@ void writeEdgesToPLYFileASCII(const std::vector<MultivaluedCorrespondence> &corr
     fs::rename(filepath_tmp, filepath);
 }
 
-void saveCorrespondences(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const std::string &testname, bool sparse) {
@@ -150,7 +150,7 @@ void saveCorrespondences(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tg
     }
 }
 
-void saveCorrespondenceDistances(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const std::string &testname) {

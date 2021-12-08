@@ -21,9 +21,4 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(cons
                                                                             const FeatureCloudT::Ptr &features_tgt,
                                                                             const YamlConfig &config);
 
-void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                      SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
-                      const std::string &testname);
-
 #endif

@@ -1,14 +1,8 @@
-#include <fstream>
-#include <filesystem>
-
 #include <pcl/features/normal_3d_omp.h>
-#include <pcl/io/ply_io.h>
 #include <pcl/common/time.h>
 
 #include "align.h"
 #include "csv_parser.h"
-#include "analysis.h"
-#include "filter.h"
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename) {
@@ -87,93 +81,3 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(cons
 
     return align;
 }
-
-void analyzeAlignment(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
-                      SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                      const Eigen::Matrix4f &transformation_gt, const YamlConfig &config,
-                      const std::string &testname) {
-    PointCloudT::Ptr src_fullsize_aligned_gt(new PointCloudT), src_fullsize_aligned(new PointCloudT);
-
-    float voxel_size = config.get<float>("voxel_size").value();
-    float error_thr = config.get<float>("distance_thr_coef").value() * voxel_size;
-    auto transformation = align.getFinalTransformation();
-    auto correct_correspondences = align.getCorrectCorrespondences(transformation_gt, error_thr);
-
-    int inlier_count = align.getInliers().size();
-    int correct_inlier_count = align.countCorrectCorrespondences(transformation_gt, error_thr, true);
-    int correspondence_count = align.getCorrespondences().size();
-    int correct_correspondence_count = correct_correspondences.size();
-    float fitness = (float) inlier_count / (float) correspondence_count;
-    float rmse = align.getRMSEScore();
-    float pcd_error = calculate_point_cloud_mean_error(src, transformation, transformation_gt);
-    auto[r_error, t_error] = calculate_rotation_and_translation_errors(transformation, transformation_gt);
-
-    if (align.hasConverged()) {
-        // Print results
-        printf("\n");
-        printTransformation(transformation);
-        printTransformation(transformation_gt);
-        pcl::console::print_info("fitness: %0.7f\n", fitness);
-        pcl::console::print_info("inliers_rmse: %0.7f\n", rmse);
-        pcl::console::print_info("inliers: %i/%i\n", inlier_count, correspondence_count);
-        pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_count, inlier_count);
-        pcl::console::print_info("correct correspondences: %i/%i\n",
-                                 correct_correspondence_count, correspondence_count);
-        pcl::console::print_info("rotation error: %0.7f\n", r_error);
-        pcl::console::print_info("translation error: %0.7f\n", t_error);
-        pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error);
-    } else {
-        pcl::console::print_error("Alignment failed!\n");
-        exit(1);
-    }
-    // Save test parameters and results
-    std::string filepath = constructPath("test", "results", "csv", false);
-    bool file_exists = std::filesystem::exists(filepath);
-    std::fstream fout;
-    if (!file_exists) {
-        fout.open(filepath, std::ios_base::out);
-    } else {
-        fout.open(filepath, std::ios_base::app);
-    }
-    if (fout.is_open()) {
-        if (!file_exists) {
-            fout << "version,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-            fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-            fout << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
-        }
-        fout << VERSION << "," << testname << "," << fitness << "," << rmse << ",";
-        fout << correspondence_count << "," << correct_correspondence_count << ",";
-        fout << inlier_count << "," << correct_inlier_count << ",";
-        fout << voxel_size << ",";
-        fout << config.get<float>("normal_radius_coef").value() << ",";
-        fout << config.get<float>("feature_radius_coef").value() << ",";
-        fout << config.get<float>("distance_thr_coef").value() << ",";
-        fout << config.get<float>("edge_thr").value() << ",";
-        fout << align.getRANSACIterations() << ",";
-        fout << config.get<bool>("reciprocal").value() << ",";
-        fout << config.get<int>("randomness").value() << ",";
-
-        auto func_id = config.get<std::string>("filter", "");
-        auto func = getUniquenessFunction(func_id);
-        if (func != nullptr) {
-            fout << func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
-        } else {
-            fout << ",,,";
-        }
-        fout << r_error << "," << t_error << "," << pcd_error << "\n";
-    } else {
-        perror(("error while opening file " + filepath).c_str());
-    }
-
-    saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname);
-    saveCorrespondences(src, tgt, align.getCorrespondences(), transformation_gt, testname, true);
-    saveCorrespondenceDistances(src, tgt, align.getCorrespondences(), transformation_gt, voxel_size, testname);
-    saveColorizedPointCloud(src, align.getCorrespondences(), correct_correspondences, align.getInliers(), testname);
-
-    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
-    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_fullsize_aligned);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_fullsize_aligned_gt);
-
-}
-
