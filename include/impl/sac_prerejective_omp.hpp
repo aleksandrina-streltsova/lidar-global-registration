@@ -85,6 +85,19 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
+AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getAlignmentAnalysis(
+        const YamlConfig &config
+) const {
+    if (this->hasConverged()) {
+        return AlignmentAnalysis(this->input_, this->target_, this->inliers_, this->multivalued_correspondences_,
+                                 this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_, config);
+    } else {
+        pcl::console::print_error("Alignment failed!\n");
+        exit(1);
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
 int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::estimateMaxIterations(float inlier_fraction) {
     if (inlier_fraction <= 0.0) {
         return std::numeric_limits<int>::max();
@@ -103,32 +116,8 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setConf
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
-float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSEScore() {
+float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSEScore() const {
     return rmse_;
-}
-
-template<typename PointSource, typename PointTarget, typename FeatureT>
-std::vector<MultivaluedCorrespondence> SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getCorrectCorrespondences(
-        const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier) {
-    PointCloudSource input_transformed;
-    input_transformed.resize(this->input_->size());
-    pcl::transformPointCloud(*(this->input_), input_transformed, transformation_gt);
-
-    std::set<int> inliers(this->inliers_.begin(), this->inliers_.end());
-    std::vector<MultivaluedCorrespondence> correct_correspondences;
-    for (const auto &correspondence: this->multivalued_correspondences_) {
-        int query_idx = correspondence.query_idx;
-        if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
-            int match_idx = correspondence.match_indices[0];
-            PointT source_point(input_transformed.points[query_idx]);
-            PointT target_point(this->target_->points[match_idx]);
-            float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
-            if (e < error_threshold) {
-                correct_correspondences.push_back(correspondence);
-            }
-        }
-    }
-    return correct_correspondences;
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>

@@ -12,6 +12,7 @@ namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string VERSION = "02";
+const std::string DEFAULT_DESCRIPTOR = "fpfh";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),

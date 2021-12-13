@@ -2,6 +2,7 @@
 #include <filesystem>
 
 #include <Eigen/Geometry>
+#include <utility>
 
 #include <pcl/io/ply_io.h>
 #include <pcl/common/transforms.h>
@@ -34,33 +35,57 @@ float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
     return error;
 }
 
-AlignmentAnalysis::AlignmentAnalysis(const SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                                     const YamlConfig &config) : align_(align) {
-    src_ = align_.getInputSource();
-    tgt_ = align_.getInputTarget();
+AlignmentAnalysis::AlignmentAnalysis(PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
+                                     std::vector<MultivaluedCorrespondence> correspondences, float rmse,
+                                     int iterations, Eigen::Matrix4f transformation, const YamlConfig &config)
+        : src_(std::move(src)), tgt_(std::move(tgt)), inliers_(std::move(inliers)),
+          correspondences_(std::move(correspondences)), rmse_(rmse),
+          iterations_(iterations), transformation_(std::move(transformation)) {
     voxel_size_ = config.get<float>("voxel_size").value();
     edge_thr_coef_ = config.get<float>("edge_thr").value();
     distance_thr_coef_ = config.get<float>("distance_thr_coef").value();
     normal_radius_coef_ = config.get<float>("normal_radius_coef").value();
     feature_radius_coef_ = config.get<float>("feature_radius_coef").value();
-    iterations_ = align_.getRANSACIterations();
     reciprocal_ = config.get<bool>("reciprocal").value();
     randomness_ = config.get<int>("randomness").value();
+    descriptor_id_ = config.get<std::string>("descriptor", DEFAULT_DESCRIPTOR);
     func_id_ = config.get<std::string>("filter", "");
-    transformation_ = align_.getFinalTransformation();
+}
+
+std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorrespondences(
+        const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier
+) {
+    PointCloudT input_transformed;
+    input_transformed.resize(src_->size());
+    pcl::transformPointCloud(*src_, input_transformed, transformation_gt);
+
+    std::set<int> inliers(inliers_.begin(), inliers_.end());
+    std::vector<MultivaluedCorrespondence> correct_correspondences;
+    for (const auto &correspondence: correspondences_) {
+        int query_idx = correspondence.query_idx;
+        if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
+            int match_idx = correspondence.match_indices[0];
+            PointT source_point(input_transformed.points[query_idx]);
+            PointT target_point(tgt_->points[match_idx]);
+            float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
+            if (e < error_threshold) {
+                correct_correspondences.push_back(correspondence);
+            }
+        }
+    }
+    return correct_correspondences;
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
     float error_thr = distance_thr_coef_ * voxel_size_;
     transformation_gt_ = transformation_gt;
 
-    correct_correspondences_ = align_.getCorrectCorrespondences(transformation_gt_, error_thr);
-    inlier_count_ = align_.getInliers().size();
-    correct_inlier_count_ = align_.countCorrectCorrespondences(transformation_gt_, error_thr, true);
-    correspondence_count_ = align_.getCorrespondences().size();
+    correct_correspondences_ = getCorrectCorrespondences(transformation_gt_, error_thr);
+    inlier_count_ = inliers_.size();
+    correct_inlier_count_ = countCorrectCorrespondences(transformation_gt_, error_thr, true);
+    correspondence_count_ = correspondences_.size();
     correct_correspondence_count_ = correct_correspondences_.size();
     fitness_ = (float) inlier_count_ / (float) correspondence_count_;
-    rmse_ = align_.getRMSEScore();
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
     std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_);
 
@@ -96,11 +121,11 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout << "version,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
+            fout << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
             fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
             fout << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
         }
-        fout << VERSION << "," << testname << "," << fitness_ << "," << rmse_ << ",";
+        fout << VERSION << "," << descriptor_id_ << "," << testname << "," << fitness_ << "," << rmse_ << ",";
         fout << correspondence_count_ << "," << correct_correspondence_count_ << ",";
         fout << inlier_count_ << "," << correct_inlier_count_ << ",";
         fout << voxel_size_ << ",";
@@ -125,10 +150,10 @@ void AlignmentAnalysis::save(const std::string &testname) {
 
 void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const std::string &testname) {
     PointCloudT::Ptr src_fullsize_aligned(new PointCloudT), src_fullsize_aligned_gt(new PointCloudT);
-    saveCorrespondences(src_, tgt_, align_.getCorrespondences(), transformation_gt_, testname);
-    saveCorrespondences(src_, tgt_, align_.getCorrespondences(), transformation_gt_, testname, true);
-    saveCorrespondenceDistances(src_, tgt_, align_.getCorrespondences(), transformation_gt_, voxel_size_, testname);
-    saveColorizedPointCloud(src_, align_.getCorrespondences(), correct_correspondences_, align_.getInliers(), testname);
+    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname);
+    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname, true);
+    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, voxel_size_, testname);
+    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, testname);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);

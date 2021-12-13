@@ -4,7 +4,6 @@
 #include <pcl/types.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <pcl/features/fpfh_omp.h>
 
 #include <Eigen/Core>
 
@@ -23,9 +22,6 @@ typedef pcl::PointXYZRGB PointColoredT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 typedef pcl::PointCloud<PointColoredT> PointCloudColoredT;
 typedef pcl::PointCloud<pcl::Normal> PointCloudN;
-typedef pcl::FPFHSignature33 FeatureT;
-typedef pcl::FPFHEstimationOMP<PointT, pcl::Normal, FeatureT> FeatureEstimationT;
-typedef pcl::PointCloud<FeatureT> FeatureCloudT;
 
 struct MultivaluedCorrespondence {
     int query_idx;
@@ -68,6 +64,7 @@ public:
 
 extern const std::string DATA_DEBUG_PATH;
 extern const std::string VERSION;
+extern const std::string DEFAULT_DESCRIPTOR;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 

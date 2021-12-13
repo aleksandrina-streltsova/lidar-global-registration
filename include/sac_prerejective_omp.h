@@ -6,9 +6,12 @@
 #include <pcl/common/time.h>
 #include "utils.h"
 #include "common.h"
+#include "analysis.h"
 
 #ifdef _OPENMP
+
 #include <omp.h>
+
 #endif
 
 #if defined _OPENMP && _OPENMP >= 201107 // We need OpenMP 3.1 for the atomic constructs
@@ -34,19 +37,13 @@ public:
 
     void setConfidence(float confidence);
 
-    float getRMSEScore();
+    float getRMSEScore() const;
 
     inline const std::vector<MultivaluedCorrespondence> getCorrespondences() const {
         return multivalued_correspondences_;
     }
 
-    std::vector<MultivaluedCorrespondence> getCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
-                                                                     float error_threshold, bool check_inlier = false);
-
-    inline int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
-                                           float error_threshold, bool check_inlier = false) {
-        return getCorrectCorrespondences(transformation_gt, error_threshold, check_inlier).size();
-    };
+    AlignmentAnalysis getAlignmentAnalysis(const YamlConfig &config) const;
 
 protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;

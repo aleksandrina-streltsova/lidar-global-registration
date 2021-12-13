@@ -7,7 +7,6 @@
 
 #include "common.h"
 #include "config.h"
-#include "sac_prerejective_omp.h"
 
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
@@ -17,8 +16,10 @@ float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
 
 class AlignmentAnalysis {
 public:
-    AlignmentAnalysis(const SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> &align,
-                      const YamlConfig &config);
+    AlignmentAnalysis() {}
+    AlignmentAnalysis(PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
+                      std::vector<MultivaluedCorrespondence> correspondences, float rmse,
+                      int iterations, Eigen::Matrix4f transformation, const YamlConfig &config);
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
@@ -31,7 +32,7 @@ private:
     int iterations_;
     bool reciprocal_;
     int randomness_;
-    std::string func_id_;
+    std::string func_id_, descriptor_id_;
     PointCloudT::ConstPtr src_, tgt_;
     Eigen::Matrix4f transformation_, transformation_gt_;
     std::vector<MultivaluedCorrespondence> correct_correspondences_;
@@ -39,8 +40,16 @@ private:
     int correspondence_count_, correct_correspondence_count_;
     float fitness_, rmse_;
     float pcd_error_, r_error_, t_error_;
+    std::vector<MultivaluedCorrespondence> correspondences_;
+    pcl::Indices inliers_;
 
-    SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_;
+    std::vector<MultivaluedCorrespondence> getCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
+                                                                     float error_threshold, bool check_inlier = false);
+
+    inline int countCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
+                                           float error_threshold, bool check_inlier = false) {
+        return getCorrectCorrespondences(transformation_gt, error_threshold, check_inlier).size();
+    };
 
     void print();
 

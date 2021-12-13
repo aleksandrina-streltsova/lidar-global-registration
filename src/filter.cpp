@@ -4,17 +4,18 @@
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/io/ply_io.h>
 
 #include "filter.h"
 #include "utils.h"
 #include "common.h"
 
-std::vector<float> computeDistanceNN(const FeatureCloudT::Ptr &features);
+std::vector<float> computeDistanceNN(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features);
 
-std::vector<float> computeDistanceMean(const FeatureCloudT::Ptr &features);
+std::vector<float> computeDistanceMean(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features);
 
-std::vector<float> computeDistanceRandom(const FeatureCloudT::Ptr &features);
+std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features);
 
 void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
                       const std::string &testname, const std::string &func_identifier,
@@ -31,8 +32,8 @@ UniquenessFunction getUniquenessFunction(const std::string &identifier) {
 }
 
 void filterPointCloud(UniquenessFunction func, const std::string &func_identifier,
-                      const PointCloudT::Ptr &pcd, const FeatureCloudT::Ptr &features,
-                      PointCloudT::Ptr &dst_pcd, FeatureCloudT::Ptr &dst_features,
+                      const PointCloudT::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
+                      PointCloudT::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
                       const Eigen::Matrix4f &transformation_gt,
                       const std::string &testname, bool is_source) {
     std::vector<float> uniquenesses = func(features);
@@ -57,16 +58,16 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
     pcd_filter.filter(*dst_pcd);
 
     // Filter features
-    pcl::ExtractIndices<FeatureT> features_filter;
+    pcl::ExtractIndices<pcl::FPFHSignature33> features_filter;
     features_filter.setInputCloud(features);
     features_filter.setIndices(point_indices);
     features_filter.setNegative(false);
     features_filter.filter(*dst_features);
 }
 
-std::vector<float> computeDistanceNN(const FeatureCloudT::Ptr &features) {
+std::vector<float> computeDistanceNN(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features) {
     std::vector<float> distances(features->size());
-    pcl::KdTreeFLANN<FeatureT> feature_tree(new pcl::KdTreeFLANN<FeatureT>);
+    pcl::KdTreeFLANN<pcl::FPFHSignature33> feature_tree(new pcl::KdTreeFLANN<pcl::FPFHSignature33>);
     feature_tree.setInputCloud(features);
     for (int i = 0; i < features->size(); ++i) {
         std::vector<int> match_indices(1);
@@ -77,7 +78,7 @@ std::vector<float> computeDistanceNN(const FeatureCloudT::Ptr &features) {
     return distances;
 }
 
-std::vector<float> computeDistanceMean(const FeatureCloudT::Ptr &features) {
+std::vector<float> computeDistanceMean(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features) {
     std::string filepath = "distances.csv";
     std::fstream fout(filepath, std::ios_base::out);
 
@@ -98,7 +99,7 @@ std::vector<float> computeDistanceMean(const FeatureCloudT::Ptr &features) {
     return distances;
 }
 
-std::vector<float> computeDistanceRandom(const FeatureCloudT::Ptr &features) {
+std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features) {
     int feature_dim = features->points[0].descriptorSize();
 
     std::vector<Eigen::VectorXf> fs(features->size());
