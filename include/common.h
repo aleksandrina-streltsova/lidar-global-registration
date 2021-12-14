@@ -7,6 +7,7 @@
 
 #include <Eigen/Core>
 
+#include "config.h"
 #include "utils.h"
 
 #define COLOR_BEIGE 0xf8c471
@@ -23,14 +24,27 @@ typedef pcl::PointCloud<PointT> PointCloudT;
 typedef pcl::PointCloud<PointColoredT> PointCloudColoredT;
 typedef pcl::PointCloud<pcl::Normal> PointCloudN;
 
+struct AlignmentParameters {
+    bool downsample;
+    float voxel_size;
+    float edge_thr_coef, distance_thr_coef;
+    float normal_radius_coef, feature_radius_coef;
+    float confidence, inlier_fraction;
+    bool reciprocal;
+    int randomness, n_samples;
+    std::string func_id, descriptor_id;
+    std::optional<int> max_iterations;
+};
+
+std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config);
+
 struct MultivaluedCorrespondence {
     int query_idx;
     pcl::Indices match_indices;
 };
 
 struct PointHash {
-    inline size_t operator()(const PointT &point) const
-    {
+    inline size_t operator()(const PointT &point) const {
         size_t seed = 0;
         combineHash(seed, point.x);
         combineHash(seed, point.y);
@@ -39,11 +53,11 @@ struct PointHash {
     }
 };
 
-template <typename T>
+template<typename T>
 struct HashEigen {
-    std::size_t operator()(T const& matrix) const {
+    std::size_t operator()(T const &matrix) const {
         size_t seed = 0;
-        for (int i = 0; i < (int)matrix.size(); i++) {
+        for (int i = 0; i < (int) matrix.size(); i++) {
             auto elem = *(matrix.data() + i);
             seed ^= std::hash<typename T::Scalar>()(elem) + 0x9e3779b9 +
                     (seed << 6) + (seed >> 2);

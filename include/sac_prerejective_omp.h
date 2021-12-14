@@ -43,7 +43,7 @@ public:
         return multivalued_correspondences_;
     }
 
-    AlignmentAnalysis getAlignmentAnalysis(const YamlConfig &config) const;
+    AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters) const;
 
 protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;

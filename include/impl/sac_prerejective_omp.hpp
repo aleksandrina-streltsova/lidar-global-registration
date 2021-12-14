@@ -86,14 +86,15 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
 AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getAlignmentAnalysis(
-        const YamlConfig &config
+        const AlignmentParameters &parameters
 ) const {
     if (this->hasConverged()) {
-        return AlignmentAnalysis(this->input_, this->target_, this->inliers_, this->multivalued_correspondences_,
-                                 this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_, config);
+        return AlignmentAnalysis(parameters, this->input_, this->target_,
+                                 this->inliers_,this->multivalued_correspondences_,
+                                 this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_);
     } else {
         pcl::console::print_error("Alignment failed!\n");
-        exit(1);
+        return {};
     }
 }
 

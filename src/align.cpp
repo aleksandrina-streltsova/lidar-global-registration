@@ -15,7 +15,8 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
             for (int i = 0; i < 16; ++i) {
                 src_position(i / 4, i % 4) = std::stof(row[i + 1]);
             }
-        } else if (row[0] == tgt_filename) {
+        }
+        if (row[0] == tgt_filename) {
             for (int i = 0; i < 16; ++i) {
                 tgt_position(i / 4, i % 4) = std::stof(row[i + 1]);
             }

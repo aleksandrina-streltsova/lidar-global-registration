@@ -11,11 +11,13 @@
 #include <pcl/surface/gp3.h>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 
-#include "config.h"
 #include "common.h"
+#include "downsample.h"
 #include "sac_prerejective_omp.h"
 
 typedef pcl::Histogram<135> RoPS135;
+typedef pcl::FPFHSignature33 FPFH;
+typedef pcl::UniqueShapeContext1960 USC;
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
@@ -23,13 +25,14 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
 void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals);
 
 template<typename FeatureT>
-void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
-                      typename pcl::PointCloud<FeatureT>::Ptr &features) {
+void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudT::Ptr &surface,
+                      const PointCloudN::Ptr &normals, typename pcl::PointCloud<FeatureT>::Ptr &features) {
     throw std::runtime_error("Feature isn't supported!");
 }
 
 template<>
 inline void estimateFeatures<pcl::FPFHSignature33>(float radius_search, const PointCloudT::Ptr &pcd,
+                                                   const PointCloudT::Ptr &surface,
                                                    const PointCloudN::Ptr &normals,
                                                    pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features) {
     pcl::FPFHEstimationOMP<PointT, pcl::Normal, pcl::FPFHSignature33> fpfh_estimation;
@@ -41,6 +44,7 @@ inline void estimateFeatures<pcl::FPFHSignature33>(float radius_search, const Po
 
 template<>
 inline void estimateFeatures<pcl::UniqueShapeContext1960>(float radius_search, const PointCloudT::Ptr &pcd,
+                                                          const PointCloudT::Ptr &surface,
                                                           const PointCloudN::Ptr &normals,
                                                           pcl::PointCloud<pcl::UniqueShapeContext1960>::Ptr &features) {
     pcl::UniqueShapeContext<PointT, pcl::UniqueShapeContext1960, pcl::ReferenceFrame> shape_context;
@@ -55,6 +59,7 @@ inline void estimateFeatures<pcl::UniqueShapeContext1960>(float radius_search, c
 
 template<>
 inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const PointCloudT::Ptr &pcd,
+                                                    const PointCloudT::Ptr &surface,
                                                     const PointCloudN::Ptr &normals,
                                                     pcl::PointCloud<pcl::ShapeContext1980>::Ptr &features) {
     pcl::ShapeContext3DEstimation<PointT, pcl::Normal, pcl::ShapeContext1980> shape_context;
@@ -68,6 +73,7 @@ inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const P
 
 template<>
 inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Ptr &pcd,
+                                      const PointCloudT::Ptr &surface,
                                       const PointCloudN::Ptr &normals,
                                       pcl::PointCloud<RoPS135>::Ptr &features) {
     pcl::PointCloud<pcl::PointNormal>::Ptr pcd_with_normals(new pcl::PointCloud<pcl::PointNormal>);
@@ -112,21 +118,32 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Pt
 
 template<typename FeatureT>
 SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
-        const PointCloudT::Ptr &src,
-        const PointCloudT::Ptr &tgt,
-        const YamlConfig &config
+        const PointCloudT::Ptr &src_fullsize,
+        const PointCloudT::Ptr &tgt_fullsize,
+        const AlignmentParameters &parameters
 ) {
-    SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
+    PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
+    // Downsample
+    if (parameters.downsample) {
+        pcl::console::print_highlight("Downsampling...\n");
+        downsamplePointCloud(src_fullsize, src, parameters.voxel_size);
+        downsamplePointCloud(tgt_fullsize, tgt, parameters.voxel_size);
+    } else {
+        pcl::console::print_highlight("Filtering duplicate points...\n");
+        pcl::copyPointCloud(*src_fullsize, *src);
+        pcl::copyPointCloud(*tgt_fullsize, *tgt);
+    }
 
+    SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
     PointCloudT src_aligned;
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
 
-    float voxel_size = config.get<float>("voxel_size").value();
-    float normal_radius = config.get<float>("normal_radius_coef").value() * voxel_size;
-    float feature_radius = config.get<float>("feature_radius_coef").value() * voxel_size;
+    float voxel_size = parameters.voxel_size;
+    float normal_radius = parameters.normal_radius_coef * voxel_size;
+    float feature_radius = parameters.feature_radius_coef * voxel_size;
 
     // Estimate normals
     pcl::console::print_highlight("Estimating normals...\n");
@@ -135,12 +152,12 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, normals_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, normals_tgt, features_tgt);
+    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, features_src);
+    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, features_tgt);
 
     // Filter point clouds
     // TODO: fix filtering (separate debug from actual filtering)
-//    auto func_id = config.get<std::string>("filter", "");
+//    auto func_id = parameters.func_id;
 //    auto func = getUniquenessFunction(func_id);
 //    if (func != nullptr) {
 //        std::cout << "Point cloud downsampled after filtration (" << func_id << ") from " << src->size();
@@ -151,7 +168,7 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
 //        std::cout << " to " << tgt->size() << "\n";
 //    }
 
-    if (config.get<bool>("reciprocal").value()) {
+    if (parameters.reciprocal) {
         align.enableMutualFiltering();
     }
 
@@ -161,16 +178,15 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
     align.setInputTarget(tgt);
     align.setTargetFeatures(features_tgt);
 
-    int n_samples = config.get<int>("n_samples").value();
+    int n_samples = parameters.n_samples;
     int iteration_brute_force = calculate_combination_or_max<int>((int) std::min(src->size(), tgt->size()), n_samples);
-    align.setMaximumIterations(config.get<int>("iteration", iteration_brute_force)); // Number of RANSAC iterations
+    align.setMaximumIterations(parameters.max_iterations.value_or(iteration_brute_force)); // Number of RANSAC iterations
     align.setNumberOfSamples(n_samples); // Number of points to sample for generating/prerejecting a pose
-    align.setCorrespondenceRandomness(config.get<int>("randomness").value()); // Number of nearest features to use
-    align.setSimilarityThreshold(config.get<float>("edge_thr").value()); // Polygonal edge length similarity threshold
-    align.setMaxCorrespondenceDistance(config.get<float>("distance_thr_coef").value() * voxel_size); // Inlier threshold
-    align.setConfidence(config.get<float>("confidence").value()); // Confidence in adaptive RANSAC
-    align.setInlierFraction(
-            config.get<float>("inlier_fraction").value()); // Required inlier fraction for accepting a pose hypothesis
+    align.setCorrespondenceRandomness(parameters.randomness); // Number of nearest features to use
+    align.setSimilarityThreshold(parameters.edge_thr_coef); // Polygonal edge length similarity threshold
+    align.setMaxCorrespondenceDistance(parameters.distance_thr_coef * voxel_size); // Inlier threshold
+    align.setConfidence(parameters.confidence); // Confidence in adaptive RANSAC
+    align.setInlierFraction(parameters.inlier_fraction); // Required inlier fraction for accepting a pose hypothesis
     std::cout << "    iteration: " << align.getMaximumIterations() << std::endl;
     std::cout << "    voxel size: " << voxel_size << std::endl;
     {

@@ -5,7 +5,6 @@
 #include <pcl/point_cloud.h>
 
 #include "common.h"
-#include "config.h"
 
 template <typename FeatureT>
 void saveHistograms(const typename pcl::PointCloud<FeatureT>::Ptr &features, const std::string &testname, bool is_source) {
@@ -48,5 +47,5 @@ void saveNormals(const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
 
 void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
-                           const std::string &testname,  const YamlConfig &config);
+                           const std::string &testname, const std::string &extracted_path);
 #endif

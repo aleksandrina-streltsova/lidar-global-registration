@@ -35,23 +35,6 @@ float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
     return error;
 }
 
-AlignmentAnalysis::AlignmentAnalysis(PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
-                                     std::vector<MultivaluedCorrespondence> correspondences, float rmse,
-                                     int iterations, Eigen::Matrix4f transformation, const YamlConfig &config)
-        : src_(std::move(src)), tgt_(std::move(tgt)), inliers_(std::move(inliers)),
-          correspondences_(std::move(correspondences)), rmse_(rmse),
-          iterations_(iterations), transformation_(std::move(transformation)) {
-    voxel_size_ = config.get<float>("voxel_size").value();
-    edge_thr_coef_ = config.get<float>("edge_thr").value();
-    distance_thr_coef_ = config.get<float>("distance_thr_coef").value();
-    normal_radius_coef_ = config.get<float>("normal_radius_coef").value();
-    feature_radius_coef_ = config.get<float>("feature_radius_coef").value();
-    reciprocal_ = config.get<bool>("reciprocal").value();
-    randomness_ = config.get<int>("randomness").value();
-    descriptor_id_ = config.get<std::string>("descriptor", DEFAULT_DESCRIPTOR);
-    func_id_ = config.get<std::string>("filter", "");
-}
-
 std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorrespondences(
         const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier
 ) {
@@ -77,7 +60,7 @@ std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorresponden
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
-    float error_thr = distance_thr_coef_ * voxel_size_;
+    float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
     transformation_gt_ = transformation_gt;
 
     correct_correspondences_ = getCorrectCorrespondences(transformation_gt_, error_thr);
@@ -121,24 +104,25 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
+            fout
+                    << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
             fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
             fout << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
         }
-        fout << VERSION << "," << descriptor_id_ << "," << testname << "," << fitness_ << "," << rmse_ << ",";
+        fout << VERSION << "," << parameters_.descriptor_id << "," << testname << "," << fitness_ << "," << rmse_ << ",";
         fout << correspondence_count_ << "," << correct_correspondence_count_ << ",";
         fout << inlier_count_ << "," << correct_inlier_count_ << ",";
-        fout << voxel_size_ << ",";
-        fout << normal_radius_coef_ << ",";
-        fout << feature_radius_coef_ << ",";
-        fout << distance_thr_coef_ << ",";
-        fout << edge_thr_coef_ << ",";
+        fout << parameters_.voxel_size << ",";
+        fout << parameters_.normal_radius_coef << ",";
+        fout << parameters_.feature_radius_coef << ",";
+        fout << parameters_.distance_thr_coef << ",";
+        fout << parameters_.edge_thr_coef << ",";
         fout << iterations_ << ",";
-        fout << reciprocal_ << ",";
-        fout << randomness_ << ",";
-        auto func = getUniquenessFunction(func_id_);
+        fout << parameters_.reciprocal << ",";
+        fout << parameters_.randomness << ",";
+        auto func = getUniquenessFunction(parameters_.func_id);
         if (func != nullptr) {
-            fout << func_id_ << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
+            fout << parameters_.func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
         } else {
             fout << ",,,";
         }
@@ -152,7 +136,7 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, 
     PointCloudT::Ptr src_fullsize_aligned(new PointCloudT), src_fullsize_aligned_gt(new PointCloudT);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname, true);
-    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, voxel_size_, testname);
+    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, testname);
     saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, testname);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);

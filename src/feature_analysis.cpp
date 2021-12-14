@@ -3,6 +3,7 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/common/io.h>
 #include <pcl/common/transforms.h>
+#include <pcl/kdtree/kdtree_flann.h>
 
 #include "feature_analysis.h"
 
@@ -37,9 +38,8 @@ std::vector<int> getPointIds(const PointCloudT::Ptr &all_points, const PointClou
 
 void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
-                           const std::string &testname,  const YamlConfig &config) {
+                           const std::string &testname, const std::string &extracted_path) {
     PointCloudT::Ptr src_aligned_gt(new PointCloudT), extracted_points(new PointCloudT);
-    std::string extracted_path = config.get<std::string>("extracted").value();
 
     if (pcl::io::loadPLYFile<PointT>(extracted_path, *extracted_points) < 0) {
         pcl::console::print_error("Error loading file with extracted point!\n");

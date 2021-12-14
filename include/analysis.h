@@ -6,7 +6,6 @@
 #include <Eigen/Core>
 
 #include "common.h"
-#include "config.h"
 
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
@@ -17,22 +16,29 @@ float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
 class AlignmentAnalysis {
 public:
     AlignmentAnalysis() {}
-    AlignmentAnalysis(PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
+
+    AlignmentAnalysis(AlignmentParameters parameters,
+                      PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
                       std::vector<MultivaluedCorrespondence> correspondences, float rmse,
-                      int iterations, Eigen::Matrix4f transformation, const YamlConfig &config);
+                      int iterations, Eigen::Matrix4f transformation) : parameters_(std::move(parameters)),
+                                                                        src_(std::move(src)), tgt_(std::move(tgt)),
+                                                                        inliers_(std::move(inliers)),
+                                                                        correspondences_(std::move(correspondences)),
+                                                                        rmse_(rmse), iterations_(iterations),
+                                                                        transformation_(std::move(transformation)),
+                                                                        has_converged_(true) {}
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
     void saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const std::string &testname);
 
+    inline bool alignmentHasConverged() const {
+        return has_converged_;
+    }
+
 private:
-    float voxel_size_;
-    float edge_thr_coef_, distance_thr_coef_;
-    float normal_radius_coef_, feature_radius_coef_;
+    AlignmentParameters parameters_;
     int iterations_;
-    bool reciprocal_;
-    int randomness_;
-    std::string func_id_, descriptor_id_;
     PointCloudT::ConstPtr src_, tgt_;
     Eigen::Matrix4f transformation_, transformation_gt_;
     std::vector<MultivaluedCorrespondence> correct_correspondences_;
@@ -42,6 +48,7 @@ private:
     float pcd_error_, r_error_, t_error_;
     std::vector<MultivaluedCorrespondence> correspondences_;
     pcl::Indices inliers_;
+    bool has_converged_ = false;
 
     std::vector<MultivaluedCorrespondence> getCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
                                                                      float error_threshold, bool check_inlier = false);
