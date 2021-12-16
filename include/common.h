@@ -39,7 +39,7 @@ struct AlignmentParameters {
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config);
 
 struct MultivaluedCorrespondence {
-    int query_idx;
+    int query_idx = -1;
     pcl::Indices match_indices;
 };
 

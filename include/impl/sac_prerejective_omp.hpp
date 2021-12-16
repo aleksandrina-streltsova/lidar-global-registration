@@ -21,7 +21,6 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setNumb
 template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIndices(
         const pcl::Indices &sample_indices,
-        const std::vector<MultivaluedCorrespondence> &correspondences,
         pcl::Indices &source_indices,
         pcl::Indices &target_indices) {
     // Allocate results
@@ -32,24 +31,24 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIn
     for (std::size_t j = 0; j < sample_indices.size(); ++j) {
         // Current correspondence index
         const auto &idx = sample_indices[j];
-        source_indices[j] = correspondences[idx].query_idx;
+        source_indices[j] = multivalued_correspondences_[idx].query_idx;
 
         // Select one at random and add it to target_indices
         if (this->k_correspondences_ == 1)
-            target_indices[j] = correspondences[idx].match_indices[0];
+            target_indices[j] = multivalued_correspondences_[idx].match_indices[0];
         else
-            target_indices[j] = correspondences[idx].match_indices[this->getRandomIndex(this->k_correspondences_)];
+            target_indices[j] = multivalued_correspondences_[idx].match_indices[this->getRandomIndex(
+                    this->k_correspondences_)];
     }
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE(pcl::Indices &inliers,
-                                                                                 const std::vector<MultivaluedCorrespondence> &correspondences,
                                                                                  const Matrix4 &transformation,
                                                                                  float &rmse_score) {
     // Initialize variables
     inliers.clear();
-    inliers.reserve(correspondences.size());
+    inliers.reserve(multivalued_correspondences_.size());
     rmse_score = 0.0f;
 
     // Transform the input dataset using the final transformation
@@ -58,9 +57,9 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
     transformPointCloud(*(this->input_), input_transformed, transformation);
 
     // For each point from correspondences in the source dataset
-    for (int i = 0; i < correspondences.size(); ++i) {
-        int query_idx = correspondences[i].query_idx;
-        int match_idx = correspondences[i].match_indices[0];
+    for (int i = 0; i < multivalued_correspondences_.size(); ++i) {
+        int query_idx = multivalued_correspondences_[i].query_idx;
+        int match_idx = multivalued_correspondences_[i].match_indices[0];
         PointT source_point(input_transformed.points[query_idx]);
         PointT target_point(this->target_->points[match_idx]);
 
@@ -90,7 +89,7 @@ AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, Featu
 ) const {
     if (this->hasConverged()) {
         return AlignmentAnalysis(parameters, this->input_, this->target_,
-                                 this->inliers_,this->multivalued_correspondences_,
+                                 this->inliers_, this->multivalued_correspondences_,
                                  this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_);
     } else {
         pcl::console::print_error("Alignment failed!\n");
@@ -256,25 +255,28 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     threads = -1;
 #endif
 
-    // Feature correspondence set
-    std::vector<MultivaluedCorrespondence> correspondences_ij(this->input_->size());
-
     // Build correspondences
     {
         pcl::ScopeTime t("Correspondence search");
+
+        // Feature correspondence set
+        std::vector<MultivaluedCorrespondence> correspondences_ij(this->input_->size());
+
         float dists_sum = 0.f;
 #pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij) reduction(+:dists_sum)
         for (int i = 0; i < this->input_->size(); i++) {
-            correspondences_ij[i].query_idx = i;
-            pcl::Indices &match_indices = correspondences_ij[i].match_indices;
-            match_indices.resize(this->k_correspondences_);
-            std::vector<float> match_distances(this->k_correspondences_);
-            this->feature_tree_->nearestKSearch(*(this->input_features_),
-                                                i,
-                                                this->k_correspondences_,
-                                                match_indices,
-                                                match_distances);
-            dists_sum += match_distances[0];
+            if (point_representation_->isValid(this->input_features_->points[i])) {
+                correspondences_ij[i].query_idx = i;
+                pcl::Indices &match_indices = correspondences_ij[i].match_indices;
+                match_indices.resize(this->k_correspondences_);
+                std::vector<float> match_distances(this->k_correspondences_);
+                this->feature_tree_->nearestKSearch(*(this->input_features_),
+                                                    i,
+                                                    this->k_correspondences_,
+                                                    match_indices,
+                                                    match_distances);
+                dists_sum += match_distances[0];
+            }
         }
         PCL_DEBUG("[%s::computeTransformation] average distance to nearest neighbour: %0.7f.\n",
                   this->getClassName().c_str(),
@@ -287,15 +289,17 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 
 #pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ji, feature_tree_src_)
             for (int j = 0; j < this->target_->size(); ++j) {
-                correspondences_ji[j].query_idx = j;
-                pcl::Indices &match_indices = correspondences_ji[j].match_indices;
-                match_indices.resize(1);
-                std::vector<float> match_distances(1);
-                feature_tree_src_.nearestKSearch(*(this->target_features_),
-                                                 j,
-                                                 1,
-                                                 match_indices,
-                                                 match_distances);
+                if (point_representation_->isValid(this->target_features_->points[j])) {
+                    correspondences_ji[j].query_idx = j;
+                    pcl::Indices &match_indices = correspondences_ji[j].match_indices;
+                    match_indices.resize(1);
+                    std::vector<float> match_distances(1);
+                    feature_tree_src_.nearestKSearch(*(this->target_features_),
+                                                     j,
+                                                     1,
+                                                     match_indices,
+                                                     match_distances);
+                }
             }
 
             std::vector<MultivaluedCorrespondence> correspondences_mutual;
@@ -303,7 +307,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                 bool reciprocal = false;
                 MultivaluedCorrespondence corr = correspondences_ij[i];
                 for (const int &j: corr.match_indices) {
-                    if (correspondences_ji[j].match_indices[0] == i) {
+                    if (!correspondences_ji[j].match_indices.empty() && correspondences_ji[j].match_indices[0] == i) {
                         reciprocal = true;
                     }
                 }
@@ -316,11 +320,15 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                       this->getClassName().c_str(),
                       correspondences_mutual.size());
         }
-
-        this->multivalued_correspondences_ = correspondences_ij;
+        for (auto corr: correspondences_ij) {
+            if (corr.query_idx >= 0) {
+                multivalued_correspondences_.emplace_back(corr);
+            }
+        }
     }
-    this->max_iterations_ = std::min(calculate_combination_or_max<int>(correspondences_ij.size(), this->nr_samples_),
-                                     this->max_iterations_);
+    this->max_iterations_ = std::min(
+            calculate_combination_or_max<int>(multivalued_correspondences_.size(), this->nr_samples_),
+            this->max_iterations_);
     int estimated_iters = this->max_iterations_; // For debugging
     {
         pcl::Indices inliers;
@@ -328,7 +336,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 
         // If guess is not the Identity matrix we check it
         if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
-            this->getRMSE(inliers, correspondences_ij, guess, error);
+            this->getRMSE(inliers, guess, error);
             inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(this->input_->size());
 
             if (inlier_fraction >= max_inlier_fraction) {
@@ -348,7 +356,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 #pragma omp parallel \
     num_threads(threads) \
     default(none) \
-    shared(correspondences_ij, max_inlier_fraction, estimated_iters) \
+    shared(max_inlier_fraction, estimated_iters) \
     reduction(+:num_rejections, ransac_iterations)
 #endif
         {
@@ -363,7 +371,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
             pcl::Indices inliers;
             float inlier_fraction, error;
 
-            UniformRandIntGenerator rand_generator(0, (int) correspondences_ij.size() - 1);
+            UniformRandIntGenerator rand_generator(0, (int) multivalued_correspondences_.size() - 1);
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
@@ -378,10 +386,11 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                 pcl::Indices target_indices;
 
                 // Draw nr_samples_ random samples
-                selectCorrespondences(correspondences_ij.size(), this->nr_samples_, sample_indices, rand_generator);
+                selectCorrespondences(multivalued_correspondences_.size(), this->nr_samples_, sample_indices,
+                                      rand_generator);
 
                 // Find corresponding features in the target cloud
-                buildIndices(sample_indices, correspondences_ij, source_indices, target_indices);
+                buildIndices(sample_indices, source_indices, target_indices);
 
                 // Apply prerejection
                 if (!this->correspondence_rejector_poly_->thresholdPolygon(source_indices, target_indices)) {
@@ -396,10 +405,11 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                                                                               target_indices, transformation);
 
                 // Transform the input and compute the error (uses input_filtered_)
-                this->getRMSE(inliers, correspondences_ij, transformation, error);
+                this->getRMSE(inliers, transformation, error);
 
                 // If the new fit is better, update results
-                inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(correspondences_ij.size());
+                inlier_fraction = static_cast<float>(inliers.size()) /
+                                  static_cast<float>(multivalued_correspondences_.size());
 
                 if (inlier_fraction > max_inlier_fraction_local) {
                     min_error_local = error;

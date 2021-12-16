@@ -33,4 +33,14 @@ void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointClou
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*normals);
+    int nan_counter = 0;
+    for (const auto &normal: normals->points) {
+        const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
+        if (!std::isfinite(normal_vec[0]) ||
+            !std::isfinite(normal_vec[1]) ||
+            !std::isfinite(normal_vec[2])) {
+            nan_counter++;
+        }
+    }
+    PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
 }

@@ -4,6 +4,8 @@
 #include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/common/norms.h>
 #include <pcl/common/time.h>
+#include <pcl/point_representation.h>
+
 #include "utils.h"
 #include "common.h"
 #include "analysis.h"
@@ -26,7 +28,7 @@ public:
     using Matrix4 = typename pcl::Registration<PointSource, PointTarget>::Matrix4;
     using PointCloudSource = typename pcl::Registration<PointSource, PointTarget>::PointCloudSource;
 
-    SampleConsensusPrerejectiveOMP() {
+    SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation <FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
         setNumberOfThreads(0);
     }
@@ -49,7 +51,6 @@ protected:
     void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;
 
     void buildIndices(const pcl::Indices &sample_indices,
-                      const std::vector<MultivaluedCorrespondence> &correspondences,
                       pcl::Indices &source_indices,
                       pcl::Indices &target_indices);
 
@@ -60,10 +61,7 @@ protected:
 
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
-    void getRMSE(pcl::Indices &inliers,
-                 const std::vector<MultivaluedCorrespondence> &correspondences,
-                 const Matrix4 &transformation,
-                 float &rmse_score);
+    void getRMSE(pcl::Indices &inliers, const Matrix4 &transformation, float &rmse_score);
 
     int estimateMaxIterations(float inlier_fraction);
 
@@ -71,7 +69,7 @@ protected:
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
     unsigned int threads_{};
-
+    typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
 };
 

@@ -6,6 +6,7 @@
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/features/3dsc.h>
 #include <pcl/features/usc.h>
+#include <pcl/features/shot_omp.h>
 #include <pcl/features/rops_estimation.h>
 #include <pcl/common/time.h>
 #include <pcl/surface/gp3.h>
@@ -18,6 +19,7 @@
 typedef pcl::Histogram<135> RoPS135;
 typedef pcl::FPFHSignature33 FPFH;
 typedef pcl::UniqueShapeContext1960 USC;
+typedef pcl::SHOT352 SHOT;
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
@@ -31,11 +33,11 @@ void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const Po
 }
 
 template<>
-inline void estimateFeatures<pcl::FPFHSignature33>(float radius_search, const PointCloudT::Ptr &pcd,
-                                                   const PointCloudT::Ptr &surface,
-                                                   const PointCloudN::Ptr &normals,
-                                                   pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features) {
-    pcl::FPFHEstimationOMP<PointT, pcl::Normal, pcl::FPFHSignature33> fpfh_estimation;
+inline void estimateFeatures<FPFH>(float radius_search, const PointCloudT::Ptr &pcd,
+                                   const PointCloudT::Ptr &surface,
+                                   const PointCloudN::Ptr &normals,
+                                   pcl::PointCloud<FPFH>::Ptr &features) {
+    pcl::FPFHEstimationOMP<PointT, pcl::Normal, FPFH> fpfh_estimation;
     fpfh_estimation.setRadiusSearch(radius_search);
     fpfh_estimation.setInputCloud(pcd);
     fpfh_estimation.setInputNormals(normals);
@@ -43,11 +45,11 @@ inline void estimateFeatures<pcl::FPFHSignature33>(float radius_search, const Po
 }
 
 template<>
-inline void estimateFeatures<pcl::UniqueShapeContext1960>(float radius_search, const PointCloudT::Ptr &pcd,
-                                                          const PointCloudT::Ptr &surface,
-                                                          const PointCloudN::Ptr &normals,
-                                                          pcl::PointCloud<pcl::UniqueShapeContext1960>::Ptr &features) {
-    pcl::UniqueShapeContext<PointT, pcl::UniqueShapeContext1960, pcl::ReferenceFrame> shape_context;
+inline void estimateFeatures<USC>(float radius_search, const PointCloudT::Ptr &pcd,
+                                  const PointCloudT::Ptr &surface,
+                                  const PointCloudN::Ptr &normals,
+                                  pcl::PointCloud<USC>::Ptr &features) {
+    pcl::UniqueShapeContext<PointT, USC, pcl::ReferenceFrame> shape_context;
     shape_context.setInputCloud(pcd);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
@@ -81,39 +83,56 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Pt
 
     // Perform triangulation.
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-	pcl::search::KdTree<pcl::PointNormal>::Ptr tree_n(new pcl::search::KdTree<pcl::PointNormal>);
-	tree_n->setInputCloud(pcd_with_normals);
+    pcl::search::KdTree<pcl::PointNormal>::Ptr tree_n(new pcl::search::KdTree<pcl::PointNormal>);
+    tree_n->setInputCloud(pcd_with_normals);
 
-	pcl::GreedyProjectionTriangulation<pcl::PointNormal> triangulation;
-	pcl::PolygonMesh triangles;
-	triangulation.setSearchRadius(radius_search);
-	triangulation.setMu(2.5);
-	triangulation.setMaximumNearestNeighbors(100);
-	triangulation.setMaximumSurfaceAngle(M_PI / 4); // 45 degrees.
-	triangulation.setNormalConsistency(false);
-	triangulation.setMinimumAngle(M_PI / 18); // 10 degrees.
-	triangulation.setMaximumAngle(2 * M_PI / 3); // 120 degrees.
-	triangulation.setInputCloud(pcd_with_normals);
-	triangulation.setSearchMethod(tree_n);
-	triangulation.reconstruct(triangles);
+    pcl::GreedyProjectionTriangulation<pcl::PointNormal> triangulation;
+    pcl::PolygonMesh triangles;
+    triangulation.setSearchRadius(radius_search);
+    triangulation.setMu(2.5);
+    triangulation.setMaximumNearestNeighbors(100);
+    triangulation.setMaximumSurfaceAngle(M_PI / 4); // 45 degrees.
+    triangulation.setNormalConsistency(false);
+    triangulation.setMinimumAngle(M_PI / 18); // 10 degrees.
+    triangulation.setMaximumAngle(2 * M_PI / 3); // 120 degrees.
+    triangulation.setInputCloud(pcd_with_normals);
+    triangulation.setSearchMethod(tree_n);
+    triangulation.reconstruct(triangles);
 
-	// Note: you should only compute descriptors for chosen keypoints. It has
-	// been omitted here for simplicity.
+    // Note: you should only compute descriptors for chosen keypoints. It has
+    // been omitted here for simplicity.
 
-	// RoPs estimation object.
-	pcl::ROPSEstimation<pcl::PointXYZ, RoPS135> rops;
-	rops.setInputCloud(pcd);
+    // RoPs estimation object.
+    pcl::ROPSEstimation<pcl::PointXYZ, RoPS135> rops;
+    rops.setInputCloud(pcd);
 //	rops.setSearchMethod(tree); TODO: is it necessary?
-	rops.setRadiusSearch(radius_search);
-	rops.setTriangles(triangles.polygons);
-	// Number of partition bins that is used for distribution matrix calculation.
-	rops.setNumberOfPartitionBins(5);
-	// The greater the number of rotations is, the bigger the resulting descriptor.
-	// Make sure to change the histogram size accordingly.
-	rops.setNumberOfRotations(3);
-	// Support radius that is used to crop the local surface of the point.
-	rops.setSupportRadius(radius_search);
-	rops.compute(*features);
+    rops.setRadiusSearch(radius_search);
+    rops.setTriangles(triangles.polygons);
+    // Number of partition bins that is used for distribution matrix calculation.
+    rops.setNumberOfPartitionBins(5);
+    // The greater the number of rotations is, the bigger the resulting descriptor.
+    // Make sure to change the histogram size accordingly.
+    rops.setNumberOfRotations(3);
+    // Support radius that is used to crop the local surface of the point.
+    rops.setSupportRadius(radius_search);
+    rops.compute(*features);
+}
+
+template<>
+inline void estimateFeatures<SHOT>(float radius_search, const PointCloudT::Ptr &pcd,
+                                           const PointCloudT::Ptr &surface,
+                                           const PointCloudN::Ptr &normals,
+                                           pcl::PointCloud<SHOT>::Ptr &features) {
+
+    // SHOT estimation object.
+    pcl::SHOTEstimationOMP<pcl::PointXYZ, pcl::Normal, SHOT> shot;
+    shot.setInputCloud(pcd);
+//	shot.setSearchSurface(surface);
+    shot.setInputNormals(normals);
+    // The radius that defines which of the keypoint's neighbors are described.
+    // If too large, there may be clutter, and if too small, not enough points may be found.
+    shot.setRadiusSearch(radius_search);
+    shot.compute(*features);
 }
 
 template<typename FeatureT>
