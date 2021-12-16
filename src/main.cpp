@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <string>
+#include <filesystem>
 
 #include <pcl/io/ply_io.h>
 #include <pcl/common/io.h>
@@ -9,21 +10,12 @@
 #include "filter.h"
 #include "downsample.h"
 
-int main(int argc, char **argv) {
-    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
+namespace fs = std::filesystem;
 
+std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     // Point clouds
     PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
 
-    // Get input src and tgt
-    if (argc != 2) {
-        pcl::console::print_error("Syntax is: %s config.yaml\n", argv[0]);
-        exit(1);
-    }
-
-    // Load parameters from config
-    YamlConfig config;
-    config.init(argv[1]);
     std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config);
 
     // Load src and tgt
@@ -48,6 +40,7 @@ int main(int argc, char **argv) {
     std::string testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
                            tgt_filename.substr(0, tgt_filename.find_last_of('.'));
 
+    std::vector<AlignmentAnalysis> analyses;
     for (const auto &parameters: parameters_container) {
         // Perform alignment
         pcl::console::print_highlight("Starting alignment...\n");
@@ -60,8 +53,10 @@ int main(int argc, char **argv) {
             analysis = align_point_clouds<USC>(src, tgt, parameters).getAlignmentAnalysis(parameters);
         } else if (descriptor_id == "rops") {
             analysis = align_point_clouds<RoPS135>(src, tgt, parameters).getAlignmentAnalysis(parameters);
+        } else if (descriptor_id == "shot"){
+            analysis = align_point_clouds<SHOT>(src, tgt, parameters).getAlignmentAnalysis(parameters);
         } else {
-            pcl::console::print_error("Descriptor isn't supported!\n");
+            pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
         }
         if (analysis.alignmentHasConverged()) {
             analysis.start(transformation_gt, testname);
@@ -69,6 +64,48 @@ int main(int argc, char **argv) {
                 analysis.saveFilesForDebug(src, testname);
             }
         }
+        analyses.push_back(analysis);
+    }
+    return analyses;
+}
+
+void runTests(const std::vector<YAML::Node> &tests, const std::string &testname) {
+    std::string filepath = constructPath(testname, "results", "csv");
+    std::fstream fout;
+    fout.open(filepath, std::ios_base::out);
+    if (!fout.is_open()) {
+        perror(("error while opening file " + filepath).c_str());
+    }
+    printAnalysisHeader(fout);
+    for (auto &test: tests) {
+        YamlConfig config;
+        config.config = (*test.begin()).second;
+        auto analyses = runTest(config);
+        for (const auto &analysis: analyses) {
+            fout << analysis;
+        }
+    }
+    fout.close();
+}
+
+int main(int argc, char **argv) {
+    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
+
+    // Get input src and tgt
+    if (argc != 2) {
+        pcl::console::print_error("Syntax is: %s config.yaml\n", argv[0]);
+        exit(1);
+    }
+
+    // Load parameters from config
+    YamlConfig config;
+    config.init(argv[1]);
+    auto tests = config.get<std::vector<YAML::Node>>("tests");
+    if (tests.has_value()) {
+        std::string filename = fs::path(argv[1]).filename();
+        runTests(tests.value(), filename.erase(filename.length() - 5));
+    } else {
+        runTest(config);
     }
 }
 

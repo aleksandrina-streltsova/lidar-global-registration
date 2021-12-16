@@ -36,6 +36,8 @@ public:
         return has_converged_;
     }
 
+    friend std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis);
+
 private:
     AlignmentParameters parameters_;
     int iterations_;
@@ -48,6 +50,7 @@ private:
     float pcd_error_, r_error_, t_error_;
     std::vector<MultivaluedCorrespondence> correspondences_;
     pcl::Indices inliers_;
+    std::string testname_;
     bool has_converged_ = false;
 
     std::vector<MultivaluedCorrespondence> getCorrectCorrespondences(const Eigen::Matrix4f &transformation_gt,
@@ -62,5 +65,7 @@ private:
 
     void save(const std::string &testname);
 };
+
+void printAnalysisHeader(std::ostream &out);
 
 #endif

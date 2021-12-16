@@ -60,6 +60,7 @@ std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorresponden
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
+    testname_ = testname;
     float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
     transformation_gt_ = transformation_gt;
 
@@ -104,29 +105,10 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout
-                    << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-            fout << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-            fout << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
+            printAnalysisHeader(fout);
         }
-        fout << VERSION << "," << parameters_.descriptor_id << "," << testname << "," << fitness_ << "," << rmse_ << ",";
-        fout << correspondence_count_ << "," << correct_correspondence_count_ << ",";
-        fout << inlier_count_ << "," << correct_inlier_count_ << ",";
-        fout << parameters_.voxel_size << ",";
-        fout << parameters_.normal_radius_coef << ",";
-        fout << parameters_.feature_radius_coef << ",";
-        fout << parameters_.distance_thr_coef << ",";
-        fout << parameters_.edge_thr_coef << ",";
-        fout << iterations_ << ",";
-        fout << parameters_.reciprocal << ",";
-        fout << parameters_.randomness << ",";
-        auto func = getUniquenessFunction(parameters_.func_id);
-        if (func != nullptr) {
-            fout << parameters_.func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
-        } else {
-            fout << ",,,";
-        }
-        fout << r_error_ << "," << t_error_ << "," << pcd_error_ << "\n";
+        fout << *this;
+        fout.close();
     } else {
         perror(("error while opening file " + filepath).c_str());
     }
@@ -143,4 +125,33 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
     pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_fullsize_aligned);
     pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_fullsize_aligned_gt);
+}
+
+void printAnalysisHeader(std::ostream &out) {
+    out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
+    out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
+    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
+}
+
+std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
+    stream << VERSION << "," << analysis.parameters_.descriptor_id << "," << analysis.testname_ << ","
+           << analysis.fitness_ << "," << analysis.rmse_ << ",";
+    stream << analysis.correspondence_count_ << "," << analysis.correct_correspondence_count_ << ",";
+    stream << analysis.inlier_count_ << "," << analysis.correct_inlier_count_ << ",";
+    stream << analysis.parameters_.voxel_size << ",";
+    stream << analysis.parameters_.normal_radius_coef << ",";
+    stream << analysis.parameters_.feature_radius_coef << ",";
+    stream << analysis.parameters_.distance_thr_coef << ",";
+    stream << analysis.parameters_.edge_thr_coef << ",";
+    stream << analysis.iterations_ << ",";
+    stream << analysis.parameters_.reciprocal << ",";
+    stream << analysis.parameters_.randomness << ",";
+    auto func = getUniquenessFunction(analysis.parameters_.func_id);
+    if (func != nullptr) {
+        stream << analysis.parameters_.func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
+    } else {
+        stream << ",,,";
+    }
+    stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << "\n";
+    return stream;
 }
