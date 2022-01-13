@@ -2292,7 +2292,7 @@ tests:
         randomness: 1
         inlier_fraction: 0.1
         ground_truth: data/kizhi/ground_truth.csv
-        source: data/kizhi/downsampled_0.02/kig_097 (2)_95.ply
+        source: data/kizhi/downsampled_0.02/kig_097_95.ply
         target: data/kizhi/downsampled_0.02/kig_094_92.ply
     - test:
         voxel_size: 0.02
@@ -2307,7 +2307,7 @@ tests:
         randomness: 1
         inlier_fraction: 0.1
         ground_truth: data/kizhi/ground_truth.csv
-        source: data/kizhi/downsampled_0.02/kig_097 (2)_95.ply
+        source: data/kizhi/downsampled_0.02/kig_097_95.ply
         target: data/kizhi/downsampled_0.02/kig_095_93.ply
     - test:
         voxel_size: 0.02
@@ -2322,5 +2322,5 @@ tests:
         randomness: 1
         inlier_fraction: 0.1
         ground_truth: data/kizhi/ground_truth.csv
-        source: data/kizhi/downsampled_0.02/kig_097 (2)_95.ply
+        source: data/kizhi/downsampled_0.02/kig_097_95.ply
         target: data/kizhi/downsampled_0.02/kig_096_94.ply
