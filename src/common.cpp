@@ -37,6 +37,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.confidence = config.get<float>("confidence").value();
     parameters.inlier_fraction = config.get<float>("inlier_fraction").value();
     parameters.reciprocal = config.get<bool>("reciprocal").value();
+    parameters.use_bfmatcher = config.get<bool>("bf", false);
     parameters.randomness = config.get<int>("randomness").value();
     parameters.n_samples = config.get<int>("n_samples").value();
     parameters_container.push_back(parameters);

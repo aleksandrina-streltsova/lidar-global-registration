@@ -16,11 +16,6 @@
 #include "downsample.h"
 #include "sac_prerejective_omp.h"
 
-typedef pcl::Histogram<135> RoPS135;
-typedef pcl::FPFHSignature33 FPFH;
-typedef pcl::UniqueShapeContext1960 USC;
-typedef pcl::SHOT352 SHOT;
-
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
 
@@ -189,6 +184,9 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
 
     if (parameters.reciprocal) {
         align.enableMutualFiltering();
+    }
+    if (parameters.use_bfmatcher) {
+        align.useBFMatcher();
     }
 
     align.setInputSource(src);

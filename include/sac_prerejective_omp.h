@@ -33,11 +33,17 @@ public:
         setNumberOfThreads(0);
     }
 
-    void enableMutualFiltering() {
+    // TODO: fix
+    inline void enableMutualFiltering() {
         reciprocal_ = true;
     }
 
     void setConfidence(float confidence);
+
+    // TODO: fix
+    inline void useBFMatcher() {
+        use_bfmatcher_ = true;
+    }
 
     float getRMSEScore() const;
 
@@ -65,12 +71,20 @@ protected:
 
     int estimateMaxIterations(float inlier_fraction);
 
+    void findCorrespondencesFlann();
+
+    void findCorrespondencesBF();
+
     bool reciprocal_ = false;
+    bool use_bfmatcher_ = false;
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
     unsigned int threads_{};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
+
+private:
+    unsigned int getNumberOfThreads();
 };
 
 #include "impl/sac_prerejective_omp.hpp"

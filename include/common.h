@@ -4,7 +4,9 @@
 #include <pcl/types.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include <pcl/point_representation.h>
 
+#include <opencv2/core/mat.hpp>
 #include <Eigen/Core>
 
 #include "config.h"
@@ -17,6 +19,8 @@
 #define COLOR_BLUE 0x0000ff
 #define COLOR_WHITE 0xffffff
 #define DEBUG_N_EDGES 100ul
+#define ROPS_DIM 135
+
 // Types
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointXYZRGB PointColoredT;
@@ -24,13 +28,25 @@ typedef pcl::PointCloud<PointT> PointCloudT;
 typedef pcl::PointCloud<PointColoredT> PointCloudColoredT;
 typedef pcl::PointCloud<pcl::Normal> PointCloudN;
 
+// Feature types
+typedef pcl::Histogram<ROPS_DIM> RoPS135;
+typedef pcl::FPFHSignature33 FPFH;
+typedef pcl::UniqueShapeContext1960 USC;
+typedef pcl::SHOT352 SHOT;
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(pcl::Histogram<ROPS_DIM>, (float[ROPS_DIM], histogram, histogram))
+
+template<>
+class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepresentation<RoPS135> {
+};
+
 struct AlignmentParameters {
     bool downsample;
     float voxel_size;
     float edge_thr_coef, distance_thr_coef;
     float normal_radius_coef, feature_radius_coef;
     float confidence, inlier_fraction;
-    bool reciprocal;
+    bool reciprocal, use_bfmatcher;
     int randomness, n_samples;
     std::string func_id, descriptor_id;
     std::optional<int> max_iterations;
@@ -65,6 +81,13 @@ struct HashEigen {
         return seed;
     }
 };
+
+template<typename FeatureT>
+void pcl2cv(int nr_dims, typename pcl::PointCloud<FeatureT>::ConstPtr &src, cv::OutputArray &dst) {
+    if (src->empty()) return;
+    cv::Mat _src(src->size(), nr_dims, CV_32FC1, (void *) src->data(), sizeof(src->points[0]));
+    _src.copyTo(dst);
+}
 
 struct PointEqual {
 public:

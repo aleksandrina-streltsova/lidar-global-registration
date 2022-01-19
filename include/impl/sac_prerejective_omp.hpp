@@ -1,6 +1,8 @@
 #ifndef REGISTRATION_SAC_PREREJECTIVE_OMP_HPP
 #define REGISTRATION_SAC_PREREJECTIVE_OMP_HPP
 
+#include <opencv2/features2d.hpp>
+
 template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setNumberOfThreads(unsigned int nr_threads) {
     if (nr_threads == 0)
@@ -170,6 +172,146 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectC
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
+unsigned int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getNumberOfThreads() {
+    unsigned int threads = threads_;
+#if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
+    if (threads_ == 0) {
+        threads = omp_get_num_procs();
+        PCL_DEBUG("[%s::computeTransformation] Automatic number of threads requested, choosing %i threads.\n",
+                  this->getClassName().c_str(),
+                  threads);
+    }
+#else
+    // Parallelization desired, but not available
+    PCL_WARN ("[SampleConsensusPrerejectiveOMP::computeTransformation] Parallelization is requested, but OpenMP 3.1 is not available! Continuing without parallelization.\n");
+    threads = -1;
+#endif
+    return threads;
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
+void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::findCorrespondencesFlann() {
+    unsigned int threads = getNumberOfThreads();
+
+    // Feature correspondence set
+    std::vector<MultivaluedCorrespondence> correspondences_ij(this->input_->size());
+
+    float dists_sum = 0.f;
+#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij) reduction(+:dists_sum)
+    for (int i = 0; i < this->input_->size(); i++) {
+        if (point_representation_->isValid(this->input_features_->points[i])) {
+            correspondences_ij[i].query_idx = i;
+            pcl::Indices &match_indices = correspondences_ij[i].match_indices;
+            match_indices.resize(this->k_correspondences_);
+            std::vector<float> match_distances(this->k_correspondences_);
+            this->feature_tree_->nearestKSearch(*(this->input_features_),
+                                                i,
+                                                this->k_correspondences_,
+                                                match_indices,
+                                                match_distances);
+            dists_sum += match_distances[0];
+        }
+    }
+    PCL_DEBUG("[%s::computeTransformation] average distance to nearest neighbour: %0.7f.\n",
+              this->getClassName().c_str(),
+              dists_sum / (float) this->input_->size());
+
+    if (reciprocal_) {
+        pcl::KdTreeFLANN<FeatureT> feature_tree_src_(new pcl::KdTreeFLANN<FeatureT>);
+        feature_tree_src_.setInputCloud(this->input_features_);
+
+        std::vector<MultivaluedCorrespondence> correspondences_ji(this->target_->size());
+
+#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ji, feature_tree_src_)
+        for (int j = 0; j < this->target_->size(); ++j) {
+            if (point_representation_->isValid(this->target_features_->points[j])) {
+                correspondences_ji[j].query_idx = j;
+                pcl::Indices &match_indices = correspondences_ji[j].match_indices;
+                match_indices.resize(1);
+                std::vector<float> match_distances(1);
+                feature_tree_src_.nearestKSearch(*(this->target_features_),
+                                                 j,
+                                                 1,
+                                                 match_indices,
+                                                 match_distances);
+            }
+        }
+
+        std::vector<MultivaluedCorrespondence> correspondences_mutual;
+        for (int i = 0; i < this->input_->size(); ++i) {
+            bool reciprocal = false;
+            MultivaluedCorrespondence corr = correspondences_ij[i];
+            for (const int &j: corr.match_indices) {
+                if (!correspondences_ji[j].match_indices.empty() && correspondences_ji[j].match_indices[0] == i) {
+                    reciprocal = true;
+                }
+            }
+            if (reciprocal) {
+                correspondences_mutual.emplace_back(corr);
+            }
+        }
+        correspondences_ij = correspondences_mutual;
+        PCL_DEBUG("[%s::findCorrespondencesFlann] %i correspondences remain after mutual filter.\n",
+                  this->getClassName().c_str(),
+                  correspondences_mutual.size());
+    }
+    for (auto corr: correspondences_ij) {
+        if (corr.query_idx >= 0) {
+            multivalued_correspondences_.emplace_back(corr);
+        }
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
+void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::findCorrespondencesBF() {
+    // TODO: support k > 1, refactor correspondence search
+    assert(this->k_correspondences_ == 1);
+    cv::UMat features_src, features_tgt;
+    int nr_dims = point_representation_->getNumberOfDimensions();
+    pcl2cv<FeatureT>(nr_dims, this->input_features_, features_src);
+    pcl2cv<FeatureT>(nr_dims, this->target_features_, features_tgt);
+    auto matcher = cv::BFMatcher::create(cv::NORM_L2, reciprocal_);
+    std::vector<cv::DMatch> matches;
+    matcher->match(features_src, features_tgt, matches);
+
+    std::vector<MultivaluedCorrespondence> correspondences_ij;
+    for (int i = 0; i < this->input_->size(); ++i) {
+        correspondences_ij.push_back(MultivaluedCorrespondence{matches[i].queryIdx, {matches[i].trainIdx}});
+    }
+    if (reciprocal_) {
+        matches.clear();
+        matcher->match(features_tgt, features_src, matches);
+        std::vector<MultivaluedCorrespondence> correspondences_ji;
+        for (int i = 0; i < this->target_->size(); ++i) {
+            correspondences_ji.push_back(MultivaluedCorrespondence{matches[i].queryIdx, {matches[i].trainIdx}});
+        }
+
+        std::vector<MultivaluedCorrespondence> correspondences_mutual;
+        for (int i = 0; i < this->input_->size(); ++i) {
+            bool reciprocal = false;
+            MultivaluedCorrespondence corr = correspondences_ij[i];
+            for (const int &j: corr.match_indices) {
+                if (!correspondences_ji[j].match_indices.empty() && correspondences_ji[j].match_indices[0] == i) {
+                    reciprocal = true;
+                }
+            }
+            if (reciprocal) {
+                correspondences_mutual.emplace_back(corr);
+            }
+        }
+        correspondences_ij = correspondences_mutual;
+        PCL_DEBUG("[%s::findCorrespondencesBF] %i correspondences remain after mutual filter.\n",
+                  this->getClassName().c_str(),
+                  correspondences_mutual.size());
+    }
+    for (auto corr: correspondences_ij) {
+        if (corr.query_idx >= 0) {
+            multivalued_correspondences_.emplace_back(corr);
+        }
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
 void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::computeTransformation(PointCloudSource &output,
                                                                                                const Eigen::Matrix4f &guess) {
     // Some sanity checks first
@@ -241,89 +383,13 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     float max_inlier_fraction = 0.0f;
     this->converged_ = false;
 
-    int threads = threads_;
-#if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
-    if (threads_ == 0) {
-        threads = omp_get_num_procs();
-        PCL_DEBUG("[%s::computeTransformation] Automatic number of threads requested, choosing %i threads.\n",
-                  this->getClassName().c_str(),
-                  threads);
-    }
-#else
-    // Parallelization desired, but not available
-    PCL_WARN ("[SampleConsensusPrerejectiveOMP::computeTransformation] Parallelization is requested, but OpenMP 3.1 is not available! Continuing without parallelization.\n");
-    threads = -1;
-#endif
-
     // Build correspondences
     {
         pcl::ScopeTime t("Correspondence search");
-
-        // Feature correspondence set
-        std::vector<MultivaluedCorrespondence> correspondences_ij(this->input_->size());
-
-        float dists_sum = 0.f;
-#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ij) reduction(+:dists_sum)
-        for (int i = 0; i < this->input_->size(); i++) {
-            if (point_representation_->isValid(this->input_features_->points[i])) {
-                correspondences_ij[i].query_idx = i;
-                pcl::Indices &match_indices = correspondences_ij[i].match_indices;
-                match_indices.resize(this->k_correspondences_);
-                std::vector<float> match_distances(this->k_correspondences_);
-                this->feature_tree_->nearestKSearch(*(this->input_features_),
-                                                    i,
-                                                    this->k_correspondences_,
-                                                    match_indices,
-                                                    match_distances);
-                dists_sum += match_distances[0];
-            }
-        }
-        PCL_DEBUG("[%s::computeTransformation] average distance to nearest neighbour: %0.7f.\n",
-                  this->getClassName().c_str(),
-                  dists_sum / (float) this->input_->size());
-
-        if (reciprocal_) {
-            pcl::KdTreeFLANN<FeatureT> feature_tree_src_(new pcl::KdTreeFLANN<FeatureT>);
-            feature_tree_src_.setInputCloud(this->input_features_);
-            std::vector<MultivaluedCorrespondence> correspondences_ji(this->target_->size());
-
-#pragma omp parallel for num_threads(threads) default(none) shared(correspondences_ji, feature_tree_src_)
-            for (int j = 0; j < this->target_->size(); ++j) {
-                if (point_representation_->isValid(this->target_features_->points[j])) {
-                    correspondences_ji[j].query_idx = j;
-                    pcl::Indices &match_indices = correspondences_ji[j].match_indices;
-                    match_indices.resize(1);
-                    std::vector<float> match_distances(1);
-                    feature_tree_src_.nearestKSearch(*(this->target_features_),
-                                                     j,
-                                                     1,
-                                                     match_indices,
-                                                     match_distances);
-                }
-            }
-
-            std::vector<MultivaluedCorrespondence> correspondences_mutual;
-            for (int i = 0; i < this->input_->size(); ++i) {
-                bool reciprocal = false;
-                MultivaluedCorrespondence corr = correspondences_ij[i];
-                for (const int &j: corr.match_indices) {
-                    if (!correspondences_ji[j].match_indices.empty() && correspondences_ji[j].match_indices[0] == i) {
-                        reciprocal = true;
-                    }
-                }
-                if (reciprocal) {
-                    correspondences_mutual.emplace_back(corr);
-                }
-            }
-            correspondences_ij = correspondences_mutual;
-            PCL_DEBUG("[%s::computeTransformation] %i correspondences remain after mutual filter.\n",
-                      this->getClassName().c_str(),
-                      correspondences_mutual.size());
-        }
-        for (auto corr: correspondences_ij) {
-            if (corr.query_idx >= 0) {
-                multivalued_correspondences_.emplace_back(corr);
-            }
+        if (use_bfmatcher_) {
+            findCorrespondencesBF();
+        } else {
+            findCorrespondencesFlann();
         }
     }
     this->max_iterations_ = std::min(
@@ -352,6 +418,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     // Start
     {
         pcl::ScopeTime t("RANSAC");
+        int threads = getNumberOfThreads();
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
 #pragma omp parallel \
     num_threads(threads) \
