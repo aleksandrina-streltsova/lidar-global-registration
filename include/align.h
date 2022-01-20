@@ -127,7 +127,10 @@ inline void estimateFeatures<SHOT>(float radius_search, const PointCloudT::Ptr &
     // The radius that defines which of the keypoint's neighbors are described.
     // If too large, there may be clutter, and if too small, not enough points may be found.
     shot.setRadiusSearch(radius_search);
+    PCL_WARN("[estimateFeatures<SHOT>] Points probably have NaN normals in their neighbourhood\n");
+    pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
+    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }
 
 template<typename FeatureT>
