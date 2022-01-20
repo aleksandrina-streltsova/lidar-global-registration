@@ -18,7 +18,7 @@ std::vector<float> computeDistanceMean(const pcl::PointCloud<pcl::FPFHSignature3
 std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features);
 
 void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
-                      const std::string &testname, const std::string &func_identifier,
+                      const AlignmentParameters &parameters, const std::string &func_identifier,
                       bool is_source, const Eigen::Matrix4f &transformation_gt);
 
 UniquenessFunction getUniquenessFunction(const std::string &identifier) {
@@ -35,7 +35,7 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
                       const PointCloudT::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
                       PointCloudT::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
                       const Eigen::Matrix4f &transformation_gt,
-                      const std::string &testname, bool is_source) {
+                      const AlignmentParameters &parameters, bool is_source) {
     std::vector<float> uniquenesses = func(features);
     float threshold = UNIQUENESS_THRESHOLD;
     pcl::Indices indices;
@@ -48,7 +48,7 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
     pcl::PointIndices::Ptr point_indices(new pcl::PointIndices);
     point_indices->indices = indices;
 
-    saveUniquenesses(pcd, uniquenesses, indices, testname, func_identifier, is_source, transformation_gt);
+    saveUniquenesses(pcd, uniquenesses, indices, parameters, func_identifier, is_source, transformation_gt);
 
     // Filter point cloud
     pcl::ExtractIndices<PointT> pcd_filter;
@@ -129,10 +129,10 @@ std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignatur
 }
 
 void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
-                      const std::string &testname, const std::string &func_identifier,
+                      const AlignmentParameters &parameters, const std::string &func_identifier,
                       bool is_source, const Eigen::Matrix4f &transformation_gt) {
     std::string name = std::string("uniquenesses_") + (is_source ? "src_" : "tgt_") + func_identifier;
-    std::string filepath = constructPath(testname, name, "csv");
+    std::string filepath = constructPath(parameters, name, "csv");
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
@@ -157,7 +157,7 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     if (is_source) {
         pcl::transformPointCloud(dst, dst, transformation_gt);
     }
-    filepath = constructPath(testname, name);
+    filepath = constructPath(parameters, name);
     pcl::io::savePLYFileASCII(filepath, dst);
 }
 

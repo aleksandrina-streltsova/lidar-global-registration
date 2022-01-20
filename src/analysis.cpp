@@ -114,17 +114,17 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
 }
 
-void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const std::string &testname) {
+void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const AlignmentParameters &parameters) {
     PointCloudT::Ptr src_fullsize_aligned(new PointCloudT), src_fullsize_aligned_gt(new PointCloudT);
-    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname);
-    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, testname, true);
-    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, testname);
-    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, testname);
+    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters);
+    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
+    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
+    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned"), *src_fullsize_aligned);
-    pcl::io::savePLYFileBinary(constructPath(testname, "aligned_gt"), *src_fullsize_aligned_gt);
+    pcl::io::savePLYFileBinary(constructPath(parameters, "aligned"), *src_fullsize_aligned);
+    pcl::io::savePLYFileBinary(constructPath(parameters, "aligned_gt"), *src_fullsize_aligned_gt);
 }
 
 void printAnalysisHeader(std::ostream &out) {

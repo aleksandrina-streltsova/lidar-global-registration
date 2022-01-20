@@ -50,6 +50,8 @@ struct AlignmentParameters {
     int randomness, n_samples;
     std::string func_id, descriptor_id;
     std::optional<int> max_iterations;
+
+    std::string testname;
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config);
@@ -113,17 +115,17 @@ void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers,
-                             const std::string &testname);
+                             const AlignmentParameters &parameters);
 
 void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
-                         const std::string &testname, bool sparse = false);
+                         const AlignmentParameters &parameters, bool sparse = false);
 
 void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
-                                 const std::string &testname);
+                                 const AlignmentParameters &parameters);
 
 void setPointColor(PointColoredT &point, int color);
 
@@ -132,6 +134,9 @@ void mixPointColor(PointColoredT &point, int color);
 void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
 std::string constructPath(const std::string &test, const std::string &name,
+                          const std::string &extension = "ply", bool with_version = true);
+
+std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);
 
 #endif

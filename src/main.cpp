@@ -61,7 +61,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
         if (analysis.alignmentHasConverged()) {
             analysis.start(transformation_gt, testname);
             if (config.get<bool>("debug", false)) {
-                analysis.saveFilesForDebug(src, testname);
+                analysis.saveFilesForDebug(src, parameters);
             }
         }
         analyses.push_back(analysis);

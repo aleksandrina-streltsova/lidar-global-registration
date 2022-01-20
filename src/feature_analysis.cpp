@@ -11,12 +11,12 @@ typedef pcl::PointXYZLNormal PointTN;
 typedef pcl::PointCloud<PointTN> PointCloudTN;
 
 void saveNormals(const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
-                 const Eigen::Matrix4f &transformation_gt, bool is_source, const std::string &testname) {
+                 const Eigen::Matrix4f &transformation_gt, bool is_source,  const AlignmentParameters &parameters) {
     pcl::console::print_highlight("Saving %s normals...\n", is_source ? "source" : "target");
     PointCloudTN pcd_with_normals;
     pcl::concatenateFields(*pcd, *normals, pcd_with_normals);
     pcl::transformPointCloudWithNormals(pcd_with_normals, pcd_with_normals, transformation_gt);
-    std::string filepath = constructPath(testname,  std::string("normals_")+ (is_source ? "src" : "tgt"));
+    std::string filepath = constructPath(parameters,  std::string("normals_")+ (is_source ? "src" : "tgt"));
     pcl::io::savePLYFileBinary(filepath, pcd_with_normals);
 }
 
@@ -38,7 +38,7 @@ std::vector<int> getPointIds(const PointCloudT::Ptr &all_points, const PointClou
 
 void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
-                           const std::string &testname, const std::string &extracted_path) {
+                           const AlignmentParameters &parameters, const std::string &extracted_path) {
     PointCloudT::Ptr src_aligned_gt(new PointCloudT), extracted_points(new PointCloudT);
 
     if (pcl::io::loadPLYFile<PointT>(extracted_path, *extracted_points) < 0) {
@@ -47,7 +47,7 @@ void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &
     }
 
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
-    std::string filepath = constructPath(testname,  "ids", "csv");
+    std::string filepath = constructPath(parameters,  "ids", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     std::vector<int> src_ids = getPointIds(src_aligned_gt, extracted_points);
     std::vector<int> tgt_ids = getPointIds(tgt, extracted_points);

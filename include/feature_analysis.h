@@ -7,9 +7,9 @@
 #include "common.h"
 
 template <typename FeatureT>
-void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features, const std::string &testname, bool is_source) {
+void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features,  const AlignmentParameters &parameters, bool is_source) {
     pcl::console::print_highlight("Saving %s histograms...\n", is_source ? "source" : "target");
-    std::string filepath = constructPath(testname,  std::string("histograms_")+ (is_source ? "src" : "tgt"), "csv");
+    std::string filepath = constructPath(parameters,  std::string("histograms_")+ (is_source ? "src" : "tgt"), "csv");
     std::fstream fout(filepath, std::ios_base::out);
     int n = features->size(), m = features->points[0].descriptorSize();
     for (int i = 0; i < n; ++i) {
@@ -26,9 +26,9 @@ void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features, const
 }
 
 void saveNormals(const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
-                 const Eigen::Matrix4f &transformation_gt, bool is_source, const std::string &testname);
+                 const Eigen::Matrix4f &transformation_gt, bool is_source, const AlignmentParameters &parameters);
 
 void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
-                           const std::string &testname, const std::string &extracted_path);
+                           const AlignmentParameters &parameters, const std::string &extracted_path);
 #endif

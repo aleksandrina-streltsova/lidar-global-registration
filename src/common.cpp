@@ -122,8 +122,7 @@ float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
 void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                             const pcl::Indices &inliers,
-                             const std::string &testname) {
+                             const pcl::Indices &inliers, const AlignmentParameters &parameters) {
     PointCloudColoredT dst;
     dst.resize(src->size());
     for (int i = 0; i < src->size(); ++i) {
@@ -141,7 +140,7 @@ void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
     for (const auto &correspondence: correct_correspondences) {
         mixPointColor(dst.points[correspondence.query_idx], COLOR_WHITE);
     }
-    pcl::io::savePLYFileBinary(constructPath(testname, "downsampled"), dst);
+    pcl::io::savePLYFileBinary(constructPath(parameters, "downsampled"), dst);
 }
 
 void writeEdgesToPLYFileASCII(const std::vector<MultivaluedCorrespondence> &correspondences,
@@ -177,7 +176,7 @@ void writeEdgesToPLYFileASCII(const std::vector<MultivaluedCorrespondence> &corr
 void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
-                         const std::string &testname, bool sparse) {
+                         const AlignmentParameters &parameters, bool sparse) {
     PointCloudColoredT dst;
     PointCloudT::Ptr src_aligned_gt(new PointCloudT);
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
@@ -204,9 +203,9 @@ void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::Co
     }
     std::string filepath;
     if (sparse) {
-        filepath = constructPath(testname, "correspondences_sparse");
+        filepath = constructPath(parameters, "correspondences_sparse");
     } else {
-        filepath = constructPath(testname, "correspondences");
+        filepath = constructPath(parameters, "correspondences");
     }
     pcl::io::savePLYFileASCII(filepath, dst);
     if (sparse) {
@@ -223,8 +222,8 @@ void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::Co
 void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
-                                 const std::string &testname) {
-    std::string filepath = constructPath(testname, "distances", "csv");
+                                 const AlignmentParameters &parameters) {
+    std::string filepath = constructPath(parameters, "distances", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
@@ -263,6 +262,16 @@ void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, s
 std::string
 constructPath(const std::string &test, const std::string &name, const std::string &extension, bool with_version) {
     std::string filename = test + "_" + name;
+    if (with_version) {
+        filename += "_" + VERSION;
+    }
+    filename += "." + extension;
+    return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
+}
+
+std::string
+constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension, bool with_version) {
+    std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id;
     if (with_version) {
         filename += "_" + VERSION;
     }

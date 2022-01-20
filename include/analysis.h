@@ -30,7 +30,7 @@ public:
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
-    void saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const std::string &testname);
+    void saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const AlignmentParameters &parameters);
 
     inline bool alignmentHasConverged() const {
         return has_converged_;
