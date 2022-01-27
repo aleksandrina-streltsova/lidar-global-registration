@@ -40,6 +40,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.use_bfmatcher = config.get<bool>("bf", false);
     parameters.randomness = config.get<int>("randomness").value();
     parameters.n_samples = config.get<int>("n_samples").value();
+    parameters.save_features = config.get<bool>("save_features", false);
     parameters_container.push_back(parameters);
 
     auto voxel_sizes = config.getVector<float>("voxel_size").value();

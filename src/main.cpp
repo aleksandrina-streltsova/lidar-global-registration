@@ -41,7 +41,11 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
                            tgt_filename.substr(0, tgt_filename.find_last_of('.'));
 
     std::vector<AlignmentAnalysis> analyses;
-    for (const auto &parameters: parameters_container) {
+    for (auto &parameters: parameters_container) {
+        parameters.testname = testname;
+        if (parameters.save_features) {
+            saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
+        }
         // Perform alignment
         pcl::console::print_highlight("Starting alignment...\n");
 

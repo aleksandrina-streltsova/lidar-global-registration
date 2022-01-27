@@ -30,5 +30,9 @@ void saveNormals(const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
 
 void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
+                           const AlignmentParameters &parameters, const PointCloudT::Ptr &extracted_points);
+
+void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+                           const Eigen::Matrix4f &transformation_gt,
                            const AlignmentParameters &parameters, const std::string &extracted_path);
 #endif

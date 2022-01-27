@@ -15,6 +15,7 @@
 #include "common.h"
 #include "downsample.h"
 #include "sac_prerejective_omp.h"
+#include "feature_analysis.h"
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
@@ -172,6 +173,10 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
     estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, features_src);
     estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, features_tgt);
 
+    if (parameters.save_features) {
+        saveFeatures<FeatureT>(features_src, parameters, true);
+        saveFeatures<FeatureT>(features_tgt, parameters, false);
+    }
     // Filter point clouds
     // TODO: fix filtering (separate debug from actual filtering)
 //    auto func_id = parameters.func_id;

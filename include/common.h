@@ -51,6 +51,7 @@ struct AlignmentParameters {
     std::string func_id, descriptor_id;
     std::optional<int> max_iterations;
 
+    bool save_features;
     std::string testname;
 };
 

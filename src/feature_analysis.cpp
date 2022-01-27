@@ -4,6 +4,7 @@
 #include <pcl/common/io.h>
 #include <pcl/common/transforms.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <downsample.h>
 
 #include "feature_analysis.h"
 
@@ -30,24 +31,27 @@ std::vector<int> getPointIds(const PointCloudT::Ptr &all_points, const PointClou
     std::vector<float> distances(1);
 
     for (int i = 0; i < n; ++i) {
-        tree.nearestKSearch(*extracted_points, i,1,indices,distances);
+        tree.nearestKSearch(*extracted_points, i, 1, indices, distances);
         ids[i] = indices[0];
     }
     return ids;
 }
 
-void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &tgt,
+void saveExtractedPointIds(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &tgt_fullsize,
                            const Eigen::Matrix4f &transformation_gt,
-                           const AlignmentParameters &parameters, const std::string &extracted_path) {
-    PointCloudT::Ptr src_aligned_gt(new PointCloudT), extracted_points(new PointCloudT);
-
-    if (pcl::io::loadPLYFile<PointT>(extracted_path, *extracted_points) < 0) {
-        pcl::console::print_error("Error loading file with extracted point!\n");
-        exit(1);
+                           const AlignmentParameters &parameters, const PointCloudT::Ptr &extracted_points) {
+    PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
+    // Downsample
+    if (parameters.downsample) {
+        pcl::console::print_highlight("Downsampling...\n");
+        downsamplePointCloud(src_fullsize, src, parameters.voxel_size);
+        downsamplePointCloud(tgt_fullsize, tgt, parameters.voxel_size);
     }
 
+    PointCloudT::Ptr src_aligned_gt(new PointCloudT);
+
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
-    std::string filepath = constructPath(parameters,  "ids", "csv");
+    std::string filepath = constructPath(parameters, "ids", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     std::vector<int> src_ids = getPointIds(src_aligned_gt, extracted_points);
     std::vector<int> tgt_ids = getPointIds(tgt, extracted_points);
@@ -61,4 +65,15 @@ void saveExtractedPointIds(const PointCloudT::Ptr &src, const PointCloudT::Ptr &
         fout << src_aligned_gt->points[src_id].z << "," << tgt->points[tgt_id].z << "\n";
     }
     fout.close();
+}
+
+void saveExtractedPointIds(const PointCloudT::Ptr &src_fullsize, const PointCloudT::Ptr &tgt_fullsize,
+                           const Eigen::Matrix4f &transformation_gt,
+                           const AlignmentParameters &parameters, const std::string &extracted_path) {
+    PointCloudT::Ptr extracted_points(new PointCloudT);
+    if (pcl::io::loadPLYFile<PointT>(extracted_path, *extracted_points) < 0) {
+        pcl::console::print_error("Error loading file with extracted point!\n");
+        exit(1);
+    }
+    saveExtractedPointIds(src_fullsize, tgt_fullsize, transformation_gt, parameters, extracted_points);
 }
