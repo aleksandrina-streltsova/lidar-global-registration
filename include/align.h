@@ -195,6 +195,7 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
     }
     if (parameters.use_bfmatcher) {
         align.useBFMatcher();
+        align.setBFBlockSize(parameters.bf_block_size);
     }
 
     align.setInputSource(src);

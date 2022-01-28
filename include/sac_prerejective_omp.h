@@ -9,6 +9,7 @@
 #include "utils.h"
 #include "common.h"
 #include "analysis.h"
+#include "matching.h"
 
 #ifdef _OPENMP
 
@@ -28,7 +29,7 @@ public:
     using Matrix4 = typename pcl::Registration<PointSource, PointTarget>::Matrix4;
     using PointCloudSource = typename pcl::Registration<PointSource, PointTarget>::PointCloudSource;
 
-    SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation <FeatureT>) {
+    SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation<FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
         setNumberOfThreads(0);
     }
@@ -43,6 +44,10 @@ public:
     // TODO: fix
     inline void useBFMatcher() {
         use_bfmatcher_ = true;
+    }
+
+    inline void setBFBlockSize(int bf_block_size) {
+        bf_block_size_ = bf_block_size;
     }
 
     float getRMSEScore() const;
@@ -71,12 +76,11 @@ protected:
 
     int estimateMaxIterations(float inlier_fraction);
 
-    void findCorrespondencesFlann();
-
-    void findCorrespondencesBF();
+    void findCorrespondences();
 
     bool reciprocal_ = false;
     bool use_bfmatcher_ = false;
+    int bf_block_size_ = 10000;
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
     unsigned int threads_{};
