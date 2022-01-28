@@ -166,4 +166,6 @@ void filter_duplicate_points(PointCloudT::Ptr &pcd) {
     std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
     pcd->points.clear();
     std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));
+    pcd->width = unique_points.size();
+    pcd->height = 1;
 }
