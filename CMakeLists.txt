@@ -23,3 +23,6 @@ add_definitions(${PCL_DEFINITIONS})
 add_executable(registration src/main.cpp src/config.cpp src/csv_parser.cpp src/align.cpp src/common.cpp src/filter.cpp src/analysis.cpp src/feature_analysis.cpp src/downsample.cpp)
 target_link_libraries(registration ${PCL_LIBRARIES} ${OpenCV_LIBS} yaml-cpp)
 target_include_directories(registration PUBLIC include/)
+
+enable_testing()
+add_subdirectory(tests)
