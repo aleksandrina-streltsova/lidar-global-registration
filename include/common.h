@@ -22,10 +22,12 @@
 
 // Types
 typedef pcl::PointXYZ PointT;
-typedef pcl::PointXYZRGB PointColoredT;
+typedef pcl::PointNormal PointTN;
+typedef pcl::PointXYZRGBNormal PointColoredTN;
 typedef pcl::PointCloud<PointT> PointCloudT;
-typedef pcl::PointCloud<PointColoredT> PointCloudColoredT;
+typedef pcl::PointCloud<PointColoredTN> PointCloudColoredTN;
 typedef pcl::PointCloud<pcl::Normal> PointCloudN;
+typedef pcl::PointCloud<PointTN> PointCloudTN;
 
 // Feature types
 typedef pcl::Histogram<ROPS_DIM> RoPS135;
@@ -102,31 +104,45 @@ extern const std::string DEFAULT_DESCRIPTOR;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
-std::pair<PointT, PointT> calculateBoundingBox(const PointCloudT::Ptr &pcd);
+template <typename PointT>
+std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
+    float min = std::numeric_limits<float>::min(), max = std::numeric_limits<float>::max();
+    PointT min_point_AABB(max, max, max);
+    PointT max_point_AABB(min, min, min);
+    for (auto p: pcd->points) {
+        min_point_AABB.x = std::min(min_point_AABB.x, p.x);
+        min_point_AABB.y = std::min(min_point_AABB.y, p.y);
+        min_point_AABB.z = std::min(min_point_AABB.z, p.z);
+        max_point_AABB.x = std::max(max_point_AABB.x, p.x);
+        max_point_AABB.y = std::max(max_point_AABB.y, p.y);
+        max_point_AABB.z = std::max(max_point_AABB.z, p.z);
+    }
+    return {min_point_AABB, max_point_AABB};
+}
 
-float getAABBDiagonal(const PointCloudT::Ptr &pcd);
+float getAABBDiagonal(const PointCloudTN::Ptr &pcd);
 
-void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
+void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                             const pcl::Indices &inliers,
-                             const AlignmentParameters &parameters);
+                             const pcl::Indices &inliers, const AlignmentParameters &parameters,
+                             const Eigen::Matrix4f &transformation_gt, bool is_source);
 
-void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
+void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse = false);
 
-void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters);
 
-void setPointColor(PointColoredT &point, int color);
+void setPointColor(PointColoredTN &point, int color);
 
-void mixPointColor(PointColoredT &point, int color);
+void mixPointColor(PointColoredTN &point, int color);
 
-void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
+void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
 std::string constructPath(const std::string &test, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);

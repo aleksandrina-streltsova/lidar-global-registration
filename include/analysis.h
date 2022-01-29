@@ -10,7 +10,7 @@
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
 
-float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
+float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
 class AlignmentAnalysis {
@@ -18,7 +18,7 @@ public:
     AlignmentAnalysis() {}
 
     AlignmentAnalysis(AlignmentParameters parameters,
-                      PointCloudT::ConstPtr src, PointCloudT::ConstPtr tgt, pcl::Indices inliers,
+                      PointCloudTN::ConstPtr src, PointCloudTN::ConstPtr tgt, pcl::Indices inliers,
                       std::vector<MultivaluedCorrespondence> correspondences, float rmse,
                       int iterations, Eigen::Matrix4f transformation) : parameters_(std::move(parameters)),
                                                                         src_(std::move(src)), tgt_(std::move(tgt)),
@@ -41,7 +41,7 @@ public:
 private:
     AlignmentParameters parameters_;
     int iterations_;
-    PointCloudT::ConstPtr src_, tgt_;
+    PointCloudTN::ConstPtr src_, tgt_;
     Eigen::Matrix4f transformation_, transformation_gt_;
     std::vector<MultivaluedCorrespondence> correct_correspondences_;
     int inlier_count_, correct_inlier_count_;

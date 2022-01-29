@@ -4,21 +4,17 @@
 #include <pcl/common/io.h>
 #include <pcl/common/transforms.h>
 #include <pcl/kdtree/kdtree_flann.h>
-#include <downsample.h>
 
 #include "feature_analysis.h"
+#include "downsample.h"
 
-typedef pcl::PointXYZLNormal PointTN;
-typedef pcl::PointCloud<PointTN> PointCloudTN;
-
-void saveNormals(const PointCloudT::Ptr &pcd, const PointCloudN::Ptr &normals,
+void saveNormals(const PointCloudTN::Ptr &pcd,
                  const Eigen::Matrix4f &transformation_gt, bool is_source,  const AlignmentParameters &parameters) {
     pcl::console::print_highlight("Saving %s normals...\n", is_source ? "source" : "target");
-    PointCloudTN pcd_with_normals;
-    pcl::concatenateFields(*pcd, *normals, pcd_with_normals);
-    pcl::transformPointCloudWithNormals(pcd_with_normals, pcd_with_normals, transformation_gt);
+    PointCloudTN pcd_aligned;
+    pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
     std::string filepath = constructPath(parameters,  std::string("normals_")+ (is_source ? "src" : "tgt"));
-    pcl::io::savePLYFileBinary(filepath, pcd_with_normals);
+    pcl::io::savePLYFileBinary(filepath, pcd_aligned);
 }
 
 std::vector<int> getPointIds(const PointCloudT::Ptr &all_points, const PointCloudT::Ptr &extracted_points) {

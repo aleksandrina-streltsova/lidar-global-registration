@@ -20,10 +20,10 @@ std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::M
     return {rotation_error, translation_error};
 }
 
-float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
+float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation,
                                        const Eigen::Matrix4f &transformation_gt) {
-    PointCloudT::Ptr pcd_transformed(new PointCloudT);
+    PointCloudTN::Ptr pcd_transformed(new PointCloudTN);
     Eigen::Matrix4f transformation_diff = transformation.inverse() * transformation_gt;
     pcl::transformPointCloud(*pcd, *pcd_transformed, transformation_diff);
 
@@ -38,7 +38,7 @@ float calculate_point_cloud_mean_error(const PointCloudT::ConstPtr &pcd,
 std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorrespondences(
         const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier
 ) {
-    PointCloudT input_transformed;
+    PointCloudTN input_transformed;
     input_transformed.resize(src_->size());
     pcl::transformPointCloud(*src_, input_transformed, transformation_gt);
 
@@ -48,8 +48,8 @@ std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorresponden
         int query_idx = correspondence.query_idx;
         if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
             int match_idx = correspondence.match_indices[0];
-            PointT source_point(input_transformed.points[query_idx]);
-            PointT target_point(tgt_->points[match_idx]);
+            PointTN source_point(input_transformed.points[query_idx]);
+            PointTN target_point(tgt_->points[match_idx]);
             float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
             if (e < error_threshold) {
                 correct_correspondences.push_back(correspondence);
@@ -119,7 +119,8 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, 
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
     saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
-    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters);
+    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters, transformation_gt_, true);
+    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters, Eigen::Matrix4f::Identity(), false);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);

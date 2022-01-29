@@ -4,6 +4,7 @@
 
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
+#include <pcl/common/copy_point.h>
 #include <pcl/io/ply_io.h>
 
 #include "common.h"
@@ -97,23 +98,8 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     return parameters_container;
 }
 
-std::pair<PointT, PointT> calculateBoundingBox(const PointCloudT::Ptr &pcd) {
-    float min = std::numeric_limits<float>::min(), max = std::numeric_limits<float>::max();
-    PointT min_point_AABB(max, max, max);
-    PointT max_point_AABB(min, min, min);
-    for (auto p: pcd->points) {
-        min_point_AABB.x = std::min(min_point_AABB.x, p.x);
-        min_point_AABB.y = std::min(min_point_AABB.y, p.y);
-        min_point_AABB.z = std::min(min_point_AABB.z, p.z);
-        max_point_AABB.x = std::max(max_point_AABB.x, p.x);
-        max_point_AABB.y = std::max(max_point_AABB.y, p.y);
-        max_point_AABB.z = std::max(max_point_AABB.z, p.z);
-    }
-    return {min_point_AABB, max_point_AABB};
-}
-
-float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
-    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox(pcd);
+float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
+    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointTN>(pcd);
 
     Eigen::Vector3f min_point(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z);
     Eigen::Vector3f max_point(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
@@ -121,31 +107,41 @@ float getAABBDiagonal(const PointCloudT::Ptr &pcd) {
     return (max_point - min_point).norm();
 }
 
-void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
+void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                             const pcl::Indices &inliers, const AlignmentParameters &parameters) {
-    PointCloudColoredT dst;
-    dst.resize(src->size());
-    for (int i = 0; i < src->size(); ++i) {
-        dst.points[i].x = src->points[i].x;
-        dst.points[i].y = src->points[i].y;
-        dst.points[i].z = src->points[i].z;
+                             const pcl::Indices &inliers, const AlignmentParameters &parameters,
+                             const Eigen::Matrix4f &transformation_gt, bool is_source) {
+    PointCloudColoredTN dst;
+    dst.resize(pcd->size());
+    for (int i = 0; i < pcd->size(); ++i) {
+        pcl::copyPoint(pcd->points[i], dst.points[i]);
         setPointColor(dst.points[i], COLOR_BEIGE);
     }
     for (const auto &correspondence: correspondences) {
-        setPointColor(dst.points[correspondence.query_idx], COLOR_RED);
+        if (is_source) {
+            setPointColor(dst.points[correspondence.query_idx], COLOR_RED);
+        } else {
+            setPointColor(dst.points[correspondence.match_indices[0]], COLOR_RED);
+        }
     }
-    for (const auto &idx: inliers) {
-        setPointColor(dst.points[idx], COLOR_BLUE);
+    if (is_source) {
+        for (const auto &idx: inliers) {
+            setPointColor(dst.points[idx], COLOR_BLUE);
+        }
     }
     for (const auto &correspondence: correct_correspondences) {
-        mixPointColor(dst.points[correspondence.query_idx], COLOR_WHITE);
+        if (is_source) {
+            mixPointColor(dst.points[correspondence.query_idx], COLOR_WHITE);
+        } else {
+            mixPointColor(dst.points[correspondence.match_indices[0]], COLOR_WHITE);
+        }
     }
-    pcl::io::savePLYFileBinary(constructPath(parameters, "downsampled"), dst);
+    std::string filepath = constructPath(parameters, std::string("downsampled_") + (is_source ? "src" : "tgt"));
+    pcl::io::savePLYFileBinary(filepath, dst);
 }
 
-void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t match_offset,
+void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t match_offset,
                               const std::vector<MultivaluedCorrespondence> &correspondences,
                               const std::string &filepath) {
     std::string filepath_tmp = filepath + "tmp";
@@ -164,7 +160,7 @@ void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t ma
     while (std::getline(fin, line)) {
         if (line.substr(0, vertex_str.length()) == vertex_str) {
             fout << vertex_str << " " << pcd->size() + correspondences.size() << "\n";
-        } else if (line.substr(0,  face_str.length()) != face_str) {
+        } else if (line.substr(0, face_str.length()) != face_str) {
             fout << line << "\n";
             if (line == "end_header") {
                 fout.seekg(pos);
@@ -182,9 +178,10 @@ void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t ma
                 fout << (pcd->points[corr.query_idx].x + pcd->points[match_offset + corr.match_indices[0]].x) / 2 << " "
                      << (pcd->points[corr.query_idx].y + pcd->points[match_offset + corr.match_indices[0]].y) / 2 << " "
                      << (pcd->points[corr.query_idx].z + pcd->points[match_offset + corr.match_indices[0]].z) / 2 << " "
-                     << (int)pcd->points[corr.query_idx].r << " "
-                     << (int)pcd->points[corr.query_idx].g << " "
-                     << (int)pcd->points[corr.query_idx].b << "\n";
+                     << (int) pcd->points[corr.query_idx].r << " "
+                     << (int) pcd->points[corr.query_idx].g << " "
+                     << (int) pcd->points[corr.query_idx].b << " "
+                     << 0 << " " << 0 << " " << 0 << " " << 0 << "\n";
             }
         }
         pos = fout.tellg();
@@ -192,7 +189,8 @@ void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t ma
     std::size_t midpoint_offset = pcd->size();
     for (int i = 0; i < correspondences.size(); i++) {
         const auto &corr = correspondences[i];
-        fout << "3 " << corr.query_idx << " " << match_offset + corr.match_indices[0] << " " << midpoint_offset + i << "\n";
+        fout << "3 " << corr.query_idx << " " << match_offset + corr.match_indices[0] << " " << midpoint_offset + i
+             << "\n";
     }
     fin.close();
     fout.close();
@@ -200,26 +198,23 @@ void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t ma
     fs::rename(filepath_tmp, filepath);
 }
 
-void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
+void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse) {
-    PointCloudColoredT::Ptr dst(new PointCloudColoredT);
-    PointCloudT::Ptr src_aligned_gt(new PointCloudT);
+    PointCloudColoredTN::Ptr dst(new PointCloudColoredTN);
+    PointCloudTN::Ptr src_aligned_gt(new PointCloudTN);
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
     float diagonal = getAABBDiagonal(src_aligned_gt);
 
     dst->resize(src_aligned_gt->size() + tgt->size());
     for (int i = 0; i < src_aligned_gt->size(); ++i) {
-        dst->points[i].x = src_aligned_gt->points[i].x;
-        dst->points[i].y = src_aligned_gt->points[i].y;
-        dst->points[i].z = src_aligned_gt->points[i].z;
+        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
         setPointColor(dst->points[i], COLOR_BEIGE);
     }
     for (int i = 0; i < tgt->size(); ++i) {
-        dst->points[src_aligned_gt->size() + i].x = tgt->points[i].x + diagonal;
-        dst->points[src_aligned_gt->size() + i].y = tgt->points[i].y;
-        dst->points[src_aligned_gt->size() + i].z = tgt->points[i].z;
+        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
+        dst->points[src_aligned_gt->size() + i].x += diagonal;
         setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
     }
     UniformRandIntGenerator rand_generator(0, 255);
@@ -246,7 +241,7 @@ void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::Co
     }
 }
 
-void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCloudT::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
                                  const std::vector<MultivaluedCorrespondence> &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters) {
@@ -254,32 +249,32 @@ void saveCorrespondenceDistances(const PointCloudT::ConstPtr &src, const PointCl
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
-    PointCloudT src_aligned_gt;
+    PointCloudTN src_aligned_gt;
     pcl::transformPointCloud(*src, src_aligned_gt, transformation_gt);
 
     fout << "distance\n";
     for (const auto &correspondence: correspondences) {
-        PointT source_point(src_aligned_gt.points[correspondence.query_idx]);
-        PointT target_point(tgt->points[correspondence.match_indices[0]]);
+        PointTN source_point(src_aligned_gt.points[correspondence.query_idx]);
+        PointTN target_point(tgt->points[correspondence.match_indices[0]]);
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
         fout << dist << "\n";
     }
     fout.close();
 }
 
-void setPointColor(PointColoredT &point, int color) {
+void setPointColor(PointColoredTN &point, int color) {
     point.r = (color >> 16) & 0xff;
     point.g = (color >> 8) & 0xff;
     point.b = (color >> 0) & 0xff;
 }
 
-void mixPointColor(PointColoredT &point, int color) {
+void mixPointColor(PointColoredTN &point, int color) {
     point.r = point.r / 2 + ((color >> 16) & 0xff) / 2;
     point.g = point.g / 2 + ((color >> 8) & 0xff) / 2;
     point.b = point.b / 2 + ((color >> 0) & 0xff) / 2;
 }
 
-void setPointColor(PointColoredT &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
+void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
     point.r = red;
     point.g = green;
     point.b = blue;
@@ -299,7 +294,8 @@ constructPath(const std::string &test, const std::string &name, const std::strin
 std::string
 constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
               bool with_version) {
-    std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann");
+    std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id + "_" +
+                           (parameters.use_bfmatcher ? "bf" : "flann");
     if (with_version) {
         filename += "_" + VERSION;
     }

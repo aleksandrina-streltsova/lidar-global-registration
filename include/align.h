@@ -23,17 +23,17 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
 void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals);
 
 template<typename FeatureT>
-void estimateFeatures(float radius_search, const PointCloudT::Ptr &pcd, const PointCloudT::Ptr &surface,
+void estimateFeatures(float radius_search, const PointCloudTN::Ptr &pcd, const PointCloudT::Ptr &surface,
                       const PointCloudN::Ptr &normals, typename pcl::PointCloud<FeatureT>::Ptr &features) {
     throw std::runtime_error("Feature isn't supported!");
 }
 
 template<>
-inline void estimateFeatures<FPFH>(float radius_search, const PointCloudT::Ptr &pcd,
+inline void estimateFeatures<FPFH>(float radius_search, const PointCloudTN::Ptr &pcd,
                                    const PointCloudT::Ptr &surface,
                                    const PointCloudN::Ptr &normals,
                                    pcl::PointCloud<FPFH>::Ptr &features) {
-    pcl::FPFHEstimationOMP<PointT, pcl::Normal, FPFH> fpfh_estimation;
+    pcl::FPFHEstimationOMP<PointTN, pcl::Normal, FPFH> fpfh_estimation;
     fpfh_estimation.setRadiusSearch(radius_search);
     fpfh_estimation.setInputCloud(pcd);
     fpfh_estimation.setInputNormals(normals);
@@ -41,11 +41,11 @@ inline void estimateFeatures<FPFH>(float radius_search, const PointCloudT::Ptr &
 }
 
 template<>
-inline void estimateFeatures<USC>(float radius_search, const PointCloudT::Ptr &pcd,
+inline void estimateFeatures<USC>(float radius_search, const PointCloudTN::Ptr &pcd,
                                   const PointCloudT::Ptr &surface,
                                   const PointCloudN::Ptr &normals,
                                   pcl::PointCloud<USC>::Ptr &features) {
-    pcl::UniqueShapeContext<PointT, USC, pcl::ReferenceFrame> shape_context;
+    pcl::UniqueShapeContext<PointTN, USC, pcl::ReferenceFrame> shape_context;
     shape_context.setInputCloud(pcd);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
@@ -56,11 +56,11 @@ inline void estimateFeatures<USC>(float radius_search, const PointCloudT::Ptr &p
 }
 
 template<>
-inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const PointCloudT::Ptr &pcd,
+inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const PointCloudTN::Ptr &pcd,
                                                     const PointCloudT::Ptr &surface,
                                                     const PointCloudN::Ptr &normals,
                                                     pcl::PointCloud<pcl::ShapeContext1980>::Ptr &features) {
-    pcl::ShapeContext3DEstimation<PointT, pcl::Normal, pcl::ShapeContext1980> shape_context;
+    pcl::ShapeContext3DEstimation<PointTN, pcl::Normal, pcl::ShapeContext1980> shape_context;
     shape_context.setInputCloud(pcd);
     shape_context.setInputNormals(normals);
     shape_context.setMinimalRadius(radius_search / 10.f);
@@ -70,19 +70,16 @@ inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const P
 }
 
 template<>
-inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Ptr &pcd,
+inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudTN::Ptr &pcd,
                                       const PointCloudT::Ptr &surface,
                                       const PointCloudN::Ptr &normals,
                                       pcl::PointCloud<RoPS135>::Ptr &features) {
-    pcl::PointCloud<pcl::PointNormal>::Ptr pcd_with_normals(new pcl::PointCloud<pcl::PointNormal>);
-    pcl::concatenateFields(*pcd, *normals, *pcd_with_normals);
-
     // Perform triangulation.
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-    pcl::search::KdTree<pcl::PointNormal>::Ptr tree_n(new pcl::search::KdTree<pcl::PointNormal>);
-    tree_n->setInputCloud(pcd_with_normals);
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    pcl::search::KdTree<PointTN>::Ptr tree_n(new pcl::search::KdTree<PointTN>);
+    tree_n->setInputCloud(pcd);
 
-    pcl::GreedyProjectionTriangulation<pcl::PointNormal> triangulation;
+    pcl::GreedyProjectionTriangulation<PointTN> triangulation;
     pcl::PolygonMesh triangles;
     triangulation.setSearchRadius(radius_search);
     triangulation.setMu(2.5);
@@ -91,7 +88,7 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Pt
     triangulation.setNormalConsistency(false);
     triangulation.setMinimumAngle(M_PI / 18); // 10 degrees.
     triangulation.setMaximumAngle(2 * M_PI / 3); // 120 degrees.
-    triangulation.setInputCloud(pcd_with_normals);
+    triangulation.setInputCloud(pcd);
     triangulation.setSearchMethod(tree_n);
     triangulation.reconstruct(triangles);
 
@@ -99,7 +96,7 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Pt
     // been omitted here for simplicity.
 
     // RoPs estimation object.
-    pcl::ROPSEstimation<pcl::PointXYZ, RoPS135> rops;
+    pcl::ROPSEstimation<PointTN, RoPS135> rops;
     rops.setInputCloud(pcd);
 //	rops.setSearchMethod(tree); TODO: is it necessary?
     rops.setRadiusSearch(radius_search);
@@ -115,13 +112,13 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudT::Pt
 }
 
 template<>
-inline void estimateFeatures<SHOT>(float radius_search, const PointCloudT::Ptr &pcd,
-                                           const PointCloudT::Ptr &surface,
-                                           const PointCloudN::Ptr &normals,
-                                           pcl::PointCloud<SHOT>::Ptr &features) {
+inline void estimateFeatures<SHOT>(float radius_search, const PointCloudTN::Ptr &pcd,
+                                   const PointCloudT::Ptr &surface,
+                                   const PointCloudN::Ptr &normals,
+                                   pcl::PointCloud<SHOT>::Ptr &features) {
 
     // SHOT estimation object.
-    pcl::SHOTEstimationOMP<pcl::PointXYZ, pcl::Normal, SHOT> shot;
+    pcl::SHOTEstimationOMP<PointTN, pcl::Normal, SHOT> shot;
     shot.setInputCloud(pcd);
 //	shot.setSearchSurface(surface);
     shot.setInputNormals(normals);
@@ -135,25 +132,25 @@ inline void estimateFeatures<SHOT>(float radius_search, const PointCloudT::Ptr &
 }
 
 template<typename FeatureT>
-SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
+SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
         const PointCloudT::Ptr &src_fullsize,
         const PointCloudT::Ptr &tgt_fullsize,
         const AlignmentParameters &parameters
 ) {
-    PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
+    PointCloudT::Ptr src_downsize(new PointCloudT), tgt_downsize(new PointCloudT);
     // Downsample
     if (parameters.downsample) {
         pcl::console::print_highlight("Downsampling...\n");
-        downsamplePointCloud(src_fullsize, src, parameters.voxel_size);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters.voxel_size);
+        downsamplePointCloud(src_fullsize, src_downsize, parameters.voxel_size);
+        downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters.voxel_size);
     } else {
         pcl::console::print_highlight("Filtering duplicate points...\n");
-        pcl::copyPointCloud(*src_fullsize, *src);
-        pcl::copyPointCloud(*tgt_fullsize, *tgt);
+        pcl::copyPointCloud(*src_fullsize, *src_downsize);
+        pcl::copyPointCloud(*tgt_fullsize, *tgt_downsize);
     }
 
-    SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align;
-    PointCloudT src_aligned;
+    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN), src_aligned(new PointCloudTN);
+    SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align;
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
@@ -165,8 +162,11 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
 
     // Estimate normals
     pcl::console::print_highlight("Estimating normals...\n");
-    estimateNormals(normal_radius, src, normals_src);
-    estimateNormals(normal_radius, tgt, normals_tgt);
+    estimateNormals(normal_radius, src_downsize, normals_src);
+    estimateNormals(normal_radius, tgt_downsize, normals_tgt);
+
+    pcl::concatenateFields(*src_downsize, *normals_src, *src);
+    pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
@@ -217,7 +217,7 @@ SampleConsensusPrerejectiveOMP<PointT, PointT, FeatureT> align_point_clouds(
     std::cout << "    voxel size: " << voxel_size << std::endl;
     {
         pcl::ScopeTime t("Alignment");
-        align.align(src_aligned);
+        align.align(*src_aligned);
     }
     return align;
 }

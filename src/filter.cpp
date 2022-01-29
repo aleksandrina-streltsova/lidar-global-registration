@@ -143,7 +143,7 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     }
     fout.close();
 
-    PointCloudColoredT dst;
+    PointCloudColoredTN dst;
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         dst.points[i].x = pcd->points[i].x;

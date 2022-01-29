@@ -60,8 +60,8 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
     for (int i = 0; i < multivalued_correspondences_.size(); ++i) {
         int query_idx = multivalued_correspondences_[i].query_idx;
         int match_idx = multivalued_correspondences_[i].match_indices[0];
-        PointT source_point(input_transformed.points[query_idx]);
-        PointT target_point(this->target_->points[match_idx]);
+        PointSource source_point(input_transformed.points[query_idx]);
+        PointTarget target_point(this->target_->points[match_idx]);
 
         // Calculate correspondence distance
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3);

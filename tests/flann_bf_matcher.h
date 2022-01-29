@@ -28,14 +28,15 @@ template<typename FeatureT>
 void run_test(const PointCloudT::Ptr &src_fullsize,
               const PointCloudT::Ptr &tgt_fullsize,
               const AlignmentParameters &parameters) {
-    PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
+    PointCloudT::Ptr src_downsize(new PointCloudT), tgt_downsize(new PointCloudT);
     // Downsample
     if (parameters.downsample) {
         pcl::console::print_highlight("Downsampling...\n");
-        downsamplePointCloud(src_fullsize, src, parameters.voxel_size);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters.voxel_size);
+        downsamplePointCloud(src_fullsize, src_downsize, parameters.voxel_size);
+        downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters.voxel_size);
     }
 
+    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN), src_aligned(new PointCloudTN);
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
@@ -46,8 +47,11 @@ void run_test(const PointCloudT::Ptr &src_fullsize,
 
     // Estimate normals
     pcl::console::print_highlight("Estimating normals...\n");
-    estimateNormals(normal_radius, src, normals_src);
-    estimateNormals(normal_radius, tgt, normals_tgt);
+    estimateNormals(normal_radius, src_downsize, normals_src);
+    estimateNormals(normal_radius, tgt_downsize, normals_tgt);
+
+    pcl::concatenateFields(*src_downsize, *normals_src, *src);
+    pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");

@@ -6,7 +6,7 @@ void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr
     }
     std::vector<PointT> points;
     Eigen::Vector3f voxel_size3 = Eigen::Vector3f(voxel_size, voxel_size, voxel_size);
-    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox(pcd_fullsize);
+    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointT>(pcd_fullsize);
     Eigen::Vector3f voxel_min_bound =
             Eigen::Vector3f(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z) - voxel_size3 * 0.5;
     Eigen::Vector3f voxel_max_bound =
