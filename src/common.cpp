@@ -299,7 +299,7 @@ constructPath(const std::string &test, const std::string &name, const std::strin
 std::string
 constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
               bool with_version) {
-    std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id;
+    std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann");
     if (with_version) {
         filename += "_" + VERSION;
     }
