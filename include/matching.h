@@ -23,7 +23,7 @@ void matchFLANN(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_featur
     pcl::KdTreeFLANN<FeatureT> feature_tree(new pcl::KdTreeFLANN<FeatureT>);
     feature_tree.setInputCloud(train_features);
     int n = query_features->size();
-    correspondences.resize(n);
+    correspondences.resize(n, MultivaluedCorrespondence{});
 #pragma omp parallel for num_threads(threads) default(none) shared(correspondences, query_features, point_representation, feature_tree) firstprivate(n, k_matches)
     for (int i = 0; i < n; i++) {
         if (point_representation->isValid(query_features->points[i])) {
@@ -56,7 +56,7 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
     auto matcher = cv::BFMatcher::create(cv::NORM_L2);
     std::vector<cv::DMatch> matches;
 
-    correspondences.resize(query_features->size());
+    correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
     int n_query_blocks = (query_features->size() + block_size - 1) / block_size;
     for (int i = 0; i < n_query_blocks; ++i) {
         for (int j = 0; j < (train_features->size() + block_size - 1) / block_size; ++j) {
@@ -65,10 +65,15 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
             pcl2cv<FeatureT>(nr_dims, train_features, train_features_batch, block_size, j * block_size);
             matcher->match(query_features_batch, train_features_batch, matches);
             for (int k = 0; k < matches.size(); ++k) {
-                if (j == 0 || correspondences[i * block_size + k].distances[0] > matches[k].distance) {
-                    correspondences[i * block_size + k] = MultivaluedCorrespondence{
-                            matches[k].queryIdx + i * block_size, {matches[k].trainIdx + j * block_size},
-                            {matches[k].distance}};
+                if (matches[k].queryIdx == -1) {
+                    continue;
+                }
+                int query_idx = i * block_size + matches[k].queryIdx;
+                if (correspondences[query_idx].distances.empty() ||
+                    correspondences[query_idx].distances[0] > matches[k].distance) {
+                    correspondences[query_idx] = MultivaluedCorrespondence{query_idx,
+                                                                           {j * block_size + matches[k].trainIdx},
+                                                                           {matches[k].distance}};
                 }
             }
             matches.clear();
@@ -77,7 +82,7 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
     }
     for (int i = 0; i < query_features->size(); i++) {
         if (!point_representation->isValid(query_features->points[i])) {
-            correspondences[i].query_idx = -1;
+            correspondences[i] = MultivaluedCorrespondence{};
         }
     }
 }

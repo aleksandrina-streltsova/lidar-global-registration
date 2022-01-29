@@ -11,15 +11,16 @@ inline bool isclose(float a, float b, float rtol=1e-5, float atol=1e-8) {
     return std::fabs(a - b) <= (atol + rtol * std::fabs(b));
 }
 
-void assertCorrespondencesEqual(const MultivaluedCorrespondence &corr1,
+void assertCorrespondencesEqual(int i,
+                                const MultivaluedCorrespondence &corr1,
                                 const MultivaluedCorrespondence &corr2) {
     if (corr1.query_idx != corr2.query_idx) {
-        std::cerr << "query indices differ: [" << corr1.query_idx << "] [" << corr2.query_idx << "]" << std::endl;
+        std::cerr << "{" << i << "} query indices differ: [" << corr1.query_idx << "] [" << corr2.query_idx << "]" << std::endl;
         abort();
     }
     if (corr1.match_indices[0] != corr2.match_indices[0]) {
-        std::cerr << "match indices differ: [" << corr1.match_indices[0] << "] [" << corr2.match_indices[0] << "]\n";
-        std::cerr << "with distances: [" << corr1.distances[0] << "] [" << corr2.distances[0] << "]" << std::endl;
+        std::cerr << "{" << i << "} match indices differ: [" << corr1.match_indices[0] << "] [" << corr2.match_indices[0] << "]\n";
+        std::cerr << "{" << i << "} with distances: [" << corr1.distances[0] << "] [" << corr2.distances[0] << "]" << std::endl;
         abort();
     }
 }
@@ -71,7 +72,11 @@ void run_test(const PointCloudT::Ptr &src_fullsize,
     matchBF<FeatureT>(features_src, features_tgt, correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
     matchFLANN<FeatureT>(features_src, features_tgt, correspondences_flann, point_representation, k_matches, threads);
     for (int i = 0; i < features_src->size(); ++i) {
-        assertCorrespondencesEqual(correspondences_bf[i], correspondences_flann[i]);
+        if (correspondences_flann[i].match_indices.empty()) {
+            std::cout << "invalid point [" << i << "]" << std::endl;
+        } else {
+            assertCorrespondencesEqual(i, correspondences_bf[i], correspondences_flann[i]);
+        }
     }
 
     correspondences_bf.clear();
@@ -80,7 +85,11 @@ void run_test(const PointCloudT::Ptr &src_fullsize,
     matchBF<FeatureT>(features_tgt, features_src, correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
     matchFLANN<FeatureT>(features_tgt, features_src, correspondences_flann, point_representation, k_matches, threads);
     for (int i = 0; i < features_tgt->size(); ++i) {
-        assertCorrespondencesEqual(correspondences_bf[i], correspondences_flann[i]);
+        if (correspondences_flann[i].match_indices.empty()) {
+            std::cout << "invalid point [" << i << "]" << std::endl;
+        } else {
+            assertCorrespondencesEqual(i, correspondences_bf[i], correspondences_flann[i]);
+        }
     }
 }
 
