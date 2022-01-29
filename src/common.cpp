@@ -145,8 +145,9 @@ void saveColorizedPointCloud(const PointCloudT::ConstPtr &src,
     pcl::io::savePLYFileBinary(constructPath(parameters, "downsampled"), dst);
 }
 
-void writeEdgesToPLYFileASCII(const std::vector<MultivaluedCorrespondence> &correspondences,
-                              std::size_t match_offset, const std::string &filepath) {
+void writeFacesToPLYFileASCII(const PointCloudColoredT::Ptr &pcd, std::size_t match_offset,
+                              const std::vector<MultivaluedCorrespondence> &correspondences,
+                              const std::string &filepath) {
     std::string filepath_tmp = filepath + "tmp";
     std::fstream fin(filepath, std::ios_base::in), fout(filepath_tmp, std::ios_base::out);
     if (!fin.is_open())
@@ -155,19 +156,43 @@ void writeEdgesToPLYFileASCII(const std::vector<MultivaluedCorrespondence> &corr
         perror(("error while creating temporary file " + filepath).c_str());
 
     std::string line;
+    std::string vertex_str = "element vertex";
+    std::string face_str = "element face";
+    bool header_ended = false, vertices_ended = false;
+    int n_vertices = 0;
     long pos = fout.tellg();
     while (std::getline(fin, line)) {
-        fout << line << "\n";
-        if (line == "end_header") {
-            fout.seekg(pos);
-            fout << "element edge " << correspondences.size() << "\n";
-            fout << "property int vertex1\n" << "property int vertex2\n";
-            fout << "end_header\n";
+        if (line.substr(0, vertex_str.length()) == vertex_str) {
+            fout << vertex_str << " " << pcd->size() + correspondences.size() << "\n";
+        } else if (line.substr(0,  face_str.length()) != face_str) {
+            fout << line << "\n";
+            if (line == "end_header") {
+                fout.seekg(pos);
+                fout << face_str << " " << correspondences.size() << "\n";
+                fout << "property list uint8 int32 vertex_index\n";
+                fout << "end_header\n";
+                header_ended = true;
+            } else if (header_ended && !vertices_ended) {
+                n_vertices++;
+            }
+        }
+        if (!vertices_ended && n_vertices == pcd->size()) {
+            vertices_ended = true;
+            for (const auto &corr: correspondences) {
+                fout << (pcd->points[corr.query_idx].x + pcd->points[match_offset + corr.match_indices[0]].x) / 2 << " "
+                     << (pcd->points[corr.query_idx].y + pcd->points[match_offset + corr.match_indices[0]].y) / 2 << " "
+                     << (pcd->points[corr.query_idx].z + pcd->points[match_offset + corr.match_indices[0]].z) / 2 << " "
+                     << (int)pcd->points[corr.query_idx].r << " "
+                     << (int)pcd->points[corr.query_idx].g << " "
+                     << (int)pcd->points[corr.query_idx].b << "\n";
+            }
         }
         pos = fout.tellg();
     }
-    for (const auto &correspondence: correspondences) {
-        fout << correspondence.query_idx << " " << match_offset + correspondence.match_indices[0] << "\n";
+    std::size_t midpoint_offset = pcd->size();
+    for (int i = 0; i < correspondences.size(); i++) {
+        const auto &corr = correspondences[i];
+        fout << "3 " << corr.query_idx << " " << match_offset + corr.match_indices[0] << " " << midpoint_offset + i << "\n";
     }
     fin.close();
     fout.close();
@@ -179,29 +204,29 @@ void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::Co
                          const std::vector<MultivaluedCorrespondence> &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse) {
-    PointCloudColoredT dst;
+    PointCloudColoredT::Ptr dst(new PointCloudColoredT);
     PointCloudT::Ptr src_aligned_gt(new PointCloudT);
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
     float diagonal = getAABBDiagonal(src_aligned_gt);
 
-    dst.resize(src_aligned_gt->size() + tgt->size());
+    dst->resize(src_aligned_gt->size() + tgt->size());
     for (int i = 0; i < src_aligned_gt->size(); ++i) {
-        dst.points[i].x = src_aligned_gt->points[i].x;
-        dst.points[i].y = src_aligned_gt->points[i].y;
-        dst.points[i].z = src_aligned_gt->points[i].z;
-        setPointColor(dst.points[i], COLOR_BEIGE);
+        dst->points[i].x = src_aligned_gt->points[i].x;
+        dst->points[i].y = src_aligned_gt->points[i].y;
+        dst->points[i].z = src_aligned_gt->points[i].z;
+        setPointColor(dst->points[i], COLOR_BEIGE);
     }
     for (int i = 0; i < tgt->size(); ++i) {
-        dst.points[src_aligned_gt->size() + i].x = tgt->points[i].x + diagonal;
-        dst.points[src_aligned_gt->size() + i].y = tgt->points[i].y;
-        dst.points[src_aligned_gt->size() + i].z = tgt->points[i].z;
-        setPointColor(dst.points[src_aligned_gt->size() + i], COLOR_PURPLE);
+        dst->points[src_aligned_gt->size() + i].x = tgt->points[i].x + diagonal;
+        dst->points[src_aligned_gt->size() + i].y = tgt->points[i].y;
+        dst->points[src_aligned_gt->size() + i].z = tgt->points[i].z;
+        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
     }
     UniformRandIntGenerator rand_generator(0, 255);
     for (const auto &corr: correspondences) {
         std::uint8_t red = rand_generator(), green = rand_generator(), blue = rand_generator();
-        setPointColor(dst.points[corr.query_idx], red, green, blue);
-        setPointColor(dst.points[src_aligned_gt->size() + corr.match_indices[0]], red, green, blue);
+        setPointColor(dst->points[corr.query_idx], red, green, blue);
+        setPointColor(dst->points[src_aligned_gt->size() + corr.match_indices[0]], red, green, blue);
     }
     std::string filepath;
     if (sparse) {
@@ -209,15 +234,15 @@ void saveCorrespondences(const PointCloudT::ConstPtr &src, const PointCloudT::Co
     } else {
         filepath = constructPath(parameters, "correspondences");
     }
-    pcl::io::savePLYFileASCII(filepath, dst);
+    pcl::io::savePLYFileASCII(filepath, *dst);
     if (sparse) {
         std::vector correspondences_sparse(correspondences);
         std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
                      std::mt19937(std::random_device()()));
         correspondences_sparse.resize(std::min(correspondences_sparse.size(), DEBUG_N_EDGES));
-        writeEdgesToPLYFileASCII(correspondences_sparse, src_aligned_gt->size(), filepath);
+        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
     } else {
-        writeEdgesToPLYFileASCII(correspondences, src_aligned_gt->size(), filepath);
+        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
     }
 }
 
@@ -272,7 +297,8 @@ constructPath(const std::string &test, const std::string &name, const std::strin
 }
 
 std::string
-constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension, bool with_version) {
+constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
+              bool with_version) {
     std::string filename = parameters.testname + "_" + name + "_" + parameters.descriptor_id;
     if (with_version) {
         filename += "_" + VERSION;
