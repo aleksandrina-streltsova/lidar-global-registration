@@ -30,6 +30,9 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     }
     filter_duplicate_points(src);
     filter_duplicate_points(tgt);
+    float src_density = calculatePointCloudDensity<PointT>(src);
+    float tgt_density = calculatePointCloudDensity<PointT>(tgt);
+    PCL_DEBUG("[runTest] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
 
     // Read ground truth transformation
     std::string csv_path = config.get<std::string>("ground_truth").value();

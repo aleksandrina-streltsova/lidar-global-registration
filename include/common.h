@@ -1,10 +1,13 @@
 #ifndef REGISTRATION_COMMON_H
 #define REGISTRATION_COMMON_H
 
+#include <algorithm>
+
 #include <pcl/types.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_representation.h>
+#include <pcl/kdtree/kdtree_flann.h>
 
 #include <Eigen/Core>
 
@@ -104,7 +107,7 @@ extern const std::string DEFAULT_DESCRIPTOR;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
-template <typename PointT>
+template<typename PointT>
 std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
     float min = std::numeric_limits<float>::min(), max = std::numeric_limits<float>::max();
     PointT min_point_AABB(max, max, max);
@@ -118,6 +121,27 @@ std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<Po
         max_point_AABB.z = std::max(max_point_AABB.z, p.z);
     }
     return {min_point_AABB, max_point_AABB};
+}
+
+template<typename PointT>
+float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
+    pcl::KdTreeFLANN<PointT> tree(new pcl::KdTreeFLANN<PointT>);
+    tree.setInputCloud(pcd);
+
+    int k_neighbours = 8, n_points = pcd->size();
+    pcl::Indices match_indices(k_neighbours);
+    std::vector<float> match_distances(k_neighbours), distances(n_points);
+    for (int i = 0; i < n_points; ++i) {
+        tree.nearestKSearch(*pcd,
+                            i,
+                            k_neighbours,
+                            match_indices,
+                            match_distances);
+        std::nth_element(match_distances.begin(), match_distances.begin() + k_neighbours / 2, match_distances.end());
+        distances[i] = std::sqrt(match_distances[k_neighbours / 2]);
+    }
+    std::nth_element(distances.begin(), distances.begin() + n_points / 2, distances.end());
+    return distances[n_points / 2];
 }
 
 float getAABBDiagonal(const PointCloudTN::Ptr &pcd);
