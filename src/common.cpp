@@ -112,10 +112,13 @@ void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                              const pcl::Indices &inliers, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source) {
+    PointCloudTN pcd_aligned;
+    pcl::transformPointCloud(*pcd, pcd_aligned, transformation_gt);
+
     PointCloudColoredTN dst;
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
-        pcl::copyPoint(pcd->points[i], dst.points[i]);
+        pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
         setPointColor(dst.points[i], COLOR_BEIGE);
     }
     for (const auto &correspondence: correspondences) {
@@ -175,13 +178,10 @@ void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t m
         if (!vertices_ended && n_vertices == pcd->size()) {
             vertices_ended = true;
             for (const auto &corr: correspondences) {
-                fout << (pcd->points[corr.query_idx].x + pcd->points[match_offset + corr.match_indices[0]].x) / 2 << " "
-                     << (pcd->points[corr.query_idx].y + pcd->points[match_offset + corr.match_indices[0]].y) / 2 << " "
-                     << (pcd->points[corr.query_idx].z + pcd->points[match_offset + corr.match_indices[0]].z) / 2 << " "
-                     << (int) pcd->points[corr.query_idx].r << " "
-                     << (int) pcd->points[corr.query_idx].g << " "
-                     << (int) pcd->points[corr.query_idx].b << " "
-                     << 0 << " " << 0 << " " << 0 << " " << 0 << "\n";
+                const auto &p = pcd->points[corr.query_idx];
+                fout << p.x << " " << p.y << " " << p.z << " "
+                     << (int) p.r << " " << (int) p.g << " " << (int) p.b << " "
+                     << p.normal_x << " " << p.normal_y << " " << p.normal_z << " " << p.curvature << "\n";
             }
         }
         pos = fout.tellg();

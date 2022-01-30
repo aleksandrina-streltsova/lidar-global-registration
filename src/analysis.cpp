@@ -120,7 +120,7 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, 
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
     saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
     saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters, transformation_gt_, true);
-    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters, Eigen::Matrix4f::Identity(), false);
+    saveColorizedPointCloud(tgt_, correspondences_, correct_correspondences_, inliers_, parameters, Eigen::Matrix4f::Identity(), false);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
