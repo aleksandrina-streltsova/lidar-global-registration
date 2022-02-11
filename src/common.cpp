@@ -28,8 +28,10 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("\n");
 }
 
-std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config) {
-    std::vector<AlignmentParameters> parameters_container, new_parameters_container;;
+std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
+                                                         const std::vector<::pcl::PCLPointField> &fields_src,
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt) {
+    std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
     parameters.downsample = config.get<bool>("downsample", true);
     parameters.edge_thr_coef = config.get<float>("edge_thr").value();
@@ -43,6 +45,14 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.n_samples = config.get<int>("n_samples").value();
     parameters.save_features = config.get<bool>("save_features", false);
     parameters.bf_block_size = config.get<int>("block_size", 10000);
+
+    bool use_normals = config.get<bool>("use_normals", false);
+    // TODO: use normals even with one point cloud missing normals
+    bool normals_available = pointCloudHasNormals<PointTN>(fields_src) && pointCloudHasNormals<PointTN>(fields_tgt);
+    if (use_normals && !normals_available) {
+        PCL_WARN("Point cloud doesn't have normals.\n");
+    }
+    parameters.use_normals = use_normals && normals_available;
     parameters_container.push_back(parameters);
 
     auto voxel_sizes = config.getVector<float>("voxel_size").value();
@@ -296,7 +306,8 @@ constructPath(const AlignmentParameters &parameters, const std::string &name, co
               bool with_version) {
     std::string filename = parameters.testname + "_" + name + "_" +
                            std::to_string((int) std::round(1e4 * parameters.voxel_size)) + "_" +
-                           parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann");
+                           parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
+                           (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         filename += "_" + VERSION;
     }

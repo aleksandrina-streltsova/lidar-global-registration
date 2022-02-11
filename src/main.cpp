@@ -2,9 +2,7 @@
 #include <string>
 #include <filesystem>
 
-#include <pcl/io/ply_io.h>
-#include <pcl/common/io.h>
-
+#include "io.h"
 #include "config.h"
 #include "align.h"
 #include "filter.h"
@@ -14,24 +12,24 @@ namespace fs = std::filesystem;
 
 std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     // Point clouds
-    PointCloudT::Ptr src(new PointCloudT), tgt(new PointCloudT);
-
-    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config);
+    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
+    std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
 
     // Load src and tgt
     pcl::console::print_highlight("Loading point clouds...\n");
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    if (pcl::io::loadPLYFile<PointT>(src_path, *src) < 0 ||
-        pcl::io::loadPLYFile<PointT>(tgt_path, *tgt) < 0) {
+    if (loadPLYFile<PointTN>(src_path, *src, fields_src) < 0 ||
+        loadPLYFile<PointTN>(tgt_path, *tgt, fields_tgt) < 0) {
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
+    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
     filter_duplicate_points(src);
     filter_duplicate_points(tgt);
-    float src_density = calculatePointCloudDensity<PointT>(src);
-    float tgt_density = calculatePointCloudDensity<PointT>(tgt);
+    float src_density = calculatePointCloudDensity<PointTN>(src);
+    float tgt_density = calculatePointCloudDensity<PointTN>(tgt);
     PCL_DEBUG("[runTest] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
 
     // Read ground truth transformation

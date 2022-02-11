@@ -25,12 +25,12 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
     return tgt_position.inverse() * src_position;
 }
 
-void estimateNormals(float radius_search, const PointCloudT::Ptr &pcd, PointCloudN::Ptr &normals) {
-    pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> normal_est;
+void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals) {
+    pcl::NormalEstimationOMP<PointTN , pcl::Normal> normal_est;
     normal_est.setRadiusSearch(radius_search);
 
     normal_est.setInputCloud(pcd);
-    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>());
+    pcl::search::KdTree<PointTN>::Ptr tree(new pcl::search::KdTree<PointTN>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*normals);
     int nan_counter = 0;

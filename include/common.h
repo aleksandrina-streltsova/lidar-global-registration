@@ -45,7 +45,7 @@ class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepre
 };
 
 struct AlignmentParameters {
-    bool downsample;
+    bool downsample, use_normals;
     float voxel_size;
     float edge_thr_coef, distance_thr_coef;
     float normal_radius_coef, feature_radius_coef;
@@ -60,7 +60,9 @@ struct AlignmentParameters {
     std::string testname;
 };
 
-std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config);
+std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
+                                                         const std::vector<::pcl::PCLPointField> &fields_src,
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt);
 
 struct MultivaluedCorrespondence {
     int query_idx = -1;
@@ -69,7 +71,7 @@ struct MultivaluedCorrespondence {
 };
 
 struct PointHash {
-    inline size_t operator()(const PointT &point) const {
+    inline size_t operator()(const PointTN &point) const {
         size_t seed = 0;
         combineHash(seed, point.x);
         combineHash(seed, point.y);
@@ -91,6 +93,7 @@ struct HashEigen {
     }
 };
 
+template<typename PointT>
 struct PointEqual {
 public:
     bool operator()(const PointT &point1, const PointT &point2) const {
@@ -173,5 +176,22 @@ std::string constructPath(const std::string &test, const std::string &name,
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);
+
+template<typename PointT>
+bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
+    bool normal_x = false, normal_y = false, normal_z = false;
+    for (const auto &field: fields) {
+        if (pcl::FieldMatches<PointT, pcl::fields::normal_x>()(field)) {
+            normal_x = true;
+        }
+        if (pcl::FieldMatches<PointT, pcl::fields::normal_y>()(field)) {
+            normal_y = true;
+        }
+        if (pcl::FieldMatches<PointT, pcl::fields::normal_x>()(field)) {
+            normal_z = true;
+        }
+    }
+    return normal_x && normal_y && normal_z;
+}
 
 #endif

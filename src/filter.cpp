@@ -161,8 +161,8 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     pcl::io::savePLYFileASCII(filepath, dst);
 }
 
-void filter_duplicate_points(PointCloudT::Ptr &pcd) {
-    std::unordered_set<PointT, PointHash, PointEqual> unique_points;
+void filter_duplicate_points(PointCloudTN::Ptr &pcd) {
+    std::unordered_set<PointTN, PointHash, PointEqual<PointTN>> unique_points;
     std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
     pcd->points.clear();
     std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));

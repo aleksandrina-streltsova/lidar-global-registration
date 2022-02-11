@@ -136,9 +136,13 @@ def other_to_common(input_dir):
 
 def transform_and_save(load_from: str, save_to: str, transformation: np.ndarray):
     pynt_cloud = PyntCloud.from_file(load_from)
-    points = pynt_cloud.points[['x', 'y', 'z']].values
-    points = (transformation[:3, :3] @ points.T).T + transformation[:3, 3]
-    pynt_cloud.points = pd.DataFrame(points, columns=['x', 'y', 'z'], index=None)
+    with_normals = 'nx' in pynt_cloud.points.columns
+    columns = ['x', 'y', 'z'] + (['nx', 'ny', 'nz'] if with_normals else [])
+    data = pynt_cloud.points[columns].values
+    data[:, :3] = (transformation[:3, :3] @ data[:, :3].T).T + transformation[:3, 3]
+    if with_normals:
+        data[:, 3:] = (transformation[:3, :3] @ data[:, 3:].T).T
+    pynt_cloud.points = pd.DataFrame(data, columns=columns, index=None)
     pynt_cloud.to_file(save_to)
 
 

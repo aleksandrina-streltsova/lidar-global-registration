@@ -114,8 +114,8 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
 }
 
-void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, const AlignmentParameters &parameters) {
-    PointCloudT::Ptr src_fullsize_aligned(new PointCloudT), src_fullsize_aligned_gt(new PointCloudT);
+void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize, const AlignmentParameters &parameters) {
+    PointCloudTN::Ptr src_fullsize_aligned(new PointCloudTN), src_fullsize_aligned_gt(new PointCloudTN);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
     saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
@@ -131,7 +131,7 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudT::Ptr &src_fullsize, 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err\n";
+    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -153,6 +153,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     } else {
         stream << ",,,";
     }
-    stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << "\n";
+    stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
+    stream << analysis.parameters_.use_normals << "\n";
     return stream;
 }

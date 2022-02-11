@@ -1,12 +1,14 @@
 #include "downsample.h"
 
-void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr &pcd_down, float voxel_size) {
+void downsamplePointCloud(const PointCloudTN::Ptr &pcd_fullsize, PointCloudTN::Ptr &pcd_down,
+                          const AlignmentParameters &parameters) {
+    float voxel_size = parameters.voxel_size;
     if (voxel_size <= 0.0) {
         PCL_ERROR("[downsamplePointCloud] voxel_size <= 0.");
     }
-    std::vector<PointT> points;
+    std::vector<PointTN> points;
     Eigen::Vector3f voxel_size3 = Eigen::Vector3f(voxel_size, voxel_size, voxel_size);
-    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointT>(pcd_fullsize);
+    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointTN>(pcd_fullsize);
     Eigen::Vector3f voxel_min_bound =
             Eigen::Vector3f(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z) - voxel_size3 * 0.5;
     Eigen::Vector3f voxel_max_bound =
@@ -25,7 +27,7 @@ void downsamplePointCloud(const PointCloudT::Ptr &pcd_fullsize, PointCloudT::Ptr
         voxelindex_to_accpoint[voxel_index].AddPoint(pcd_fullsize, i);
     }
 
-    for (auto accpoint : voxelindex_to_accpoint) {
+    for (const auto& accpoint : voxelindex_to_accpoint) {
         points.push_back(accpoint.second.GetAveragePoint());
     }
     pcd_down->points.clear();
