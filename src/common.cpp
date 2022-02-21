@@ -304,9 +304,10 @@ constructPath(const std::string &test, const std::string &name, const std::strin
 std::string
 constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
               bool with_version) {
-    std::string filename = parameters.testname + "_" + name + "_" +
-                           std::to_string((int) std::round(1e4 * parameters.voxel_size)) + "_" +
-                           parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
+    std::string filename = parameters.testname + "_" + name +
+                           "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
+                           "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
+                           "_" + std::to_string((int) parameters.normal_radius_coef) +
                            (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         filename += "_" + VERSION;
