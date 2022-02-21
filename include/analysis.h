@@ -13,6 +13,9 @@ std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::M
 float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
+float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
+
 class AlignmentAnalysis {
 public:
     AlignmentAnalysis() {}
@@ -48,6 +51,7 @@ private:
     int correspondence_count_, correct_correspondence_count_;
     float fitness_, rmse_;
     float pcd_error_, r_error_, t_error_;
+    float normal_diff_;
     std::vector<MultivaluedCorrespondence> correspondences_;
     pcl::Indices inliers_;
     std::string testname_;

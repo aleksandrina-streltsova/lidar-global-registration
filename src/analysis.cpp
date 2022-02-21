@@ -7,6 +7,7 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
 
 #include "analysis.h"
 #include "filter.h"
@@ -33,6 +34,31 @@ float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
     }
     error /= pcd->size();
     return error;
+}
+
+float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt) {
+    PointCloudTN::Ptr src_aligned(new PointCloudTN);
+    pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
+    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+    tree->setInputCloud(tgt);
+
+    pcl::Indices indices;
+    std::vector<float> distances;
+    float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
+    float difference = 0.f;
+    int n_points_overlap = 0;
+    for (int i = 0; i < src_aligned->size(); ++i) {
+        (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
+        const PointTN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
+        if (std::sqrt(distances[0]) < error_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
+            float cos = std::clamp(p_src.normal_x * p_tgt.normal_x + p_src.normal_y * p_tgt.normal_y +
+                                   p_src.normal_z * p_tgt.normal_z, -1.f, 1.f);
+            difference += std::abs(std::acos(cos));
+            n_points_overlap++;
+        }
+    }
+    return difference / (float) n_points_overlap;
 }
 
 std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorrespondences(
@@ -71,6 +97,7 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     correct_correspondence_count_ = correct_correspondences_.size();
     fitness_ = (float) inlier_count_ / (float) correspondence_count_;
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
+    normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
     std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_);
 
     print();
@@ -91,6 +118,7 @@ void AlignmentAnalysis::print() {
     pcl::console::print_info("rotation error: %0.7f\n", r_error_);
     pcl::console::print_info("translation error: %0.7f\n", t_error_);
     pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error_);
+    pcl::console::print_info("normal mean difference: %0.7f\n", normal_diff_);
 }
 
 void AlignmentAnalysis::save(const std::string &testname) {
@@ -131,7 +159,7 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize,
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals\n";
+    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,normal_diff\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -154,6 +182,6 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
         stream << ",,,";
     }
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
-    stream << analysis.parameters_.use_normals << "\n";
+    stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << "\n";
     return stream;
 }
