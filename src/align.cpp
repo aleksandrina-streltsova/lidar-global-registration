@@ -43,4 +43,36 @@ void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointClo
         }
     }
     PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
+    // TODO: flip normals using normals from point cloud
+}
+
+void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Ptr &pcd) {
+    PointCloudN::Ptr old_normals(new PointCloudN);
+    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+    tree->setInputCloud(pcd);
+
+    std::vector<pcl::Indices> vector_of_indices(pcd->size());
+    std::vector<float> distances;
+
+    for (int i = 0; i < (int) std::ceil(radius_search / voxel_size); i++) {
+        pcl::copyPointCloud(*pcd, *old_normals);
+        for (int j = 0; j < pcd->size(); ++j) {
+            pcl::Normal acc(0.0, 0.0, 0.0), old_normal(old_normals->points[j]);
+            for (auto idx: vector_of_indices[j]) {
+                float dot_product = old_normal.normal_x * old_normals->points[idx].normal_x +
+                                    old_normal.normal_y * old_normals->points[idx].normal_y +
+                                    old_normal.normal_z * old_normals->points[idx].normal_z;
+                if (dot_product > 0.0) {
+                    acc.normal_x += old_normals->points[idx].normal_x;
+                    acc.normal_y += old_normals->points[idx].normal_y;
+                    acc.normal_z += old_normals->points[idx].normal_z;
+                }
+            }
+            float norm = std::sqrt(acc.normal_x * acc.normal_x + acc.normal_y * acc.normal_y +
+                                   acc.normal_z * acc.normal_z);
+            pcd->points[j].normal_x = acc.normal_x / norm;
+            pcd->points[j].normal_y = acc.normal_y / norm;
+            pcd->points[j].normal_z = acc.normal_z / norm;
+        }
+    }
 }
