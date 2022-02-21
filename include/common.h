@@ -165,6 +165,10 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters);
 
+void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences,
+                   const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                   const pcl::Indices &inliers, const AlignmentParameters &parameters);
+
 void setPointColor(PointColoredTN &point, int color);
 
 void mixPointColor(PointColoredTN &point, int color);

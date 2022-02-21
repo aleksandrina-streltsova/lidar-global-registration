@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <unordered_set>
 
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
@@ -268,6 +269,28 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
         PointTN target_point(tgt->points[correspondence.match_indices[0]]);
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
         fout << dist << "\n";
+    }
+    fout.close();
+}
+
+void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences,
+                   const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                   const pcl::Indices &inliers, const AlignmentParameters &parameters) {
+    std::string filepath = constructPath(parameters, "inliers", "csv");
+    std::fstream fout(filepath, std::ios_base::out);
+    if (!fout.is_open())
+        perror(("error while opening file " + filepath).c_str());
+
+    std::unordered_set<int> inliers_set, correct_cs_set;
+    std::copy(inliers.begin(), inliers.end(), std::inserter(inliers_set, inliers_set.begin()));
+    std::transform(correct_correspondences.begin(), correct_correspondences.end(),
+                   std::inserter(correct_cs_set, correct_cs_set.begin()),
+                   [](const MultivaluedCorrespondence &corr) { return corr.query_idx; });
+    fout << "id_src,id_tgt,is_correct,is_inlier\n";
+    for (const auto &correspondence: correspondences) {
+        fout << correspondence.query_idx << "," << correspondence.match_indices[0] << ",";
+        fout << correct_cs_set.contains(correspondence.query_idx) << ",";
+        fout << inliers_set.contains(correspondence.query_idx) << "\n";
     }
     fout.close();
 }
