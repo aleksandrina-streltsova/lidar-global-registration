@@ -25,14 +25,33 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
     return tgt_position.inverse() * src_position;
 }
 
-void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals) {
-    pcl::NormalEstimationOMP<PointTN , pcl::Normal> normal_est;
+void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals,
+                     bool normals_available) {
+    pcl::NormalEstimationOMP<PointTN, pcl::Normal> normal_est;
     normal_est.setRadiusSearch(radius_search);
 
     normal_est.setInputCloud(pcd);
     pcl::search::KdTree<PointTN>::Ptr tree(new pcl::search::KdTree<PointTN>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*normals);
+    // use normals from point cloud to orient estimated normals and replace NaN normals
+    if (normals_available) {
+        for (int i = 0; i < pcd->size(); ++i) {
+            auto &normal = normals->points[i];
+            const auto &point = pcd->points[i];
+            if (!std::isfinite(normal.normal_x) || !std::isfinite(normal.normal_y) || !std::isfinite(normal.normal_z)) {
+                normal.normal_x = point.normal_x;
+                normal.normal_y = point.normal_y;
+                normal.normal_z = point.normal_z;
+                normal.curvature = 0.f;
+            } else if (normal.normal_x * point.normal_x + normal.normal_y * point.normal_y +
+                       normal.normal_z * point.normal_z < 0) {
+                normal.normal_x *= -1.f;
+                normal.normal_y *= -1.f;
+                normal.normal_z *= -1.f;
+            }
+        }
+    }
     int nan_counter = 0;
     for (const auto &normal: normals->points) {
         const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
@@ -43,7 +62,6 @@ void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointClo
         }
     }
     PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
-    // TODO: flip normals using normals from point cloud
 }
 
 void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Ptr &pcd) {

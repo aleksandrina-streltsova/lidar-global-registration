@@ -13,7 +13,7 @@
 namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
-const std::string VERSION = "02";
+const std::string VERSION = "03";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
@@ -53,6 +53,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     if (use_normals && !normals_available) {
         PCL_WARN("Point cloud doesn't have normals.\n");
     }
+    parameters.normals_available = normals_available;
     parameters.use_normals = use_normals && normals_available;
     parameters_container.push_back(parameters);
 

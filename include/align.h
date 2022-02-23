@@ -20,7 +20,8 @@
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
 
-void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals);
+void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals,
+                     bool normals_available);
 
 void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Ptr &pcd);
 
@@ -171,8 +172,8 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
         pcl::copyPointCloud(*tgt, *normals_tgt);
     } else {
         pcl::console::print_highlight("Estimating normals...\n");
-        estimateNormals(normal_radius, src, normals_src);
-        estimateNormals(normal_radius, tgt, normals_tgt);
+        estimateNormals(normal_radius, src, normals_src, parameters.normals_available);
+        estimateNormals(normal_radius, tgt, normals_tgt, parameters.normals_available);
         pcl::concatenateFields(*src, *normals_src, *src);
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }

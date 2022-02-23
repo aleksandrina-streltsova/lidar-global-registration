@@ -45,7 +45,7 @@ class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepre
 };
 
 struct AlignmentParameters {
-    bool downsample, use_normals;
+    bool downsample, use_normals, normals_available;
     float voxel_size;
     float edge_thr_coef, distance_thr_coef;
     float normal_radius_coef, feature_radius_coef;
