@@ -127,6 +127,12 @@ std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<Po
 }
 
 template<typename PointT>
+bool pointInBoundingBox(PointT point, PointT min_point, PointT max_point) {
+    return min_point.x < point.x && point.x < max_point.x && min_point.y < point.y && point.y < max_point.y &&
+           min_point.z < point.z && point.z < max_point.z;
+}
+
+template<typename PointT>
 float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
     pcl::KdTreeFLANN<PointT> tree(new pcl::KdTreeFLANN<PointT>);
     tree.setInputCloud(pcd);

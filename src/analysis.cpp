@@ -12,6 +12,8 @@
 #include "analysis.h"
 #include "filter.h"
 
+#define N_BINS 4
+
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt) {
     Eigen::Matrix3f rotation_diff = transformation.block<3, 3>(0, 0).inverse() * transformation_gt.block<3, 3>(0, 0);
@@ -34,6 +36,62 @@ float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
     }
     error /= pcd->size();
     return error;
+}
+
+float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+                                          const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                                          const AlignmentParameters &parameters,
+                                          const Eigen::Matrix4f &transformation_gt) {
+    PointCloudTN::Ptr src_aligned(new PointCloudTN);
+    pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
+    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+    tree->setInputCloud(tgt);
+
+    pcl::Indices indices;
+    std::vector<float> distances;
+    // calculate bbox of overlapping area
+    PointTN min_point, max_point;
+    float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
+    for (int i = 0; i < src_aligned->size(); ++i) {
+        (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
+        const PointTN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
+        if (std::sqrt(distances[0]) < error_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
+            min_point.x = std::min(min_point.x, p_src.x);
+            min_point.y = std::min(min_point.y, p_src.y);
+            min_point.z = std::min(min_point.z, p_src.z);
+            max_point.x = std::max(max_point.x, p_src.x);
+            max_point.y = std::max(max_point.y, p_src.y);
+            max_point.z = std::max(max_point.z, p_src.z);
+        }
+    }
+    int count[3][N_BINS][N_BINS]{0};
+
+    for (auto const &corr: correct_correspondences) {
+        const auto &point = src_aligned->points[corr.query_idx];
+        if (pointInBoundingBox(point, min_point, max_point)) {
+            int bin[3];
+            bin[0] = std::floor((point.x - min_point.x) / (max_point.x - min_point.x) * N_BINS);
+            bin[1] = std::floor((point.y - min_point.y) / (max_point.y - min_point.y) * N_BINS);
+            bin[2] = std::floor((point.z - min_point.z) / (max_point.z - min_point.z) * N_BINS);
+            // count 3D points projected to YZ, ZX, XY and fallen in 2D bin
+            for (int k = 0; k < 3; ++k) {
+                count[k][bin[(k + 1) % 3]][bin[(k + 2) % 3]]++;
+            }
+        }
+    }
+    float entropy[3]{0.f};
+    float n = correct_correspondences.size();
+    for (int k = 0; k < 3; ++k) {
+        for (int i = 0; i < N_BINS; ++i) {
+            for (int j = 0; j < N_BINS; ++j) {
+                float p = (float) count[k][i][j] / n;
+                if (p == 0.f) continue;
+                entropy[k] -= p * std::log(p);
+            }
+        }
+        entropy[k] /= std::log((float) (N_BINS * N_BINS));
+    }
+    return std::cbrt(entropy[0] * entropy[1] * entropy[2]);
 }
 
 float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
@@ -98,6 +156,8 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     fitness_ = (float) inlier_count_ / (float) correspondence_count_;
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
     normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
+    corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
+                                                           parameters_, transformation_gt_);
     std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_);
 
     print();
@@ -119,6 +179,7 @@ void AlignmentAnalysis::print() {
     pcl::console::print_info("translation error: %0.7f\n", t_error_);
     pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error_);
     pcl::console::print_info("normal mean difference: %0.7f\n", normal_diff_);
+    pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
 }
 
 void AlignmentAnalysis::save(const std::string &testname) {
@@ -160,7 +221,8 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize,
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,normal_diff\n";
+    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
+    out << "normal_diff,corr_uniformity\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -183,6 +245,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
         stream << ",,,";
     }
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
-    stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << "\n";
+    stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << ",";
+    stream << analysis.corr_uniformity_ << "\n";
     return stream;
 }
