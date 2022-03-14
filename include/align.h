@@ -11,6 +11,7 @@
 #include <pcl/common/time.h>
 #include <pcl/surface/gp3.h>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/features/shot_lrf.h>
 
 #include "common.h"
 #include "downsample.h"
@@ -25,16 +26,21 @@ void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointClo
 
 void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Ptr &pcd);
 
-template<typename FeatureT>
+void estimateReferenceFrames(const PointCloudTN::Ptr &pcd, const PointCloudN::Ptr &normals,
+                             PointCloudRF::Ptr &frames, const AlignmentParameters &parameters, bool is_source);
+
+template<typename FeatureT, typename PointRFT = PointRF>
 void estimateFeatures(float radius_search, const PointCloudTN::Ptr &pcd, const PointCloudTN::Ptr &surface,
-                      const PointCloudN::Ptr &normals, typename pcl::PointCloud<FeatureT>::Ptr &features) {
-    throw std::runtime_error("Feature isn't supported!");
+                      const PointCloudN::Ptr &normals, const typename pcl::PointCloud<PointRFT>::Ptr &frames,
+                      typename pcl::PointCloud<FeatureT>::Ptr &features) {
+    throw std::runtime_error("Feature with proposed reference frame isn't supported!");
 }
 
 template<>
 inline void estimateFeatures<FPFH>(float radius_search, const PointCloudTN::Ptr &pcd,
                                    const PointCloudTN::Ptr &surface,
                                    const PointCloudN::Ptr &normals,
+                                   const PointCloudRF::Ptr &frames,
                                    pcl::PointCloud<FPFH>::Ptr &features) {
     pcl::FPFHEstimationOMP<PointTN, pcl::Normal, FPFH> fpfh_estimation;
     fpfh_estimation.setRadiusSearch(radius_search);
@@ -47,8 +53,9 @@ template<>
 inline void estimateFeatures<USC>(float radius_search, const PointCloudTN::Ptr &pcd,
                                   const PointCloudTN::Ptr &surface,
                                   const PointCloudN::Ptr &normals,
+                                  const PointCloudRF::Ptr &frames,
                                   pcl::PointCloud<USC>::Ptr &features) {
-    pcl::UniqueShapeContext<PointTN, USC, pcl::ReferenceFrame> shape_context;
+    pcl::UniqueShapeContext<PointTN, USC, PointRF> shape_context;
     shape_context.setInputCloud(pcd);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
@@ -62,6 +69,7 @@ template<>
 inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const PointCloudTN::Ptr &pcd,
                                                     const PointCloudTN::Ptr &surface,
                                                     const PointCloudN::Ptr &normals,
+                                                    const PointCloudRF::Ptr &frames,
                                                     pcl::PointCloud<pcl::ShapeContext1980>::Ptr &features) {
     pcl::ShapeContext3DEstimation<PointTN, pcl::Normal, pcl::ShapeContext1980> shape_context;
     shape_context.setInputCloud(pcd);
@@ -76,6 +84,7 @@ template<>
 inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudTN::Ptr &pcd,
                                       const PointCloudTN::Ptr &surface,
                                       const PointCloudN::Ptr &normals,
+                                      const PointCloudRF::Ptr &frames,
                                       pcl::PointCloud<RoPS135>::Ptr &features) {
     // Perform triangulation.
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
@@ -118,6 +127,7 @@ template<>
 inline void estimateFeatures<SHOT>(float radius_search, const PointCloudTN::Ptr &pcd,
                                    const PointCloudTN::Ptr &surface,
                                    const PointCloudN::Ptr &normals,
+                                   const PointCloudRF::Ptr &frames,
                                    pcl::PointCloud<SHOT>::Ptr &features) {
 
     // SHOT estimation object.
@@ -128,6 +138,9 @@ inline void estimateFeatures<SHOT>(float radius_search, const PointCloudTN::Ptr 
     // The radius that defines which of the keypoint's neighbors are described.
     // If too large, there may be clutter, and if too small, not enough points may be found.
     shot.setRadiusSearch(radius_search);
+    if (frames) {
+        shot.setInputReferenceFrames(frames);
+    }
     PCL_WARN("[estimateFeatures<SHOT>] Points probably have NaN normals in their neighbourhood\n");
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
@@ -156,6 +169,7 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
     SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align;
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
+    PointCloudRF::Ptr frames_src(new PointCloudRF), frames_tgt(new PointCloudRF);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
 
@@ -177,10 +191,15 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
         pcl::concatenateFields(*src, *normals_src, *src);
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }
+
+    // Estimate reference frames
+    estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
+    estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
+
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, features_tgt);
+    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
+    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
 
     if (parameters.save_features) {
         saveFeatures<FeatureT>(features_src, parameters, true);

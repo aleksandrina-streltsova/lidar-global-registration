@@ -44,6 +44,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     std::vector<AlignmentAnalysis> analyses;
     for (auto &parameters: parameters_container) {
         parameters.testname = testname;
+        parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt);
         if (parameters.save_features) {
             saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
         }

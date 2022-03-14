@@ -26,11 +26,13 @@
 // Types
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointNormal PointTN;
+typedef pcl::ReferenceFrame PointRF;
 typedef pcl::PointXYZRGBNormal PointColoredTN;
 typedef pcl::PointCloud<PointT> PointCloudT;
 typedef pcl::PointCloud<PointColoredTN> PointCloudColoredTN;
 typedef pcl::PointCloud<pcl::Normal> PointCloudN;
 typedef pcl::PointCloud<PointTN> PointCloudTN;
+typedef pcl::PointCloud<PointRF> PointCloudRF;
 
 // Feature types
 typedef pcl::Histogram<ROPS_DIM> RoPS135;
@@ -53,11 +55,12 @@ struct AlignmentParameters {
     bool reciprocal, use_bfmatcher;
     int bf_block_size;
     int randomness, n_samples;
-    std::string func_id, descriptor_id;
+    std::string func_id, descriptor_id, lrf_id;
     std::optional<int> max_iterations;
 
     bool save_features;
     std::string testname;
+    std::shared_ptr<Eigen::Matrix4f> ground_truth{nullptr};
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,

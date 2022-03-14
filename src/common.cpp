@@ -15,6 +15,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string VERSION = "03";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
+const std::string DEFAULT_LRF = "default";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -101,6 +102,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     for (const auto &id: descriptor_ids) {
         for (auto ps: parameters_container) {
             ps.descriptor_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
+    auto lrf_ids = config.getVector<std::string>("lrf", DEFAULT_LRF);
+    for (const auto &id: lrf_ids) {
+        for (auto ps: parameters_container) {
+            ps.lrf_id = id;
             new_parameters_container.push_back(ps);
         }
     }
