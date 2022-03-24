@@ -15,6 +15,7 @@
 
 #include "common.h"
 #include "downsample.h"
+#include "rops_custom_lrf.h"
 #include "sac_prerejective_omp.h"
 #include "feature_analysis.h"
 
@@ -86,33 +87,10 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudTN::P
                                       const PointCloudN::Ptr &normals,
                                       const PointCloudRF::Ptr &frames,
                                       pcl::PointCloud<RoPS135>::Ptr &features) {
-    // Perform triangulation.
-    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
-    pcl::search::KdTree<PointTN>::Ptr tree_n(new pcl::search::KdTree<PointTN>);
-    tree_n->setInputCloud(pcd);
-
-    pcl::GreedyProjectionTriangulation<PointTN> triangulation;
-    pcl::PolygonMesh triangles;
-    triangulation.setSearchRadius(radius_search);
-    triangulation.setMu(2.5);
-    triangulation.setMaximumNearestNeighbors(100);
-    triangulation.setMaximumSurfaceAngle(M_PI / 4); // 45 degrees.
-    triangulation.setNormalConsistency(false);
-    triangulation.setMinimumAngle(M_PI / 18); // 10 degrees.
-    triangulation.setMaximumAngle(2 * M_PI / 3); // 120 degrees.
-    triangulation.setInputCloud(pcd);
-    triangulation.setSearchMethod(tree_n);
-    triangulation.reconstruct(triangles);
-
-    // Note: you should only compute descriptors for chosen keypoints. It has
-    // been omitted here for simplicity.
-
     // RoPs estimation object.
-    pcl::ROPSEstimation<PointTN, RoPS135> rops;
+    ROPSEstimationWithLocalReferenceFrames<PointTN, RoPS135> rops;
     rops.setInputCloud(pcd);
-//	rops.setSearchMethod(tree); TODO: is it necessary?
     rops.setRadiusSearch(radius_search);
-    rops.setTriangles(triangles.polygons);
     // Number of partition bins that is used for distribution matrix calculation.
     rops.setNumberOfPartitionBins(5);
     // The greater the number of rotations is, the bigger the resulting descriptor.
@@ -120,6 +98,31 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointCloudTN::P
     rops.setNumberOfRotations(3);
     // Support radius that is used to crop the local surface of the point.
     rops.setSupportRadius(radius_search);
+
+    if (!frames) {
+        // Perform triangulation.
+        pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+        pcl::search::KdTree<PointTN>::Ptr tree_n(new pcl::search::KdTree<PointTN>);
+        tree_n->setInputCloud(pcd);
+
+        pcl::GreedyProjectionTriangulation<PointTN> triangulation;
+        pcl::PolygonMesh triangles;
+        triangulation.setSearchRadius(radius_search);
+        triangulation.setMu(2.5);
+        triangulation.setMaximumNearestNeighbors(100);
+        triangulation.setMaximumSurfaceAngle(M_PI / 4); // 45 degrees.
+        triangulation.setNormalConsistency(false);
+        triangulation.setMinimumAngle(M_PI / 18); // 10 degrees.
+        triangulation.setMaximumAngle(2 * M_PI / 3); // 120 degrees.
+        triangulation.setInputCloud(pcd);
+        triangulation.setSearchMethod(tree_n);
+        triangulation.reconstruct(triangles);
+
+        rops.setTriangles(triangles.polygons);
+    } else {
+        rops.setInputReferenceFrames(frames);
+    }
+
     rops.compute(*features);
 }
 
@@ -169,7 +172,7 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
     SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align;
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
-    PointCloudRF::Ptr frames_src(new PointCloudRF), frames_tgt(new PointCloudRF);
+    PointCloudRF::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
 

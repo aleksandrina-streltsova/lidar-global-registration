@@ -13,7 +13,7 @@
 namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
-const std::string VERSION = "03";
+const std::string VERSION = "04";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
 
@@ -343,7 +343,7 @@ constructPath(const AlignmentParameters &parameters, const std::string &name, co
                            "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
                            "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                            "_" + std::to_string((int) parameters.normal_radius_coef) +
-                           (parameters.use_normals ? "_normals" : "");
+                           "_" + parameters.lrf_id + (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         filename += "_" + VERSION;
     }

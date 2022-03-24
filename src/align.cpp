@@ -113,9 +113,9 @@ void estimateReferenceFrames(const PointCloudTN::Ptr &pcd, const PointCloudN::Pt
         }
         PointRF lrf;
         for (int d = 0; d < 3; ++d) {
-            lrf.x_axis[d] = lrf_eigen.row (0)[d];
-            lrf.y_axis[d] = lrf_eigen.row (1)[d];
-            lrf.z_axis[d] = lrf_eigen.row (2)[d];
+            lrf.x_axis[d] = lrf_eigen.col (0)[d];
+            lrf.y_axis[d] = lrf_eigen.col (1)[d];
+            lrf.z_axis[d] = lrf_eigen.col (2)[d];
         }
         frames = std::make_shared<PointCloudRF>(PointCloudRF());
         frames->resize(pcd->size(), lrf);
