@@ -4,6 +4,7 @@ import click
 import yaml
 import pandas as pd
 import numpy as np
+import pye57
 from scipy.spatial.transform import Rotation
 
 from typing import List
@@ -16,6 +17,8 @@ ETH_GT_FILENAME = 'icpList.csv'
 ETH_GT_COLUMN_PC = 'reading'
 COMMON_GT_COLUMN_PC = ETH_GT_COLUMN_PC
 COMMON_GT_FILENAME = 'ground_truth.csv'
+GROUND_TRUTH_COLUMNS = ['reading', 'gT00', 'gT01', 'gT02', 'gT03', 'gT10', 'gT11', 'gT12', 'gT13', 'gT20', 'gT21',
+                        'gT22', 'gT23', 'gT30', 'gT31', 'gT32', 'gT33']
 
 
 @click.group()
@@ -132,6 +135,37 @@ def other_to_common(input_dir):
             cloud = PyntCloud.from_file(os.path.join(input_dir, filename))
             cloud.points = cloud.points.dropna()
             cloud.to_file(os.path.join(output_dir, filename))
+
+
+@cli.command('e57')
+@click.argument('e57-path', type=click.Path(exists=True, dir_okay=False))
+@click.option('--indices', '-i', multiple=True, type=int)
+def e57_to_common(e57_path, indices):
+    e57 = pye57.E57(str(e57_path))
+    input_dir = os.path.dirname(e57_path)
+    output_dir = input_dir
+    testname = os.path.basename(e57_path).removesuffix('.e57')
+    gt_path = os.path.join(input_dir, COMMON_GT_FILENAME)
+    if os.path.exists(gt_path):
+        df = pd.read_csv(gt_path)
+    else:
+        df = pd.DataFrame(columns=GROUND_TRUTH_COLUMNS)
+    rng = range(e57.scan_count) if len(indices) == 0 else indices
+    for i in rng:
+        scan = e57.read_scan(i, transform=False)
+        header = e57.get_header(i)
+        data = np.stack((scan['cartesianX'], scan['cartesianY'], scan['cartesianZ']), axis=1)
+        cloud_df = pd.DataFrame(data, columns=['x', 'y', 'z'])
+        cloud = PyntCloud(cloud_df)
+        filename = f'{testname}_{i}.ply'
+        cloud.to_file(os.path.join(output_dir, filename))
+        transformation_gt = np.eye(4)
+        if header.has_pose():
+            transformation_gt[:3, :3] = header.rotation_matrix
+            transformation_gt[:3, 3] = header.translation
+        df.drop(df[df['reading'] == filename].index, inplace=True)
+        df = df.append(pd.DataFrame([[filename] + transformation_gt.flatten().tolist()], columns=df.columns))
+    df.to_csv(gt_path, index=False)
 
 
 def transform_and_save(load_from: str, save_to: str, transformation: np.ndarray):
