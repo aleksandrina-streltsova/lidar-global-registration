@@ -84,6 +84,57 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE
 }
 
 template<typename PointSource, typename PointTarget, typename FeatureT>
+void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::readCorrespondences(
+        const AlignmentParameters &parameters) {
+    std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
+    bool file_exists = std::filesystem::exists(filepath);
+    multivalued_correspondences_.clear();
+    if (file_exists) {
+        std::ifstream fin(filepath);
+        if (fin.is_open()) {
+            std::string line;
+            std::vector<std::string> tokens;
+            while (std::getline(fin, line)) {
+                // query_idx, n_matches, match_1, dist_1, ..., match_n, dist_n
+                split(line, tokens, ",");
+                MultivaluedCorrespondence corr;
+                corr.query_idx = std::stoi(tokens[0]);
+                int n_matches = std::stoi(tokens[1]);
+                corr.match_indices.resize(n_matches);
+                corr.distances.resize(n_matches);
+                for (int i = 0; i < n_matches; ++i) {
+                    corr.match_indices[i] = std::stoi(tokens[2 + 2 * i]);
+                    corr.distances[i] = std::stof(tokens[2 + 2 * i + 1]);
+                }
+                multivalued_correspondences_.push_back(corr);
+            }
+            correspondence_ids_from_file = true;
+        } else {
+            perror(("error while opening file " + filepath).c_str());
+        }
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
+void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::saveCorrespondences(
+        const AlignmentParameters &parameters) {
+    std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
+    std::ofstream fout(filepath);
+    if (fout.is_open()) {
+        for (const auto &corr: multivalued_correspondences_) {
+            // query_idx, n_matches, match_1, ..., match_n, dist_1, ..., dist_n
+            fout << corr.query_idx << "," << corr.match_indices.size();
+            for (int i = 0; i < corr.match_indices.size(); ++i) {
+                fout << "," << corr.match_indices[i] << "," << corr.distances[i];
+            }
+            fout << "\n";
+        }
+    } else {
+        perror(("error while opening file " + filepath).c_str());
+    }
+}
+
+template<typename PointSource, typename PointTarget, typename FeatureT>
 AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getAlignmentAnalysis(
         const AlignmentParameters &parameters
 ) const {
@@ -325,10 +376,13 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
     float max_inlier_fraction = 0.0f;
     this->converged_ = false;
 
-    {
+    if (correspondence_ids_from_file) {
+        PCL_DEBUG("[%s::computeTransformation] read correspondences from file\n", this->getClassName().c_str());
+    } else {
         pcl::ScopeTime t("Correspondence search");
         findCorrespondences();
     }
+
     this->max_iterations_ = std::min(
             calculate_combination_or_max<int>(multivalued_correspondences_.size(), this->nr_samples_),
             this->max_iterations_);

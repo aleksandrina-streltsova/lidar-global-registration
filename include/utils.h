@@ -33,4 +33,6 @@ T calculate_combination_or_max(T n, T k) {
     return result > max ? max : (T)result;
 }
 
+void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
+
 #endif

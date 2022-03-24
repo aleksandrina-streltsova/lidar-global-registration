@@ -246,10 +246,12 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
     align.setInlierFraction(parameters.inlier_fraction); // Required inlier fraction for accepting a pose hypothesis
     std::cout << "    iteration: " << align.getMaximumIterations() << std::endl;
     std::cout << "    voxel size: " << voxel_size << std::endl;
+    align.readCorrespondences(parameters);
     {
         pcl::ScopeTime t("Alignment");
         align.align(*src_aligned);
     }
+    align.saveCorrespondences(parameters);
     return align;
 }
 

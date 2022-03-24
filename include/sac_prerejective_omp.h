@@ -1,6 +1,8 @@
 #ifndef REGISTRATION_SAC_PREREJECTIVE_OMP_H
 #define REGISTRATION_SAC_PREREJECTIVE_OMP_H
 
+#include <filesystem>
+
 #include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/common/norms.h>
 #include <pcl/common/time.h>
@@ -56,6 +58,11 @@ public:
         return multivalued_correspondences_;
     }
 
+    void readCorrespondences(const AlignmentParameters &parameters);
+
+    void saveCorrespondences(const AlignmentParameters &parameters);
+
+
     AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters) const;
 
 protected:
@@ -78,6 +85,7 @@ protected:
 
     void findCorrespondences();
 
+    bool correspondence_ids_from_file = false;
     bool reciprocal_ = false;
     bool use_bfmatcher_ = false;
     int bf_block_size_ = 10000;
