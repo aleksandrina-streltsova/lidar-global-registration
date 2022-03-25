@@ -432,7 +432,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
                     best_metric_local = metric;
                     best_inlier_pairs = inlier_pairs;
                     best_transformation = transformation;
-                    iters_local = std::min(metric_estimator_->estimateMaxIterations(inlier_pairs, confidence_,
+                    iters_local = std::min(metric_estimator_->estimateMaxIterations(transformation, confidence_,
                                                                                     this->nr_samples_), iters_local);
                 }
             } // for

@@ -146,7 +146,7 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     transformation_gt_ = transformation_gt;
 
     buildCorrectCorrespondences(correct_correspondences_, transformation_gt_, error_thr);
-    metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_, error_thr);
+    metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
     metric_estimator_->estimateMetric(inlier_pairs_, fitness_);
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
     normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);

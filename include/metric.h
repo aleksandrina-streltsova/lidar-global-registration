@@ -25,12 +25,11 @@ public:
 
     virtual void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const = 0;
 
-    virtual int
-    estimateMaxIterations(std::vector<InlierPair> &inlier_pairs, float confidence, int nr_samples) const = 0;
+    virtual int estimateMaxIterations(const Eigen::Matrix4f &transformation, float confidence, int nr_samples) const;
 
     virtual void buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
                                          std::vector<InlierPair> &correct_inlier_pairs,
-                                         const Eigen::Matrix4f &transformation_gt, float error_thr) const;
+                                         const Eigen::Matrix4f &transformation_gt) const;
 
     virtual inline void setCorrespondences(const std::vector<MultivaluedCorrespondence> &correspondences) {
         correspondences_ = correspondences;
@@ -68,8 +67,6 @@ public:
                           float &rmse) const override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
-
-    int estimateMaxIterations(std::vector<InlierPair> &inlier_pairs, float confidence, int nr_samples) const override;
 };
 
 class ClosestPointMetricEstimator : public MetricEstimator {
@@ -85,8 +82,6 @@ class ClosestPointMetricEstimator : public MetricEstimator {
                           float &rmse) const override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
-
-    int estimateMaxIterations(std::vector<InlierPair> &inlier_pairs, float confidence, int nr_samples) const override;
 
     void setTargetCloud(const PointCloudTN::ConstPtr &tgt) override;
 
