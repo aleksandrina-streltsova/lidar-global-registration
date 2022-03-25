@@ -16,6 +16,7 @@ const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string VERSION = "04";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
+const std::string DEFAULT_METRIC = "correspondences";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -118,6 +119,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    auto metric_ids = config.getVector<std::string>("metric", DEFAULT_METRIC);
+    for (const auto &id: metric_ids) {
+        for (auto ps: parameters_container) {
+            ps.metric_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     return parameters_container;
 }
 
@@ -133,7 +144,7 @@ float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
 void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                             const pcl::Indices &inliers, const AlignmentParameters &parameters,
+                             const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source) {
     PointCloudTN pcd_aligned;
     pcl::transformPointCloud(*pcd, pcd_aligned, transformation_gt);
@@ -151,9 +162,11 @@ void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
             setPointColor(dst.points[correspondence.match_indices[0]], COLOR_RED);
         }
     }
-    if (is_source) {
-        for (const auto &idx: inliers) {
-            setPointColor(dst.points[idx], COLOR_BLUE);
+    for (const auto &ip: inlier_pairs) {
+        if (is_source) {
+            setPointColor(dst.points[ip.idx_src], COLOR_BLUE);
+        } else {
+            setPointColor(dst.points[ip.idx_tgt], COLOR_BLUE);
         }
     }
     for (const auto &correspondence: correct_correspondences) {
@@ -285,6 +298,7 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
     fout.close();
 }
 
+// TODO: why did I need this function?
 void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences,
                    const std::vector<MultivaluedCorrespondence> &correct_correspondences,
                    const pcl::Indices &inliers, const AlignmentParameters &parameters) {
@@ -344,7 +358,8 @@ constructPath(const AlignmentParameters &parameters, const std::string &name, co
                            "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                            "_" + std::to_string((int) parameters.normal_radius_coef) +
                            "_" + std::to_string((int) parameters.feature_radius_coef) +
-                           "_" + parameters.lrf_id + (parameters.use_normals ? "_normals" : "");
+                           "_" + parameters.lrf_id + "_" + parameters.metric_id +
+                           (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         filename += "_" + VERSION;
     }

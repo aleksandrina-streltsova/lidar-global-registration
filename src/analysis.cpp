@@ -119,28 +119,25 @@ float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const Point
     return difference / (float) n_points_overlap;
 }
 
-std::vector<MultivaluedCorrespondence> AlignmentAnalysis::getCorrectCorrespondences(
-        const Eigen::Matrix4f &transformation_gt, float error_threshold, bool check_inlier
-) {
+void AlignmentAnalysis::buildCorrectCorrespondences(std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                                                    const Eigen::Matrix4f &transformation_gt, float error_threshold) {
+    correct_correspondences.clear();
+    correct_correspondences.reserve(correspondences_.size());
+
     PointCloudTN input_transformed;
     input_transformed.resize(src_->size());
     pcl::transformPointCloud(*src_, input_transformed, transformation_gt);
 
-    std::set<int> inliers(inliers_.begin(), inliers_.end());
-    std::vector<MultivaluedCorrespondence> correct_correspondences;
     for (const auto &correspondence: correspondences_) {
         int query_idx = correspondence.query_idx;
-        if (!check_inlier || (check_inlier && inliers.find(query_idx) != inliers.end())) {
-            int match_idx = correspondence.match_indices[0];
-            PointTN source_point(input_transformed.points[query_idx]);
-            PointTN target_point(tgt_->points[match_idx]);
-            float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
-            if (e < error_threshold) {
-                correct_correspondences.push_back(correspondence);
-            }
+        int match_idx = correspondence.match_indices[0];
+        PointTN source_point(input_transformed.points[query_idx]);
+        PointTN target_point(tgt_->points[match_idx]);
+        float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
+        if (e < error_threshold) {
+            correct_correspondences.push_back(correspondence);
         }
     }
-    return correct_correspondences;
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
@@ -148,12 +145,9 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
     transformation_gt_ = transformation_gt;
 
-    correct_correspondences_ = getCorrectCorrespondences(transformation_gt_, error_thr);
-    inlier_count_ = inliers_.size();
-    correct_inlier_count_ = countCorrectCorrespondences(transformation_gt_, error_thr, true);
-    correspondence_count_ = correspondences_.size();
-    correct_correspondence_count_ = correct_correspondences_.size();
-    fitness_ = (float) inlier_count_ / (float) correspondence_count_;
+    buildCorrectCorrespondences(correct_correspondences_, transformation_gt_, error_thr);
+    metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_, error_thr);
+    metric_estimator_->estimateMetric(inlier_pairs_, fitness_);
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
     normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
     corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
@@ -171,10 +165,9 @@ void AlignmentAnalysis::print() {
     printTransformation(transformation_gt_);
     pcl::console::print_info("fitness: %0.7f\n", fitness_);
     pcl::console::print_info("inliers_rmse: %0.7f\n", rmse_);
-    pcl::console::print_info("inliers: %i/%i\n", inlier_count_, correspondence_count_);
-    pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_count_, inlier_count_);
+    pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_pairs_.size(), inlier_pairs_.size());
     pcl::console::print_info("correct correspondences: %i/%i\n",
-                             correct_correspondence_count_, correspondence_count_);
+                             correct_correspondences_.size(), correspondences_.size());
     pcl::console::print_info("rotation error: %0.7f\n", r_error_);
     pcl::console::print_info("translation error: %0.7f\n", t_error_);
     pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error_);
@@ -208,9 +201,9 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize,
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters);
     saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
     saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
-    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inliers_, parameters, transformation_gt_, true);
-    saveColorizedPointCloud(tgt_, correspondences_, correct_correspondences_, inliers_, parameters, Eigen::Matrix4f::Identity(), false);
-    saveInlierIds(correspondences_, correct_correspondences_, inliers_, parameters);
+    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inlier_pairs_, parameters, transformation_gt_, true);
+    saveColorizedPointCloud(tgt_, correspondences_, correct_correspondences_, inlier_pairs_, parameters, Eigen::Matrix4f::Identity(), false);
+//    saveInlierIds(correspondences_, correct_correspondences_, inlier_pairs_, parameters);
 
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
@@ -228,8 +221,8 @@ void printAnalysisHeader(std::ostream &out) {
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
     stream << VERSION << "," << analysis.parameters_.descriptor_id << "," << analysis.testname_ << ","
            << analysis.fitness_ << "," << analysis.rmse_ << ",";
-    stream << analysis.correspondence_count_ << "," << analysis.correct_correspondence_count_ << ",";
-    stream << analysis.inlier_count_ << "," << analysis.correct_inlier_count_ << ",";
+    stream << analysis.correspondences_.size() << "," << analysis.correct_correspondences_.size() << ",";
+    stream << analysis.inlier_pairs_.size() << "," << analysis.correct_inlier_pairs_.size() << ",";
     stream << analysis.parameters_.voxel_size << ",";
     stream << analysis.parameters_.normal_radius_coef << ",";
     stream << analysis.parameters_.feature_radius_coef << ",";

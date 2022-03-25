@@ -12,6 +12,7 @@
 #include "common.h"
 #include "analysis.h"
 #include "matching.h"
+#include "metric.h"
 
 #ifdef _OPENMP
 
@@ -25,11 +26,10 @@
 #define OPENMP_AVAILABLE_RANSAC_PREREJECTIVE false
 #endif
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT> {
+template<typename FeatureT>
+class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointTN, PointTN, FeatureT> {
 public:
-    using Matrix4 = typename pcl::Registration<PointSource, PointTarget>::Matrix4;
-    using PointCloudSource = typename pcl::Registration<PointSource, PointTarget>::PointCloudSource;
+    using Matrix4 = typename pcl::Registration<PointTN, PointTN>::Matrix4;
 
     SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation<FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
@@ -43,6 +43,10 @@ public:
 
     void setConfidence(float confidence);
 
+    inline void setMetricEstimator(const MetricEstimator::Ptr &metric_estimator) {
+        metric_estimator_ = metric_estimator;
+    }
+
     // TODO: fix
     inline void useBFMatcher() {
         use_bfmatcher_ = true;
@@ -52,11 +56,19 @@ public:
         bf_block_size_ = bf_block_size;
     }
 
-    float getRMSEScore() const;
+    inline float getRMSEScore() const {
+        return rmse_;
+    }
 
-    inline const std::vector<MultivaluedCorrespondence> getCorrespondences() const {
+    inline const std::vector<MultivaluedCorrespondence> &getCorrespondences() const {
         return multivalued_correspondences_;
     }
+
+    inline const std::vector<InlierPair> &getInlierPairs() const {
+        return inlier_pairs_;
+    }
+
+    const pcl::Indices &getInliers() const;
 
     void readCorrespondences(const AlignmentParameters &parameters);
 
@@ -66,7 +78,7 @@ public:
     AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters) const;
 
 protected:
-    void computeTransformation(PointCloudSource &output, const Eigen::Matrix4f &guess) override;
+    void computeTransformation(PointCloudTN &output, const Eigen::Matrix4f &guess) override;
 
     void buildIndices(const pcl::Indices &sample_indices,
                       pcl::Indices &source_indices,
@@ -79,12 +91,9 @@ protected:
 
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
-    void getRMSE(pcl::Indices &inliers, const Matrix4 &transformation, float &rmse_score);
-
-    int estimateMaxIterations(float inlier_fraction);
-
     void findCorrespondences();
 
+    std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file = false;
     bool reciprocal_ = false;
     bool use_bfmatcher_ = false;
@@ -93,6 +102,7 @@ protected:
     float confidence_ = 0.999f;
     unsigned int threads_{};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
+    MetricEstimator::Ptr metric_estimator_{nullptr};
     std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
 
 private:

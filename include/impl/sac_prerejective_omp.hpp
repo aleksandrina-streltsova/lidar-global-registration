@@ -1,8 +1,8 @@
 #ifndef REGISTRATION_SAC_PREREJECTIVE_OMP_HPP
 #define REGISTRATION_SAC_PREREJECTIVE_OMP_HPP
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setNumberOfThreads(unsigned int nr_threads) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::setNumberOfThreads(unsigned int nr_threads) {
     if (nr_threads == 0)
 #ifdef _OPENMP
     {
@@ -18,11 +18,10 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setNumb
         threads_ = nr_threads;
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIndices(
-        const pcl::Indices &sample_indices,
-        pcl::Indices &source_indices,
-        pcl::Indices &target_indices) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::buildIndices(const pcl::Indices &sample_indices,
+                                                            pcl::Indices &source_indices,
+                                                            pcl::Indices &target_indices) {
     // Allocate results
     source_indices.resize(sample_indices.size());
     target_indices.resize(sample_indices.size());
@@ -42,50 +41,21 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::buildIn
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSE(pcl::Indices &inliers,
-                                                                                 const Matrix4 &transformation,
-                                                                                 float &rmse_score) {
-    // Initialize variables
-    inliers.clear();
-    inliers.reserve(multivalued_correspondences_.size());
-    rmse_score = 0.0f;
-
-    // Transform the input dataset using the final transformation
-    PointCloudSource input_transformed;
-    input_transformed.resize(this->input_->size());
-    transformPointCloud(*(this->input_), input_transformed, transformation);
-
-    // For each point from correspondences in the source dataset
-    for (int i = 0; i < multivalued_correspondences_.size(); ++i) {
-        int query_idx = multivalued_correspondences_[i].query_idx;
-        int match_idx = multivalued_correspondences_[i].match_indices[0];
-        PointSource source_point(input_transformed.points[query_idx]);
-        PointTarget target_point(this->target_->points[match_idx]);
-
-        // Calculate correspondence distance
-        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3);
-
-        // Check if correspondence is an inlier
-        if (dist < this->corr_dist_threshold_) {
-            // Update inliers
-            inliers.push_back(query_idx);
-
-            // Update fitness score
-            rmse_score += dist * dist;
+template<typename FeatureT>
+const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const {
+    if (this->inliers_.empty()) {
+        const auto& inlier_pairs = getInlierPairs();
+        this->inliers_.clear();
+        this->inliers.reserve(inlier_pairs.size());
+        for (const auto &ip: inlier_pairs) {
+            this->inliers_.push_back(ip.idx_src);
         }
     }
-
-    // Calculate RMSE
-    if (!inliers.empty())
-        rmse_score = std::sqrt(rmse_score / static_cast<float>(inliers.size()));
-    else
-        rmse_score = std::numeric_limits<float>::max();
+    return this->inliers_;
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::readCorrespondences(
-        const AlignmentParameters &parameters) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
     bool file_exists = std::filesystem::exists(filepath);
     multivalued_correspondences_.clear();
@@ -115,9 +85,8 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::readCor
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::saveCorrespondences(
-        const AlignmentParameters &parameters) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
     std::ofstream fout(filepath);
     if (fout.is_open()) {
@@ -134,13 +103,13 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::saveCor
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getAlignmentAnalysis(
+template<typename FeatureT>
+AlignmentAnalysis SampleConsensusPrerejectiveOMP<FeatureT>::getAlignmentAnalysis(
         const AlignmentParameters &parameters
 ) const {
     if (this->hasConverged()) {
-        return AlignmentAnalysis(parameters, this->input_, this->target_,
-                                 this->inliers_, this->multivalued_correspondences_,
+        return AlignmentAnalysis(parameters, this->metric_estimator_, this->input_, this->target_,
+                                 this->inlier_pairs_, this->multivalued_correspondences_,
                                  this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_);
     } else {
         pcl::console::print_error("Alignment failed!\n");
@@ -148,17 +117,8 @@ AlignmentAnalysis SampleConsensusPrerejectiveOMP<PointSource, PointTarget, Featu
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::estimateMaxIterations(float inlier_fraction) {
-    if (inlier_fraction <= 0.0) {
-        return std::numeric_limits<int>::max();
-    }
-    double iterations = std::log(1.0 - confidence_) / std::log(1.0 - std::pow(inlier_fraction, this->nr_samples_));
-    return static_cast<int>(std::min((double) std::numeric_limits<int>::max(), iterations));
-}
-
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setConfidence(float confidence) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::setConfidence(float confidence) {
     if (confidence > 0.0 && confidence < 1.0) {
         confidence_ = confidence;
     } else {
@@ -166,17 +126,10 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::setConf
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-float SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getRMSEScore() const {
-    return rmse_;
-}
-
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectCorrespondences(
-        int nr_correspondences,
-        int nr_samples,
-        pcl::Indices &sample_indices,
-        UniformRandIntGenerator &rand_generator) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::selectCorrespondences(int nr_correspondences, int nr_samples,
+                                                                     pcl::Indices &sample_indices,
+                                                                     UniformRandIntGenerator &rand_generator) {
     if (nr_samples > nr_correspondences) {
         PCL_ERROR("[%s::selectCorrespondences] ", this->getClassName().c_str());
         PCL_ERROR("The number of samples (%d) must not be greater than the number of correspondences (%zu)!\n",
@@ -220,8 +173,8 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::selectC
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-unsigned int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::getNumberOfThreads() {
+template<typename FeatureT>
+unsigned int SampleConsensusPrerejectiveOMP<FeatureT>::getNumberOfThreads() {
     unsigned int threads = threads_;
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
     if (threads_ == 0) {
@@ -238,8 +191,8 @@ unsigned int SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>:
     return threads;
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::findCorrespondences() {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::findCorrespondences() {
     int threads = getNumberOfThreads();
     int nr_dims = point_representation_->getNumberOfDimensions();
 
@@ -304,20 +257,18 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::findCor
     }
 }
 
-template<typename PointSource, typename PointTarget, typename FeatureT>
-void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::computeTransformation(PointCloudSource &output,
-                                                                                               const Eigen::Matrix4f &guess) {
+template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudTN &output,
+                                                                     const Eigen::Matrix4f &guess) {
     // Some sanity checks first
     if (!this->input_features_) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR(
-                "No source features were given! Call setSourceFeatures before aligning.\n");
+        PCL_ERROR("No source features were given! Call setSourceFeatures before aligning.\n");
         return;
     }
     if (!this->target_features_) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR(
-                "No target features were given! Call setTargetFeatures before aligning.\n");
+        PCL_ERROR("No target features were given! Call setTargetFeatures before aligning.\n");
         return;
     }
 
@@ -345,8 +296,7 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
         return;
     }
 
-    const float similarity_threshold =
-            this->correspondence_rejector_poly_->getSimilarityThreshold();
+    const float similarity_threshold = this->correspondence_rejector_poly_->getSimilarityThreshold();
     if (similarity_threshold < 0.0f || similarity_threshold >= 1.0f) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
         PCL_ERROR("Illegal prerejection similarity threshold %f, must be in [0,1[!\n",
@@ -361,6 +311,12 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
         return;
     }
 
+    if (!this->metric_estimator_) {
+        PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+        PCL_ERROR("No metric estimator was given! Call setMetricEstimator before aligning.\n");
+        return;
+    }
+
     // Initialize prerejector (similarity threshold already set to default value in
     // constructor)
     this->correspondence_rejector_poly_->setInputSource(this->input_);
@@ -371,9 +327,9 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 
     // Initialize results
     this->final_transformation_ = guess;
-    this->inliers_.clear();
-    this->rmse_ = std::numeric_limits<float>::max();
-    float max_inlier_fraction = 0.0f;
+    this->inlier_pairs_.clear();
+    rmse_ = std::numeric_limits<float>::max();
+    float best_metric = metric_estimator_->getInitialMetric();
     this->converged_ = false;
 
     if (correspondence_ids_from_file) {
@@ -383,23 +339,29 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
         findCorrespondences();
     }
 
+    // Initialize metric estimator
+    metric_estimator_->setSourceCloud(this->input_);
+    metric_estimator_->setTargetCloud(this->target_);
+    metric_estimator_->setCorrespondences(multivalued_correspondences_);
+    metric_estimator_->setInlierThreshold(this->corr_dist_threshold_);
+
     this->max_iterations_ = std::min(
             calculate_combination_or_max<int>(multivalued_correspondences_.size(), this->nr_samples_),
             this->max_iterations_);
     int estimated_iters = this->max_iterations_; // For debugging
     {
-        pcl::Indices inliers;
-        float inlier_fraction, error;
+        std::vector<InlierPair> inlier_pairs;
+        float metric, error;
 
         // If guess is not the Identity matrix we check it
         if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
-            this->getRMSE(inliers, guess, error);
-            inlier_fraction = static_cast<float>(inliers.size()) / static_cast<float>(this->input_->size());
+            metric_estimator_->buildInlierPairs(guess, inlier_pairs, error);
+            metric_estimator_->estimateMetric(inlier_pairs, metric);
 
-            if (inlier_fraction >= max_inlier_fraction) {
-                this->inliers_ = inliers;
-                this->rmse_ = error;
-                max_inlier_fraction = inlier_fraction;
+            if (metric_estimator_->isBetter(metric, best_metric)) {
+                this->inlier_pairs_ = inlier_pairs;
+                rmse_ = error;
+                best_metric = metric;
                 this->converged_ = true;
                 this->final_transformation_ = guess;
             }
@@ -414,26 +376,26 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
 #pragma omp parallel \
     num_threads(threads) \
     default(none) \
-    shared(max_inlier_fraction, estimated_iters) \
+    shared(best_metric, estimated_iters) \
     reduction(+:num_rejections, ransac_iterations)
 #endif
         {
             // Local best results
-            pcl::Indices best_inliers;
+            std::vector<InlierPair> best_inlier_pairs;
             float min_error_local = std::numeric_limits<float>::max();
-            float max_inlier_fraction_local = 0.0f;
-            int estimated_iters_local = this->max_iterations_;
+            float best_metric_local = metric_estimator_->getInitialMetric();
+            int iters_local = this->max_iterations_;
             Matrix4 best_transformation;
 
             // Temporaries
-            pcl::Indices inliers;
-            float inlier_fraction, error;
+            std::vector<InlierPair> inlier_pairs;
+            float metric, error;
 
             UniformRandIntGenerator rand_generator(0, (int) multivalued_correspondences_.size() - 1);
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
-                if (i >= estimated_iters_local) {
+                if (i >= iters_local) {
                     continue;
                 }
                 ++ransac_iterations;
@@ -461,33 +423,30 @@ void SampleConsensusPrerejectiveOMP<PointSource, PointTarget, FeatureT>::compute
                 this->transformation_estimation_->estimateRigidTransformation(*(this->input_), source_indices,
                                                                               *(this->target_),
                                                                               target_indices, transformation);
-
-                // Transform the input and compute the error (uses input_filtered_)
-                this->getRMSE(inliers, transformation, error);
-
                 // If the new fit is better, update results
-                inlier_fraction = static_cast<float>(inliers.size()) /
-                                  static_cast<float>(multivalued_correspondences_.size());
+                metric_estimator_->buildInlierPairs(transformation, inlier_pairs, error);
+                metric_estimator_->estimateMetric(inlier_pairs, metric);
 
-                if (inlier_fraction > max_inlier_fraction_local) {
+                if (metric_estimator_->isBetter(metric, best_metric_local)) {
                     min_error_local = error;
-                    max_inlier_fraction_local = inlier_fraction;
-                    best_inliers = inliers;
+                    best_metric_local = metric;
+                    best_inlier_pairs = inlier_pairs;
                     best_transformation = transformation;
-                    estimated_iters_local = std::min(estimateMaxIterations(inlier_fraction), estimated_iters_local);
+                    iters_local = std::min(metric_estimator_->estimateMaxIterations(inlier_pairs, confidence_,
+                                                                                    this->nr_samples_), iters_local);
                 }
             } // for
 #pragma omp critical(registration_result)
             {
-                if (max_inlier_fraction < max_inlier_fraction_local) {
-                    this->inliers_ = best_inliers;
-                    this->rmse_ = min_error_local;
-                    max_inlier_fraction = max_inlier_fraction_local;
+                if (metric_estimator_->isBetter(best_metric_local, best_metric)) {
+                    this->inlier_pairs_ = best_inlier_pairs;
+                    rmse_ = min_error_local;
+                    best_metric = best_metric_local;
                     this->converged_ = true;
                     this->final_transformation_ = best_transformation;
                 }
-                if (estimated_iters_local < estimated_iters) {
-                    estimated_iters = estimated_iters_local;
+                if (iters_local < estimated_iters) {
+                    estimated_iters = iters_local;
                 }
             }
         }

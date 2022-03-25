@@ -55,7 +55,7 @@ struct AlignmentParameters {
     bool reciprocal, use_bfmatcher;
     int bf_block_size;
     int randomness, n_samples;
-    std::string func_id, descriptor_id, lrf_id;
+    std::string func_id, descriptor_id, lrf_id, metric_id;
     std::optional<int> max_iterations;
 
     bool save_features;
@@ -71,6 +71,10 @@ struct MultivaluedCorrespondence {
     int query_idx = -1;
     pcl::Indices match_indices;
     std::vector<float> distances;
+};
+
+struct InlierPair {
+    int idx_src, idx_tgt;
 };
 
 struct PointHash {
@@ -137,7 +141,7 @@ bool pointInBoundingBox(PointT point, PointT min_point, PointT max_point) {
 
 template<typename PointT>
 float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
-    pcl::KdTreeFLANN<PointT> tree(new pcl::KdTreeFLANN<PointT>);
+    pcl::KdTreeFLANN<PointT> tree;
     tree.setInputCloud(pcd);
 
     int k_neighbours = 8, n_points = pcd->size();
@@ -161,7 +165,7 @@ float getAABBDiagonal(const PointCloudTN::Ptr &pcd);
 void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
                              const std::vector<MultivaluedCorrespondence> &correspondences,
                              const std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                             const pcl::Indices &inliers, const AlignmentParameters &parameters,
+                             const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source);
 
 void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,

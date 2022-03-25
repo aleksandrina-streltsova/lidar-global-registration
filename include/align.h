@@ -151,7 +151,7 @@ inline void estimateFeatures<SHOT>(float radius_search, const PointCloudTN::Ptr 
 }
 
 template<typename FeatureT>
-SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
+SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
         const PointCloudTN::Ptr &src_fullsize,
         const PointCloudTN::Ptr &tgt_fullsize,
         const AlignmentParameters &parameters
@@ -169,7 +169,7 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
     }
 
     PointCloudTN::Ptr src_aligned(new PointCloudTN);
-    SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align;
+    SampleConsensusPrerejectiveOMP<FeatureT> align;
 
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
     PointCloudRF::Ptr frames_src(nullptr), frames_tgt(nullptr);
@@ -234,6 +234,8 @@ SampleConsensusPrerejectiveOMP<PointTN, PointTN, FeatureT> align_point_clouds(
 
     align.setInputTarget(tgt);
     align.setTargetFeatures(features_tgt);
+
+    align.setMetricEstimator(getMetricEstimator(parameters.metric_id));
 
     int n_samples = parameters.n_samples;
     int iteration_brute_force = calculate_combination_or_max<int>((int) std::min(src->size(), tgt->size()), n_samples);
