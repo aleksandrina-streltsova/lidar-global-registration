@@ -208,14 +208,14 @@ void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize,
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
     pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
     pcl::io::savePLYFileBinary(constructPath(parameters, "aligned"), *src_fullsize_aligned);
-    pcl::io::savePLYFileBinary(constructPath(parameters, "aligned_gt"), *src_fullsize_aligned_gt);
+    pcl::io::savePLYFileBinary(constructPath(parameters.testname, "aligned_gt", "ply", false), *src_fullsize_aligned_gt);
 }
 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
     out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
-    out << "normal_diff,corr_uniformity,lrf\n";
+    out << "normal_diff,corr_uniformity,lrf,metric\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -239,6 +239,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     }
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
     stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << ",";
-    stream << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << "\n";
+    stream << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
+    stream << analysis.parameters_.metric_id << "\n";
     return stream;
 }
