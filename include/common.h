@@ -192,7 +192,7 @@ std::string constructPath(const std::string &test, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
-                          const std::string &extension = "ply", bool with_version = true);
+                          const std::string &extension = "ply", bool with_version = true, bool with_metric = true);
 
 template<typename PointT>
 bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {

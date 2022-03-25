@@ -56,7 +56,7 @@ const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
-    std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
+    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
     bool file_exists = std::filesystem::exists(filepath);
     multivalued_correspondences_.clear();
     if (file_exists) {
@@ -87,7 +87,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const Alignme
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
-    std::string filepath = constructPath(parameters.testname, "correspondences", "csv", true);
+    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
     std::ofstream fout(filepath);
     if (fout.is_open()) {
         for (const auto &corr: multivalued_correspondences_) {

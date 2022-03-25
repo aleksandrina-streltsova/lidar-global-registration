@@ -340,8 +340,8 @@ void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, 
 }
 
 
-std::string
-constructPath(const std::string &test, const std::string &name, const std::string &extension, bool with_version) {
+std::string constructPath(const std::string &test, const std::string &name,
+                          const std::string &extension, bool with_version) {
     std::string filename = test + "_" + name;
     if (with_version) {
         filename += "_" + VERSION;
@@ -350,15 +350,14 @@ constructPath(const std::string &test, const std::string &name, const std::strin
     return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
 }
 
-std::string
-constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
-              bool with_version) {
+std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
+                          const std::string &extension, bool with_version, bool with_metric) {
     std::string filename = parameters.testname + "_" + name +
                            "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
                            "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                            "_" + std::to_string((int) parameters.normal_radius_coef) +
                            "_" + std::to_string((int) parameters.feature_radius_coef) +
-                           "_" + parameters.lrf_id + "_" + parameters.metric_id +
+                           "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
                            (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         filename += "_" + VERSION;
