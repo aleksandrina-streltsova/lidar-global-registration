@@ -69,6 +69,8 @@ private:
     void print();
 
     void save(const std::string &testname);
+
+    void saveTransformation();
 };
 
 void printAnalysisHeader(std::ostream &out);

@@ -112,8 +112,11 @@ public:
 };
 
 extern const std::string DATA_DEBUG_PATH;
+extern const std::string TRANSFORMATIONS_CSV;
 extern const std::string VERSION;
 extern const std::string DEFAULT_DESCRIPTOR;
+extern const std::string DEFAULT_LRF;
+extern const std::string DEFAULT_METRIC;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -188,6 +191,9 @@ void mixPointColor(PointColoredTN &point, int color);
 
 void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
+std::string constructName(const AlignmentParameters &parameters, const std::string &name,
+                          bool with_version = true, bool with_metric = true);
+
 std::string constructPath(const std::string &test, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);
 
@@ -210,5 +216,10 @@ bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
     }
     return normal_x && normal_y && normal_z;
 }
+
+void readCorrespondencesFromCSV(const std::string &filepath, std::vector<MultivaluedCorrespondence> &correspondences,
+                                bool &success);
+
+void saveCorrespondencesFromCSV(const std::string &filepath, const std::vector<MultivaluedCorrespondence> &correspondences);
 
 #endif

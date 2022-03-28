@@ -14,6 +14,8 @@
 
 #define N_BINS 4
 
+namespace fs = std::filesystem;
+
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt) {
     Eigen::Matrix3f rotation_diff = transformation.block<3, 3>(0, 0).inverse() * transformation_gt.block<3, 3>(0, 0);
@@ -156,6 +158,7 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
 
     print();
     save(testname);
+    saveTransformation();
 }
 
 void AlignmentAnalysis::print() {
@@ -190,6 +193,27 @@ void AlignmentAnalysis::save(const std::string &testname) {
             printAnalysisHeader(fout);
         }
         fout << *this;
+        fout.close();
+    } else {
+        perror(("error while opening file " + filepath).c_str());
+    }
+}
+
+void AlignmentAnalysis::saveTransformation() {
+    std::string filepath = fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV);
+    bool file_exists = std::filesystem::exists(filepath);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(filepath, std::ios_base::out);
+    } else {
+        fout.open(filepath, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        fout << testname_;
+        for (int i = 0; i < 16; ++i) {
+            fout << "," << transformation_(i / 4, i % 4);
+        }
+        fout << "\n";
         fout.close();
     } else {
         perror(("error while opening file " + filepath).c_str());

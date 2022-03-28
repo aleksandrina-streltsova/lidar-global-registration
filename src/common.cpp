@@ -13,6 +13,7 @@
 namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
+const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string VERSION = "04";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
@@ -352,16 +353,68 @@ std::string constructPath(const std::string &test, const std::string &name,
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
                           const std::string &extension, bool with_version, bool with_metric) {
-    std::string filename = parameters.testname + "_" + name +
-                           "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
-                           "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
-                           "_" + std::to_string((int) parameters.normal_radius_coef) +
-                           "_" + std::to_string((int) parameters.feature_radius_coef) +
-                           "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
-                           (parameters.use_normals ? "_normals" : "");
-    if (with_version) {
-        filename += "_" + VERSION;
-    }
+    std::string filename = constructName(parameters, name, with_version, with_metric);
     filename += "." + extension;
     return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
+}
+
+std::string constructName(const AlignmentParameters &parameters, const std::string &name,
+                          bool with_version, bool with_metric) {
+    std::string full_name = parameters.testname + "_" + name +
+                       "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
+                       "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
+                       "_" + std::to_string((int) parameters.normal_radius_coef) +
+                       "_" + std::to_string((int) parameters.feature_radius_coef) +
+                       "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
+                       (parameters.use_normals ? "_normals" : "");
+    if (with_version) {
+        full_name += "_" + VERSION;
+    }
+    return full_name;
+}
+
+void readCorrespondencesFromCSV(const std::string &filepath, std::vector<MultivaluedCorrespondence> &correspondences,
+                                bool &success) {
+    bool file_exists = std::filesystem::exists(filepath);
+    correspondences.clear();
+    if (file_exists) {
+        std::ifstream fin(filepath);
+        if (fin.is_open()) {
+            std::string line;
+            std::vector<std::string> tokens;
+            while (std::getline(fin, line)) {
+                // query_idx, n_matches, match_1, dist_1, ..., match_n, dist_n
+                split(line, tokens, ",");
+                MultivaluedCorrespondence corr;
+                corr.query_idx = std::stoi(tokens[0]);
+                int n_matches = std::stoi(tokens[1]);
+                corr.match_indices.resize(n_matches);
+                corr.distances.resize(n_matches);
+                for (int i = 0; i < n_matches; ++i) {
+                    corr.match_indices[i] = std::stoi(tokens[2 + 2 * i]);
+                    corr.distances[i] = std::stof(tokens[2 + 2 * i + 1]);
+                }
+                correspondences.push_back(corr);
+            }
+            success = true;
+        } else {
+            perror(("error while opening file " + filepath).c_str());
+        }
+    }
+}
+
+void saveCorrespondencesFromCSV(const std::string &filepath, const std::vector<MultivaluedCorrespondence> &correspondences) {
+    std::ofstream fout(filepath);
+    if (fout.is_open()) {
+        for (const auto &corr: correspondences) {
+            // query_idx, n_matches, match_1, ..., match_n, dist_1, ..., dist_n
+            fout << corr.query_idx << "," << corr.match_indices.size();
+            for (int i = 0; i < corr.match_indices.size(); ++i) {
+                fout << "," << corr.match_indices[i] << "," << corr.distances[i];
+            }
+            fout << "\n";
+        }
+    } else {
+        perror(("error while opening file " + filepath).c_str());
+    }
 }

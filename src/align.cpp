@@ -7,6 +7,21 @@
 
 #define RF_MIN_ANGLE_RAD 0.04f
 
+Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name) {
+    std::ifstream file(csv_path);
+    Eigen::Matrix4f transformation;
+
+    CSVRow row;
+    while (file >> row) {
+        if (row[0] == transformation_name) {
+            for (int i = 0; i < 16; ++i) {
+                transformation(i / 4, i % 4) = std::stof(row[i + 1]);
+            }
+        }
+    }
+    return transformation;
+}
+
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename) {
     std::ifstream file(csv_path);

@@ -70,6 +70,7 @@ public:
 };
 
 class ClosestPointMetricEstimator : public MetricEstimator {
+public:
     inline float getInitialMetric() const override {
         return 0.0;
     }

@@ -19,6 +19,8 @@
 #include "sac_prerejective_omp.h"
 #include "feature_analysis.h"
 
+Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name);
+
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
 

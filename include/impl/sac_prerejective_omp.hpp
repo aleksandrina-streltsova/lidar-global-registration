@@ -57,50 +57,13 @@ const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
-    bool file_exists = std::filesystem::exists(filepath);
-    multivalued_correspondences_.clear();
-    if (file_exists) {
-        std::ifstream fin(filepath);
-        if (fin.is_open()) {
-            std::string line;
-            std::vector<std::string> tokens;
-            while (std::getline(fin, line)) {
-                // query_idx, n_matches, match_1, dist_1, ..., match_n, dist_n
-                split(line, tokens, ",");
-                MultivaluedCorrespondence corr;
-                corr.query_idx = std::stoi(tokens[0]);
-                int n_matches = std::stoi(tokens[1]);
-                corr.match_indices.resize(n_matches);
-                corr.distances.resize(n_matches);
-                for (int i = 0; i < n_matches; ++i) {
-                    corr.match_indices[i] = std::stoi(tokens[2 + 2 * i]);
-                    corr.distances[i] = std::stof(tokens[2 + 2 * i + 1]);
-                }
-                multivalued_correspondences_.push_back(corr);
-            }
-            correspondence_ids_from_file = true;
-        } else {
-            perror(("error while opening file " + filepath).c_str());
-        }
-    }
+    readCorrespondencesFromCSV(filepath, this->multivalued_correspondences_, correspondence_ids_from_file);
 }
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
-    std::ofstream fout(filepath);
-    if (fout.is_open()) {
-        for (const auto &corr: multivalued_correspondences_) {
-            // query_idx, n_matches, match_1, ..., match_n, dist_1, ..., dist_n
-            fout << corr.query_idx << "," << corr.match_indices.size();
-            for (int i = 0; i < corr.match_indices.size(); ++i) {
-                fout << "," << corr.match_indices[i] << "," << corr.distances[i];
-            }
-            fout << "\n";
-        }
-    } else {
-        perror(("error while opening file " + filepath).c_str());
-    }
+    saveCorrespondencesFromCSV(filepath, this->multivalued_correspondences_);
 }
 
 template<typename FeatureT>
