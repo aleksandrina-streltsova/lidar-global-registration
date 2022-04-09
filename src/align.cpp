@@ -22,6 +22,31 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string
     return transformation;
 }
 
+void saveTransformation(const std::string &csv_path, const std::string &transformation_name,
+                        const Eigen::Matrix4f &transformation) {
+    bool file_exists = std::filesystem::exists(csv_path);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(csv_path, std::ios_base::out);
+    } else {
+        fout.open(csv_path, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        if (!file_exists) {
+            fout << "reading,gT00,gT01,gT02,gT03,gT10,gT11,gT12,gT13,gT20,gT21,gT22,gT23,gT30,gT31,gT32,gT33\n";
+        }
+    } else {
+        perror(("error while opening file " + csv_path).c_str());
+    }
+    fout << transformation_name;
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            fout << "," << transformation(i, j);
+        }
+    }
+    fout << "\n";
+}
+
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename) {
     std::ifstream file(csv_path);

@@ -21,6 +21,9 @@
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name);
 
+void saveTransformation(const std::string &csv_path, const std::string &transformation_name,
+                        const Eigen::Matrix4f &transformation);
+
 Eigen::Matrix4f getTransformation(const std::string &csv_path,
                                   const std::string &src_filename, const std::string &tgt_filename);
 

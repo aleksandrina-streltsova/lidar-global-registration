@@ -121,20 +121,22 @@ float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const Point
     return difference / (float) n_points_overlap;
 }
 
-void AlignmentAnalysis::buildCorrectCorrespondences(std::vector<MultivaluedCorrespondence> &correct_correspondences,
-                                                    const Eigen::Matrix4f &transformation_gt, float error_threshold) {
+void buildCorrectCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+                                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                                 std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                                 const Eigen::Matrix4f &transformation_gt, float error_threshold) {
     correct_correspondences.clear();
-    correct_correspondences.reserve(correspondences_.size());
+    correct_correspondences.reserve(correspondences.size());
 
     PointCloudTN input_transformed;
-    input_transformed.resize(src_->size());
-    pcl::transformPointCloud(*src_, input_transformed, transformation_gt);
+    input_transformed.resize(src->size());
+    pcl::transformPointCloud(*src, input_transformed, transformation_gt);
 
-    for (const auto &correspondence: correspondences_) {
+    for (const auto &correspondence: correspondences) {
         int query_idx = correspondence.query_idx;
         int match_idx = correspondence.match_indices[0];
         PointTN source_point(input_transformed.points[query_idx]);
-        PointTN target_point(tgt_->points[match_idx]);
+        PointTN target_point(tgt->points[match_idx]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
         if (e < error_threshold) {
             correct_correspondences.push_back(correspondence);
@@ -147,7 +149,7 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
     transformation_gt_ = transformation_gt;
 
-    buildCorrectCorrespondences(correct_correspondences_, transformation_gt_, error_thr);
+    buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_, error_thr);
     metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
     metric_estimator_->estimateMetric(inlier_pairs_, fitness_);
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
@@ -158,7 +160,6 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
 
     print();
     save(testname);
-    saveTransformation();
 }
 
 void AlignmentAnalysis::print() {
@@ -199,46 +200,10 @@ void AlignmentAnalysis::save(const std::string &testname) {
     }
 }
 
-void AlignmentAnalysis::saveTransformation() {
-    std::string filepath = fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV);
-    bool file_exists = std::filesystem::exists(filepath);
-    std::fstream fout;
-    if (!file_exists) {
-        fout.open(filepath, std::ios_base::out);
-    } else {
-        fout.open(filepath, std::ios_base::app);
-    }
-    if (fout.is_open()) {
-        fout << testname_;
-        for (int i = 0; i < 16; ++i) {
-            fout << "," << transformation_(i / 4, i % 4);
-        }
-        fout << "\n";
-        fout.close();
-    } else {
-        perror(("error while opening file " + filepath).c_str());
-    }
-}
-
-void AlignmentAnalysis::saveFilesForDebug(const PointCloudTN::Ptr &src_fullsize, const AlignmentParameters &parameters) {
-    PointCloudTN::Ptr src_fullsize_aligned(new PointCloudTN), src_fullsize_aligned_gt(new PointCloudTN);
-    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters);
-    saveCorrespondences(src_, tgt_, correspondences_, transformation_gt_, parameters, true);
-    saveCorrespondenceDistances(src_, tgt_, correspondences_, transformation_gt_, parameters_.voxel_size, parameters);
-    saveColorizedPointCloud(src_, correspondences_, correct_correspondences_, inlier_pairs_, parameters, transformation_gt_, true);
-    saveColorizedPointCloud(tgt_, correspondences_, correct_correspondences_, inlier_pairs_, parameters, Eigen::Matrix4f::Identity(), false);
-//    saveInlierIds(correspondences_, correct_correspondences_, inlier_pairs_, parameters);
-
-    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation_);
-    pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt_);
-    pcl::io::savePLYFileBinary(constructPath(parameters, "aligned"), *src_fullsize_aligned);
-    pcl::io::savePLYFileBinary(constructPath(parameters.testname, "aligned_gt", "ply", false), *src_fullsize_aligned_gt);
-}
-
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-    out << "iteration,reciprocal,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
+    out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
     out << "normal_diff,corr_uniformity,lrf,metric\n";
 }
 
@@ -253,7 +218,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.parameters_.distance_thr_coef << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
     stream << analysis.iterations_ << ",";
-    stream << analysis.parameters_.reciprocal << ",";
+    stream << analysis.parameters_.matching_id << ",";
     stream << analysis.parameters_.randomness << ",";
     auto func = getUniquenessFunction(analysis.parameters_.func_id);
     if (func != nullptr) {
