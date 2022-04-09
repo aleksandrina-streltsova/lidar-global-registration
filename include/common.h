@@ -8,6 +8,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_representation.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/correspondence.h>
 
 #include <Eigen/Core>
 
@@ -170,23 +171,23 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pc
 float getAABBDiagonal(const PointCloudTN::Ptr &pcd);
 
 void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
-                             const std::vector<MultivaluedCorrespondence> &correspondences,
-                             const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                             const pcl::Correspondences &correspondences,
+                             const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source);
 
 void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                         const std::vector<MultivaluedCorrespondence> &correspondences,
+                         const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse = false);
 
 void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                                 const pcl::Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters);
 
-void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences,
-                   const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+void saveInlierIds(const pcl::Correspondences &correspondences,
+                   const pcl::Correspondences &correct_correspondences,
                    const pcl::Indices &inliers, const AlignmentParameters &parameters);
 
 void setPointColor(PointColoredTN &point, int color);
@@ -221,9 +222,8 @@ bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
     return normal_x && normal_y && normal_z;
 }
 
-void readCorrespondencesFromCSV(const std::string &filepath, std::vector<MultivaluedCorrespondence> &correspondences,
-                                bool &success);
+void readCorrespondencesFromCSV(const std::string &filepath, pcl::Correspondences &correspondences, bool &success);
 
-void saveCorrespondencesFromCSV(const std::string &filepath, const std::vector<MultivaluedCorrespondence> &correspondences);
+void saveCorrespondencesToCSV(const std::string &filepath, const pcl::Correspondences &correspondences);
 
 #endif

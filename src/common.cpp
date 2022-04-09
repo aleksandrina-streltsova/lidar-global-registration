@@ -168,8 +168,8 @@ float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
 }
 
 void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
-                             const std::vector<MultivaluedCorrespondence> &correspondences,
-                             const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                             const pcl::Correspondences &correspondences,
+                             const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source) {
     PointCloudTN pcd_aligned;
@@ -183,9 +183,9 @@ void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
     }
     for (const auto &correspondence: correspondences) {
         if (is_source) {
-            setPointColor(dst.points[correspondence.query_idx], COLOR_RED);
+            setPointColor(dst.points[correspondence.index_query], COLOR_RED);
         } else {
-            setPointColor(dst.points[correspondence.match_indices[0]], COLOR_RED);
+            setPointColor(dst.points[correspondence.index_match], COLOR_RED);
         }
     }
     for (const auto &ip: inlier_pairs) {
@@ -197,9 +197,9 @@ void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
     }
     for (const auto &correspondence: correct_correspondences) {
         if (is_source) {
-            mixPointColor(dst.points[correspondence.query_idx], COLOR_WHITE);
+            mixPointColor(dst.points[correspondence.index_query], COLOR_WHITE);
         } else {
-            mixPointColor(dst.points[correspondence.match_indices[0]], COLOR_WHITE);
+            mixPointColor(dst.points[correspondence.index_match], COLOR_WHITE);
         }
     }
     std::string filepath = constructPath(parameters, std::string("downsampled_") + (is_source ? "src" : "tgt"));
@@ -207,7 +207,7 @@ void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
 }
 
 void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t match_offset,
-                              const std::vector<MultivaluedCorrespondence> &correspondences,
+                              const pcl::Correspondences &correspondences,
                               const std::string &filepath) {
     std::string filepath_tmp = filepath + "tmp";
     std::fstream fin(filepath, std::ios_base::in), fout(filepath_tmp, std::ios_base::out);
@@ -240,7 +240,7 @@ void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t m
         if (!vertices_ended && n_vertices == pcd->size()) {
             vertices_ended = true;
             for (const auto &corr: correspondences) {
-                const auto &p = pcd->points[corr.query_idx];
+                const auto &p = pcd->points[corr.index_query];
                 fout << p.x << " " << p.y << " " << p.z << " "
                      << (int) p.r << " " << (int) p.g << " " << (int) p.b << " "
                      << p.normal_x << " " << p.normal_y << " " << p.normal_z << " " << p.curvature << "\n";
@@ -251,7 +251,7 @@ void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t m
     std::size_t midpoint_offset = pcd->size();
     for (int i = 0; i < correspondences.size(); i++) {
         const auto &corr = correspondences[i];
-        fout << "3 " << corr.query_idx << " " << match_offset + corr.match_indices[0] << " " << midpoint_offset + i
+        fout << "3 " << corr.index_query << " " << match_offset + corr.index_match << " " << midpoint_offset + i
              << "\n";
     }
     fin.close();
@@ -261,7 +261,7 @@ void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t m
 }
 
 void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                         const std::vector<MultivaluedCorrespondence> &correspondences,
+                         const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse) {
     PointCloudColoredTN::Ptr dst(new PointCloudColoredTN);
@@ -282,8 +282,8 @@ void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::
     UniformRandIntGenerator rand_generator(0, 255);
     for (const auto &corr: correspondences) {
         std::uint8_t red = rand_generator(), green = rand_generator(), blue = rand_generator();
-        setPointColor(dst->points[corr.query_idx], red, green, blue);
-        setPointColor(dst->points[src_aligned_gt->size() + corr.match_indices[0]], red, green, blue);
+        setPointColor(dst->points[corr.index_query], red, green, blue);
+        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], red, green, blue);
     }
     std::string filepath;
     if (sparse) {
@@ -304,7 +304,7 @@ void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::
 }
 
 void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                                 const std::vector<MultivaluedCorrespondence> &correspondences,
+                                 const pcl::Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "distances", "csv");
@@ -316,8 +316,8 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
 
     fout << "distance\n";
     for (const auto &correspondence: correspondences) {
-        PointTN source_point(src_aligned_gt.points[correspondence.query_idx]);
-        PointTN target_point(tgt->points[correspondence.match_indices[0]]);
+        PointTN source_point(src_aligned_gt.points[correspondence.index_query]);
+        PointTN target_point(tgt->points[correspondence.index_match]);
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
         fout << dist << "\n";
     }
@@ -325,8 +325,8 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
 }
 
 // TODO: why did I need this function?
-void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences,
-                   const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+void saveInlierIds(const pcl::Correspondences &correspondences,
+                   const pcl::Correspondences &correct_correspondences,
                    const pcl::Indices &inliers, const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "inliers", "csv");
     std::fstream fout(filepath, std::ios_base::out);
@@ -337,12 +337,12 @@ void saveInlierIds(const std::vector<MultivaluedCorrespondence> &correspondences
     std::copy(inliers.begin(), inliers.end(), std::inserter(inliers_set, inliers_set.begin()));
     std::transform(correct_correspondences.begin(), correct_correspondences.end(),
                    std::inserter(correct_cs_set, correct_cs_set.begin()),
-                   [](const MultivaluedCorrespondence &corr) { return corr.query_idx; });
+                   [](const pcl::Correspondence &corr) { return corr.index_query; });
     fout << "id_src,id_tgt,is_correct,is_inlier\n";
     for (const auto &correspondence: correspondences) {
-        fout << correspondence.query_idx << "," << correspondence.match_indices[0] << ",";
-        fout << correct_cs_set.contains(correspondence.query_idx) << ",";
-        fout << inliers_set.contains(correspondence.query_idx) << "\n";
+        fout << correspondence.index_query << "," << correspondence.index_match << ",";
+        fout << correct_cs_set.contains(correspondence.index_query) << ",";
+        fout << inliers_set.contains(correspondence.index_query) << "\n";
     }
     fout.close();
 }
@@ -399,7 +399,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     return full_name;
 }
 
-void readCorrespondencesFromCSV(const std::string &filepath, std::vector<MultivaluedCorrespondence> &correspondences,
+void readCorrespondencesFromCSV(const std::string &filepath, pcl::Correspondences &correspondences,
                                 bool &success) {
     bool file_exists = std::filesystem::exists(filepath);
     correspondences.clear();
@@ -409,17 +409,9 @@ void readCorrespondencesFromCSV(const std::string &filepath, std::vector<Multiva
             std::string line;
             std::vector<std::string> tokens;
             while (std::getline(fin, line)) {
-                // query_idx, n_matches, match_1, dist_1, ..., match_n, dist_n
+                // query_idx, match_idx, distance
                 split(line, tokens, ",");
-                MultivaluedCorrespondence corr;
-                corr.query_idx = std::stoi(tokens[0]);
-                int n_matches = std::stoi(tokens[1]);
-                corr.match_indices.resize(n_matches);
-                corr.distances.resize(n_matches);
-                for (int i = 0; i < n_matches; ++i) {
-                    corr.match_indices[i] = std::stoi(tokens[2 + 2 * i]);
-                    corr.distances[i] = std::stof(tokens[2 + 2 * i + 1]);
-                }
+                pcl::Correspondence corr{std::stoi(tokens[0]), std::stoi(tokens[1]), std::stof(tokens[2])};
                 correspondences.push_back(corr);
             }
             success = true;
@@ -429,16 +421,12 @@ void readCorrespondencesFromCSV(const std::string &filepath, std::vector<Multiva
     }
 }
 
-void saveCorrespondencesFromCSV(const std::string &filepath, const std::vector<MultivaluedCorrespondence> &correspondences) {
+void saveCorrespondencesToCSV(const std::string &filepath, const pcl::Correspondences &correspondences) {
     std::ofstream fout(filepath);
     if (fout.is_open()) {
         for (const auto &corr: correspondences) {
-            // query_idx, n_matches, match_1, ..., match_n, dist_1, ..., dist_n
-            fout << corr.query_idx << "," << corr.match_indices.size();
-            for (int i = 0; i < corr.match_indices.size(); ++i) {
-                fout << "," << corr.match_indices[i] << "," << corr.distances[i];
-            }
-            fout << "\n";
+            // query_idx, match_idx, distance
+            fout << corr.index_query << "," << corr.index_match << "," << corr.distance << "\n";
         }
     } else {
         perror(("error while opening file " + filepath).c_str());

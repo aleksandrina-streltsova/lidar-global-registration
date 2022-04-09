@@ -8,6 +8,7 @@
 
 #include <pcl/types.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/correspondence.h>
 
 #include "common.h"
 
@@ -31,7 +32,7 @@ public:
                                          std::vector<InlierPair> &correct_inlier_pairs,
                                          const Eigen::Matrix4f &transformation_gt) const;
 
-    virtual inline void setCorrespondences(const std::vector<MultivaluedCorrespondence> &correspondences) {
+    virtual inline void setCorrespondences(const pcl::Correspondences &correspondences) {
         correspondences_ = correspondences;
     }
 
@@ -48,7 +49,7 @@ public:
     }
 
 protected:
-    std::vector<MultivaluedCorrespondence> correspondences_;
+    pcl::Correspondences correspondences_;
     PointCloudTN::ConstPtr src_, tgt_;
     float inlier_threshold_;
 };

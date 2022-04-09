@@ -30,14 +30,8 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::buildIndices(const pcl::Indices &
     for (std::size_t j = 0; j < sample_indices.size(); ++j) {
         // Current correspondence index
         const auto &idx = sample_indices[j];
-        source_indices[j] = multivalued_correspondences_[idx].query_idx;
-
-        // Select one at random and add it to target_indices
-        if (this->k_correspondences_ == 1)
-            target_indices[j] = multivalued_correspondences_[idx].match_indices[0];
-        else
-            target_indices[j] = multivalued_correspondences_[idx].match_indices[this->getRandomIndex(
-                    this->k_correspondences_)];
+        source_indices[j] = this->correspondences_->operator[](idx).index_query;
+        target_indices[j] = this->correspondences_->operator[](idx).index_match;
     }
 }
 
@@ -57,13 +51,13 @@ const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
-    readCorrespondencesFromCSV(filepath, this->multivalued_correspondences_, correspondence_ids_from_file);
+    readCorrespondencesFromCSV(filepath, *(this->correspondences_), correspondence_ids_from_file);
 }
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
-    saveCorrespondencesFromCSV(filepath, this->multivalued_correspondences_);
+    saveCorrespondencesToCSV(filepath, *(this->correspondences_));
 }
 
 template<typename FeatureT>
@@ -72,7 +66,7 @@ AlignmentAnalysis SampleConsensusPrerejectiveOMP<FeatureT>::getAlignmentAnalysis
 ) const {
     if (this->hasConverged()) {
         return AlignmentAnalysis(parameters, this->metric_estimator_, this->input_, this->target_,
-                                 this->inlier_pairs_, this->multivalued_correspondences_,
+                                 this->inlier_pairs_, *(this->correspondences_),
                                  this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_);
     } else {
         pcl::console::print_error("Alignment failed!\n");
@@ -233,21 +227,19 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
         PCL_DEBUG("[%s::computeTransformation] read correspondences from file\n", this->getClassName().c_str());
     } else {
         pcl::ScopeTime t("Correspondence search");
-        multivalued_correspondences_ = feature_matcher_->match(this->input_features_, this->target_features_,
-                                                               point_representation_,
-                                                               this->k_correspondences_, getNumberOfThreads(),
-                                                               use_bfmatcher_, bf_block_size_);
+        *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
+                                                            point_representation_, this->k_correspondences_,
+                                                            getNumberOfThreads(), use_bfmatcher_, bf_block_size_);
     }
 
     // Initialize metric estimator
     metric_estimator_->setSourceCloud(this->input_);
     metric_estimator_->setTargetCloud(this->target_);
-    metric_estimator_->setCorrespondences(multivalued_correspondences_);
+    metric_estimator_->setCorrespondences(*(this->correspondences_));
     metric_estimator_->setInlierThreshold(this->corr_dist_threshold_);
 
     this->max_iterations_ = std::min(
-            calculate_combination_or_max<int>(multivalued_correspondences_.size(), this->nr_samples_),
-            this->max_iterations_);
+            calculate_combination_or_max<int>(this->correspondences_->size(), this->nr_samples_), this->max_iterations_);
     int estimated_iters = this->max_iterations_; // For debugging
     {
         std::vector<InlierPair> inlier_pairs;
@@ -291,7 +283,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
             std::vector<InlierPair> inlier_pairs;
             float metric, error;
 
-            UniformRandIntGenerator rand_generator(0, (int) multivalued_correspondences_.size() - 1);
+            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1);
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
@@ -306,7 +298,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
                 pcl::Indices target_indices;
 
                 // Draw nr_samples_ random samples
-                selectCorrespondences(multivalued_correspondences_.size(), this->nr_samples_, sample_indices,
+                selectCorrespondences(this->correspondences_->size(), this->nr_samples_, sample_indices,
                                       rand_generator);
 
                 // Find corresponding features in the target cloud

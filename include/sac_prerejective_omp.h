@@ -59,8 +59,8 @@ public:
         return rmse_;
     }
 
-    inline const std::vector<MultivaluedCorrespondence> &getCorrespondences() const {
-        return multivalued_correspondences_;
+    inline const pcl::Correspondences &getCorrespondences() const {
+        return this->correspondences_;
     }
 
     inline const std::vector<InlierPair> &getInlierPairs() const {
@@ -100,7 +100,6 @@ protected:
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     MetricEstimator::Ptr metric_estimator_{nullptr};
     typename FeatureMatcher<FeatureT>::Ptr feature_matcher_{nullptr};
-    std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
 
 private:
     unsigned int getNumberOfThreads();

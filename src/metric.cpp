@@ -30,9 +30,9 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
     int count_supporting_corrs = 0;
     for (const auto &corr: correspondences_) {
         Eigen::Vector4f source_point(0, 0, 0, 1);
-        source_point.block(0, 0, 3, 1) = src_->points[corr.query_idx].getArray3fMap();
+        source_point.block(0, 0, 3, 1) = src_->points[corr.index_query].getArray3fMap();
         Eigen::Vector4f target_point(0, 0, 0, 1);
-        target_point.block(0, 0, 3, 1) = tgt_->points[corr.match_indices[0]].getArray3fMap();
+        target_point.block(0, 0, 3, 1) = tgt_->points[corr.index_match].getArray3fMap();
         float e = (transformation * source_point - target_point).block(0, 0, 3, 1).norm();
         if (e < inlier_threshold_) {
             count_supporting_corrs++;
@@ -59,8 +59,8 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
 
     // For each point from correspondences in the source dataset
     for (int i = 0; i < correspondences_.size(); ++i) {
-        int query_idx = correspondences_[i].query_idx;
-        int match_idx = correspondences_[i].match_indices[0];
+        int query_idx = correspondences_[i].index_query;
+        int match_idx = correspondences_[i].index_match;
         PointTN source_point(src_transformed.points[query_idx]);
         PointTN target_point(tgt_->points[match_idx]);
 

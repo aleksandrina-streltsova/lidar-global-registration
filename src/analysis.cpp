@@ -41,7 +41,7 @@ float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
 }
 
 float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                                          const std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                                          const pcl::Correspondences &correct_correspondences,
                                           const AlignmentParameters &parameters,
                                           const Eigen::Matrix4f &transformation_gt) {
     PointCloudTN::Ptr src_aligned(new PointCloudTN);
@@ -69,7 +69,7 @@ float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, con
     int count[3][N_BINS][N_BINS]{0};
 
     for (auto const &corr: correct_correspondences) {
-        const auto &point = src_aligned->points[corr.query_idx];
+        const auto &point = src_aligned->points[corr.index_query];
         if (pointInBoundingBox(point, min_point, max_point)) {
             int bin[3];
             bin[0] = std::floor((point.x - min_point.x) / (max_point.x - min_point.x) * N_BINS);
@@ -122,8 +122,8 @@ float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const Point
 }
 
 void buildCorrectCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
-                                 const std::vector<MultivaluedCorrespondence> &correspondences,
-                                 std::vector<MultivaluedCorrespondence> &correct_correspondences,
+                                 const pcl::Correspondences &correspondences,
+                                 pcl::Correspondences &correct_correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float error_threshold) {
     correct_correspondences.clear();
     correct_correspondences.reserve(correspondences.size());
@@ -133,10 +133,8 @@ void buildCorrectCorrespondences(const PointCloudTN::ConstPtr &src, const PointC
     pcl::transformPointCloud(*src, input_transformed, transformation_gt);
 
     for (const auto &correspondence: correspondences) {
-        int query_idx = correspondence.query_idx;
-        int match_idx = correspondence.match_indices[0];
-        PointTN source_point(input_transformed.points[query_idx]);
-        PointTN target_point(tgt->points[match_idx]);
+        PointTN source_point(input_transformed.points[correspondence.index_query]);
+        PointTN target_point(tgt->points[correspondence.index_match]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
         if (e < error_threshold) {
             correct_correspondences.push_back(correspondence);

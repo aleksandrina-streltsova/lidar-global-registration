@@ -11,11 +11,11 @@ public:
     using Ptr = std::shared_ptr<FeatureMatcher<FeatureT>>;
     using ConstPtr = std::shared_ptr<const FeatureMatcher<FeatureT>>;
 
-    virtual std::vector<MultivaluedCorrespondence> match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
-                                                         const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                                                         const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                                                         int k_corrs, int threads,
-                                                         bool use_bfmatcher, int bf_block_size) = 0;
+    virtual pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
+                                       const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                                       const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
+                                       int k_corrs, int threads,
+                                       bool use_bfmatcher, int bf_block_size) = 0;
 
     virtual std::string getClassName() = 0;
 };
@@ -23,25 +23,24 @@ public:
 template<typename FeatureT>
 class LeftToRightMatcher : public FeatureMatcher<FeatureT> {
 public:
-    std::vector<MultivaluedCorrespondence> match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
-                                                 const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                                                 const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                                                 int k_corrs, int threads,
-                                                 bool use_bfmatcher, int bf_block_size) override {
+    pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
+                               const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                               const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
+                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
         int nr_dims = point_representation->getNumberOfDimensions();
-        std::vector<MultivaluedCorrespondence> correspondences_ij;
+        std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (use_bfmatcher) {
-            matchBF<FeatureT>(src, tgt, correspondences_ij, point_representation, k_corrs, nr_dims, bf_block_size);
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, nr_dims, bf_block_size);
         } else {
-            matchFLANN<FeatureT>(src, tgt, correspondences_ij, point_representation, k_corrs, threads);
+            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, threads);
         }
 
         {
             float dists_sum = 0.f;
             int n_dists = 0;
             for (int i = 0; i < src->size(); i++) {
-                if (correspondences_ij[i].query_idx >= 0) {
-                    dists_sum += correspondences_ij[i].distances[0];
+                if (mv_correspondences_ij[i].query_idx >= 0) {
+                    dists_sum += mv_correspondences_ij[i].distances[0];
                     n_dists++;
                 }
             }
@@ -54,42 +53,29 @@ public:
             }
         }
 
-        std::vector<MultivaluedCorrespondence> correspondences_ji;
+        std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
         if (use_bfmatcher) {
-            matchBF<FeatureT>(tgt, src, correspondences_ji, point_representation, k_corrs, nr_dims, bf_block_size);
+            matchBF<FeatureT>(tgt, src, mv_correspondences_ji, point_representation, k_corrs, nr_dims, bf_block_size);
         } else {
-            matchFLANN<FeatureT>(tgt, src, correspondences_ji, point_representation, k_corrs, threads);
+            matchFLANN<FeatureT>(tgt, src, mv_correspondences_ji, point_representation, k_corrs, threads);
         }
 
-        std::vector<MultivaluedCorrespondence> correspondences_mutual;
+        pcl::Correspondences correspondences_mutual;
         for (int i = 0; i < src->size(); ++i) {
-            MultivaluedCorrespondence corr_i{i};
-            for (const int &j: correspondences_ij[i].match_indices) {
-                auto &corr_j = correspondences_ji[j];
+            for (const int &j: mv_correspondences_ij[i].match_indices) {
+                auto &corr_j = mv_correspondences_ji[j];
                 for (int k = 0; k < corr_j.match_indices.size(); ++k) {
                     if (corr_j.match_indices[k] == i) {
-                        corr_i.match_indices.push_back(j);
-                        corr_i.distances.push_back(corr_j.distances[k]);
+                        correspondences_mutual.push_back({i, j, corr_j.distances[k]});
                         break;
                     }
                 }
             }
-            if (!corr_i.match_indices.empty()) {
-                correspondences_mutual.emplace_back(corr_i);
-            }
         }
-        correspondences_ij = correspondences_mutual;
         PCL_DEBUG("[%s::match] %i correspondences remain after mutual filter.\n",
                   getClassName().c_str(),
                   correspondences_mutual.size());
-
-        std::vector<MultivaluedCorrespondence> correspondences;
-        for (auto corr: correspondences_ij) {
-            if (corr.query_idx >= 0) {
-                correspondences.emplace_back(corr);
-            }
-        }
-        return correspondences;
+        return correspondences_mutual;
     }
 
     inline std::string getClassName() override {
@@ -118,19 +104,19 @@ void pcl2cv(int nr_dims, const typename pcl::PointCloud<FeatureT>::ConstPtr &src
 template<typename FeatureT>
 void matchFLANN(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
                 const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
-                std::vector<MultivaluedCorrespondence> &correspondences,
+                std::vector<MultivaluedCorrespondence> &mv_correspondences,
                 const typename pcl::PointRepresentation<FeatureT>::Ptr point_representation,
                 int k_matches, int threads) {
     pcl::KdTreeFLANN<FeatureT> feature_tree(new pcl::KdTreeFLANN<FeatureT>);
     feature_tree.setInputCloud(train_features);
     int n = query_features->size();
-    correspondences.resize(n, MultivaluedCorrespondence{});
-#pragma omp parallel for num_threads(threads) default(none) shared(correspondences, query_features, point_representation, feature_tree) firstprivate(n, k_matches)
+    mv_correspondences.resize(n, MultivaluedCorrespondence{});
+#pragma omp parallel for num_threads(threads) default(none) shared(mv_correspondences, query_features, point_representation, feature_tree) firstprivate(n, k_matches)
     for (int i = 0; i < n; i++) {
         if (point_representation->isValid(query_features->points[i])) {
-            correspondences[i].query_idx = i;
-            pcl::Indices &match_indices = correspondences[i].match_indices;
-            std::vector<float> &match_distances = correspondences[i].distances;
+            mv_correspondences[i].query_idx = i;
+            pcl::Indices &match_indices = mv_correspondences[i].match_indices;
+            std::vector<float> &match_distances = mv_correspondences[i].distances;
             match_indices.resize(k_matches);
             match_distances.resize(k_matches);
             feature_tree.nearestKSearch(*query_features,
@@ -148,13 +134,13 @@ void matchFLANN(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_featur
 template<typename FeatureT>
 void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
              const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
-             std::vector<MultivaluedCorrespondence> &correspondences,
+             std::vector<MultivaluedCorrespondence> &mv_correspondences,
              const typename pcl::PointRepresentation<FeatureT>::Ptr point_representation,
              int k_matches, int nr_dims, int block_size) {
     auto matcher = cv::BFMatcher::create(cv::NORM_L2);
     std::vector<std::vector<cv::DMatch>> matches;
 
-    correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
+    mv_correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
     int n_query_blocks = (query_features->size() + block_size - 1) / block_size;
     for (int i = 0; i < n_query_blocks; ++i) {
         for (int j = 0; j < (train_features->size() + block_size - 1) / block_size; ++j) {
@@ -173,7 +159,7 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
                         PCL_ERROR("[matchBF] unexpected query index in brute-force matches!");
                         exit(1);
                     }
-                    updateMultivaluedCorrespondence(correspondences[query_idx], query_idx, k_matches,
+                    updateMultivaluedCorrespondence(mv_correspondences[query_idx], query_idx, k_matches,
                                                     j * block_size + matches[l][m].trainIdx, matches[l][m].distance);
                 }
             }
@@ -183,7 +169,7 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
     }
     for (int i = 0; i < query_features->size(); i++) {
         if (!point_representation->isValid(query_features->points[i])) {
-            correspondences[i] = MultivaluedCorrespondence{};
+            mv_correspondences[i] = MultivaluedCorrespondence{};
         }
     }
 }

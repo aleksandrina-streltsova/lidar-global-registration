@@ -124,7 +124,7 @@ void estimateTestMetric(const YamlConfig &config) {
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         CorrespondencesMetricEstimator estimator_corr;
         ClosestPointMetricEstimator estimator_icp;
-        std::vector<MultivaluedCorrespondence> correspondences;
+        pcl::Correspondences correspondences;
         std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
         float error, metric_icp, metric_corr;
         bool success = false;
@@ -159,7 +159,7 @@ void generateDebugFiles(const YamlConfig &config) {
     PointCloudTN::Ptr src_fullsize(new PointCloudTN), tgt_fullsize(new PointCloudTN);
     PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
     PointCloudTN::Ptr src_fullsize_aligned(new PointCloudTN), src_fullsize_aligned_gt(new PointCloudTN);
-    std::vector<MultivaluedCorrespondence> correspondences, correct_correspondences;
+    pcl::Correspondences correspondences, correct_correspondences;
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation, transformation_gt;
