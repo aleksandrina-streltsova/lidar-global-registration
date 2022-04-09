@@ -212,7 +212,7 @@ void processTests(const std::vector<YAML::Node> &tests, const std::string &comma
             runTest(config);
         } else if (command == METRIC_ANALYSIS) {
             estimateTestMetric(config);
-        } else {
+        } else if (command == DEBUG) {
             generateDebugFiles(config);
         }
     }
@@ -233,6 +233,12 @@ int main(int argc, char **argv) {
     auto tests = config.get<std::vector<YAML::Node>>("tests");
     if (tests.has_value()) {
         processTests(tests.value(), command);
+    } else if (command == ALIGNMENT) {
+        runTest(config);
+    } else if (command == METRIC_ANALYSIS) {
+        estimateTestMetric(config);
+    } else if (command == DEBUG) {
+        generateDebugFiles(config);
     }
 }
 

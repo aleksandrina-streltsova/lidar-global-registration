@@ -99,6 +99,10 @@ public:
 
 template<typename FeatureT>
 typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const std::string &matching_id) {
+    if (matching_id != MATCHING_LEFT_TO_RIGHT) {
+        PCL_WARN("[getFeatureMatcher] feature matcher %s isn't supported, left-to-right matcher will be used.",
+                 matching_id.c_str());
+    }
     return std::make_shared<LeftToRightMatcher<FeatureT>>();
 }
 

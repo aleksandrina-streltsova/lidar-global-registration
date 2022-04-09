@@ -189,5 +189,7 @@ void estimateReferenceFrames(const PointCloudTN::Ptr &pcd, const PointCloudN::Pt
                 }
             }
         }
-   }
+    } else if (lrf_id != DEFAULT_LRF){
+        PCL_WARN("[estimateReferenceFrames] LRF %s isn't supported, default LRF will be used.\n", lrf_id.c_str());
+    }
 }

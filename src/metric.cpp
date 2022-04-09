@@ -131,6 +131,9 @@ void ClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &
 MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id) {
     if (metric_id == "closest_point") {
         return std::make_shared<ClosestPointMetricEstimator>();
+    } else if (metric_id != DEFAULT_METRIC) {
+        PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
+                 metric_id.c_str());
     }
     return std::make_shared<CorrespondencesMetricEstimator>();
 }
