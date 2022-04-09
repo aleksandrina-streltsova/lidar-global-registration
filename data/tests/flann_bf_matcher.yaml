@@ -1,4 +1,4 @@
-voxel_size: 0.01
+voxel_size: 0.0008
 normal_radius_coef: 4
 feature_radius_coef: 15
 distance_thr_coef: 1.5
@@ -6,8 +6,7 @@ edge_thr: 0.95
 iteration: 5000000
 confidence: 0.9999
 n_samples: 3
-reciprocal: true
-randomness: 1
+randomness: 2
 inlier_fraction: 0.1
 source: data/bun/bun000.ply
 target: data/bun/bun045.ply

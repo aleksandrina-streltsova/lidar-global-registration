@@ -155,72 +155,6 @@ unsigned int SampleConsensusPrerejectiveOMP<FeatureT>::getNumberOfThreads() {
 }
 
 template<typename FeatureT>
-void SampleConsensusPrerejectiveOMP<FeatureT>::findCorrespondences() {
-    int threads = getNumberOfThreads();
-    int nr_dims = point_representation_->getNumberOfDimensions();
-
-    std::vector<MultivaluedCorrespondence> correspondences_ij;
-    if (use_bfmatcher_) {
-        matchBF<FeatureT>(this->input_features_, this->target_features_, correspondences_ij,
-                          point_representation_, this->k_correspondences_, nr_dims, bf_block_size_);
-    } else {
-        matchFLANN<FeatureT>(this->input_features_, this->target_features_, correspondences_ij,
-                             point_representation_, this->k_correspondences_, threads);
-    }
-
-    {
-        float dists_sum = 0.f;
-        int n_dists = 0;
-        for (int i = 0; i < this->input_->size(); i++) {
-            if (correspondences_ij[i].query_idx >= 0) {
-                dists_sum += correspondences_ij[i].distances[0];
-                n_dists++;
-            }
-        }
-        if (n_dists == 0) {
-            PCL_ERROR("[%s::computeTransformation] no distances were calculated.\n", this->getClassName().c_str());
-        } else {
-            PCL_DEBUG("[%s::computeTransformation] average distance to nearest neighbour: %0.7f.\n",
-                      this->getClassName().c_str(),
-                      dists_sum / (float) n_dists);
-        }
-    }
-    if (reciprocal_) {
-        std::vector<MultivaluedCorrespondence> correspondences_ji;
-        if (use_bfmatcher_) {
-            matchBF<FeatureT>(this->target_features_, this->input_features_, correspondences_ji,
-                              point_representation_, this->k_correspondences_, nr_dims, bf_block_size_);
-        } else {
-            matchFLANN<FeatureT>(this->target_features_, this->input_features_, correspondences_ji,
-                                 point_representation_, this->k_correspondences_, threads);
-        }
-
-        std::vector<MultivaluedCorrespondence> correspondences_mutual;
-        for (int i = 0; i < this->input_->size(); ++i) {
-            bool reciprocal = false;
-            MultivaluedCorrespondence corr = correspondences_ij[i];
-            for (const int &j: corr.match_indices) {
-                if (!correspondences_ji[j].match_indices.empty() && correspondences_ji[j].match_indices[0] == i) {
-                    reciprocal = true;
-                }
-            }
-            if (reciprocal) {
-                correspondences_mutual.emplace_back(corr);
-            }
-        }
-        correspondences_ij = correspondences_mutual;
-        PCL_DEBUG("[%s::findCorrespondencesBF] %i correspondences remain after mutual filter.\n",
-                  this->getClassName().c_str(),
-                  correspondences_mutual.size());
-    }
-    for (auto corr: correspondences_ij) {
-        if (corr.query_idx >= 0) {
-            multivalued_correspondences_.emplace_back(corr);
-        }
-    }
-}
-
-template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudTN &output,
                                                                      const Eigen::Matrix4f &guess) {
     // Some sanity checks first
@@ -299,7 +233,10 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
         PCL_DEBUG("[%s::computeTransformation] read correspondences from file\n", this->getClassName().c_str());
     } else {
         pcl::ScopeTime t("Correspondence search");
-        findCorrespondences();
+        multivalued_correspondences_ = feature_matcher_->match(this->input_features_, this->target_features_,
+                                                               point_representation_,
+                                                               this->k_correspondences_, getNumberOfThreads(),
+                                                               use_bfmatcher_, bf_block_size_);
     }
 
     // Initialize metric estimator

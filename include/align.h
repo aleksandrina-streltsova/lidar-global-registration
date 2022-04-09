@@ -225,10 +225,6 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
 //        filterPointCloud(func, func_id, tgt, features_tgt, tgt, features_tgt, transformation_gt, testname, false);
 //        std::cout << " to " << tgt->size() << "\n";
 //    }
-
-    if (parameters.reciprocal) {
-        align.enableMutualFiltering();
-    }
     if (parameters.use_bfmatcher) {
         align.useBFMatcher();
         align.setBFBlockSize(parameters.bf_block_size);
@@ -240,6 +236,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
     align.setInputTarget(tgt);
     align.setTargetFeatures(features_tgt);
 
+    align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters.matching_id));
     align.setMetricEstimator(getMetricEstimator(parameters.metric_id));
 
     int n_samples = parameters.n_samples;

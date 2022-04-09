@@ -6,7 +6,6 @@ edge_thr: 0.95
 iteration: 10000000
 confidence: 0.999
 n_samples: 3
-reciprocal: true
 randomness: 1
 inlier_fraction: 0.1
 source: data/kizhi/kig_058_56.ply

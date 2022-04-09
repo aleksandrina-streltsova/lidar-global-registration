@@ -36,15 +36,14 @@ public:
         setNumberOfThreads(0);
     }
 
-    // TODO: fix
-    inline void enableMutualFiltering() {
-        reciprocal_ = true;
-    }
-
     void setConfidence(float confidence);
 
     inline void setMetricEstimator(const MetricEstimator::Ptr &metric_estimator) {
         metric_estimator_ = metric_estimator;
+    }
+
+    inline void setFeatureMatcher(const typename FeatureMatcher<FeatureT>::Ptr &feature_matcher) {
+        feature_matcher_ = feature_matcher;
     }
 
     // TODO: fix
@@ -91,11 +90,8 @@ protected:
 
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
-    void findCorrespondences();
-
     std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file = false;
-    bool reciprocal_ = false;
     bool use_bfmatcher_ = false;
     int bf_block_size_ = 10000;
     float rmse_ = std::numeric_limits<float>::max();
@@ -103,6 +99,7 @@ protected:
     unsigned int threads_{};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     MetricEstimator::Ptr metric_estimator_{nullptr};
+    typename FeatureMatcher<FeatureT>::Ptr feature_matcher_{nullptr};
     std::vector<MultivaluedCorrespondence> multivalued_correspondences_;
 
 private:

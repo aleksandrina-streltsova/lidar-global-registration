@@ -52,10 +52,10 @@ struct AlignmentParameters {
     float edge_thr_coef, distance_thr_coef;
     float normal_radius_coef, feature_radius_coef;
     float confidence, inlier_fraction;
-    bool reciprocal, use_bfmatcher;
+    bool use_bfmatcher;
     int bf_block_size;
     int randomness, n_samples;
-    std::string func_id, descriptor_id, lrf_id, metric_id;
+    std::string func_id, descriptor_id, lrf_id, metric_id, matching_id;
     std::optional<int> max_iterations;
 
     bool save_features;
@@ -72,6 +72,9 @@ struct MultivaluedCorrespondence {
     pcl::Indices match_indices;
     std::vector<float> distances;
 };
+
+void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
+                                     int k_matches, int match_idx, float distance);
 
 struct InlierPair {
     int idx_src, idx_tgt;
@@ -117,6 +120,7 @@ extern const std::string VERSION;
 extern const std::string DEFAULT_DESCRIPTOR;
 extern const std::string DEFAULT_LRF;
 extern const std::string DEFAULT_METRIC;
+extern const std::string MATCHING_LEFT_TO_RIGHT;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 

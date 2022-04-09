@@ -14,10 +14,11 @@ namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
-const std::string VERSION = "04";
+const std::string VERSION = "05";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
 const std::string DEFAULT_METRIC = "correspondences";
+const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -43,7 +44,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.max_iterations = config.get<int>("iteration");
     parameters.confidence = config.get<float>("confidence").value();
     parameters.inlier_fraction = config.get<float>("inlier_fraction").value();
-    parameters.reciprocal = config.get<bool>("reciprocal").value();
     parameters.use_bfmatcher = config.get<bool>("bf", false);
     parameters.randomness = config.get<int>("randomness").value();
     parameters.n_samples = config.get<int>("n_samples").value();
@@ -130,7 +130,32 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    auto matching_ids = config.getVector<std::string>("matching", MATCHING_LEFT_TO_RIGHT);
+    for (const auto &id: matching_ids) {
+        for (auto ps: parameters_container) {
+            ps.matching_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     return parameters_container;
+}
+
+void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
+                                     int k_matches, int match_idx, float distance) {
+    int pos = 0;
+    while(corr.match_indices.begin() + pos != corr.match_indices.end() && corr.distances[pos] < distance) {
+        pos++;
+    }
+    corr.match_indices.insert(corr.match_indices.begin() + pos, match_idx);
+    corr.distances.insert(corr.distances.begin() + pos, distance);
+    if(corr.match_indices.size() > k_matches) {
+        corr.match_indices.erase(corr.match_indices.begin() + k_matches);
+        corr.distances.erase(corr.distances.begin() + k_matches);
+    }
+    corr.query_idx = query_idx;
 }
 
 float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
@@ -366,6 +391,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                        "_" + std::to_string((int) parameters.normal_radius_coef) +
                        "_" + std::to_string((int) parameters.feature_radius_coef) +
                        "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
+                       "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
                        (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         full_name += "_" + VERSION;

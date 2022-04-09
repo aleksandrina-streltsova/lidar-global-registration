@@ -39,6 +39,7 @@ void run_test(const PointCloudTN::Ptr &src_fullsize,
 
     PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN), src_aligned(new PointCloudTN);
     PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
+    PointCloudRF::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
 
@@ -47,17 +48,21 @@ void run_test(const PointCloudTN::Ptr &src_fullsize,
     float feature_radius = parameters.feature_radius_coef * voxel_size;
 
     if (!parameters.use_normals) {
-        estimateNormals(normal_radius, src_downsize, normals_src);
-        estimateNormals(normal_radius, tgt_downsize, normals_tgt);
+        estimateNormals(normal_radius, src_downsize, normals_src, parameters.normals_available);
+        estimateNormals(normal_radius, tgt_downsize, normals_tgt, parameters.normals_available);
     }
 
     pcl::concatenateFields(*src_downsize, *normals_src, *src);
     pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);
 
+    // Estimate reference frames
+    estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
+    estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
+
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, features_tgt);
+    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
+    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
 
     std::vector<MultivaluedCorrespondence> correspondences_bf;
     std::vector<MultivaluedCorrespondence> correspondences_flann;
