@@ -24,6 +24,8 @@
 #define DEBUG_N_EDGES 100ul
 #define ROPS_DIM 135
 
+#define MATCHING_RATIO_THRESHOLD 0.95f
+
 // Types
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointNormal PointTN;
@@ -122,6 +124,7 @@ extern const std::string DEFAULT_DESCRIPTOR;
 extern const std::string DEFAULT_LRF;
 extern const std::string DEFAULT_METRIC;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
+extern const std::string MATCHING_RATIO;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -186,9 +189,9 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters);
 
-void saveInlierIds(const pcl::Correspondences &correspondences,
-                   const pcl::Correspondences &correct_correspondences,
-                   const pcl::Indices &inliers, const AlignmentParameters &parameters);
+void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
+                              const pcl::Correspondences &correct_correspondences,
+                              const AlignmentParameters &parameters);
 
 void setPointColor(PointColoredTN &point, int color);
 

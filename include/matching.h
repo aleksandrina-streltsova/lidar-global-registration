@@ -21,7 +21,7 @@ public:
 };
 
 template<typename FeatureT>
-class LeftToRightMatcher : public FeatureMatcher<FeatureT> {
+class LeftToRightFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
@@ -84,12 +84,76 @@ public:
 };
 
 template<typename FeatureT>
+class RatioFeatureMatcher : public FeatureMatcher<FeatureT> {
+public:
+    pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
+                               const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                               const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
+                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
+        if (k_corrs != 1) {
+            PCL_WARN("[%s::match] k_corrs different from 1 cannot be used with ratio filtering, using k_corrs = 1.\n",
+                     getClassName().c_str());
+        }
+        int nr_dims = point_representation->getNumberOfDimensions();
+        std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
+        if (use_bfmatcher) {
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, 2, nr_dims, bf_block_size);
+        } else {
+            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, 2, threads);
+        }
+
+        {
+            float dists_sum = 0.f;
+            int n_dists = 0;
+            for (int i = 0; i < src->size(); i++) {
+                if (mv_correspondences_ij[i].query_idx >= 0) {
+                    dists_sum += mv_correspondences_ij[i].distances[0];
+                    n_dists++;
+                }
+            }
+            if (n_dists == 0) {
+                PCL_ERROR("[%s::match] no distances were calculated.\n", getClassName().c_str());
+            } else {
+                PCL_DEBUG("[%s::match] average distance to nearest neighbour: %0.7f.\n",
+                          getClassName().c_str(),
+                          dists_sum / (float) n_dists);
+            }
+        }
+
+        float dist1, dist2, ratio;
+        pcl::Correspondences correspondences_ratio;
+        for (auto &mv_corr: mv_correspondences_ij) {
+            if (mv_corr.match_indices.size() != 2) {
+                continue;
+            }
+            dist1 = std::min(mv_corr.distances[0], mv_corr.distances[1]);
+            dist2 = std::max(mv_corr.distances[0], mv_corr.distances[1]);
+            ratio = (dist2 == 0.f) ? 1.f : (dist1 / dist2);
+            if (ratio < MATCHING_RATIO_THRESHOLD) {
+                int i = (dist1 < dist2) ? 0 : 1;
+                correspondences_ratio.push_back({mv_corr.query_idx, mv_corr.match_indices[i], ratio});
+            }
+        }
+        PCL_DEBUG("[%s::match] %i correspondences remain after ratio filter.\n",
+                  getClassName().c_str(),
+                  correspondences_ratio.size());
+        return correspondences_ratio;
+    }
+
+    inline std::string getClassName() override {
+        return "RatioFeatureMatcher";
+    }
+};
+
+template<typename FeatureT>
 typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const std::string &matching_id) {
-    if (matching_id != MATCHING_LEFT_TO_RIGHT) {
+    if (matching_id == MATCHING_RATIO) {
+        return std::make_shared<RatioFeatureMatcher<FeatureT>>();
+    } else if (matching_id != MATCHING_LEFT_TO_RIGHT) {
         PCL_WARN("[getFeatureMatcher] feature matcher %s isn't supported, left-to-right matcher will be used.",
                  matching_id.c_str());
     }
-    return std::make_shared<LeftToRightMatcher<FeatureT>>();
+    return std::make_shared<LeftToRightFeatureMatcher<FeatureT>>();
 }
 
 template<typename FeatureT>

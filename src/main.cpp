@@ -195,7 +195,7 @@ void generateDebugFiles(const YamlConfig &config) {
         saveCorrespondenceDistances(src, tgt, correspondences, transformation_gt, parameters.voxel_size, parameters);
         saveColorizedPointCloud(src, correspondences, correct_correspondences, inlier_pairs, parameters, transformation_gt, true);
         saveColorizedPointCloud(tgt, correspondences, correct_correspondences, inlier_pairs, parameters, Eigen::Matrix4f::Identity(), false);
-//    saveInlierIds(correspondences_, correct_correspondences_, inlier_pairs_, parameters);
+        saveCorrespondencesDebug(correspondences, correct_correspondences, parameters);
 
         pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
         pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);

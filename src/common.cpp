@@ -19,6 +19,7 @@ const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
 const std::string DEFAULT_METRIC = "correspondences";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
+const std::string MATCHING_RATIO = "ratio";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -324,25 +325,22 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
     fout.close();
 }
 
-// TODO: why did I need this function?
-void saveInlierIds(const pcl::Correspondences &correspondences,
-                   const pcl::Correspondences &correct_correspondences,
-                   const pcl::Indices &inliers, const AlignmentParameters &parameters) {
-    std::string filepath = constructPath(parameters, "inliers", "csv");
+void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
+                              const pcl::Correspondences &correct_correspondences,
+                              const AlignmentParameters &parameters) {
+    std::string filepath = constructPath(parameters, "correspondences_debug", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
 
-    std::unordered_set<int> inliers_set, correct_cs_set;
-    std::copy(inliers.begin(), inliers.end(), std::inserter(inliers_set, inliers_set.begin()));
+    std::unordered_set<int> correct_cs_set;
     std::transform(correct_correspondences.begin(), correct_correspondences.end(),
                    std::inserter(correct_cs_set, correct_cs_set.begin()),
                    [](const pcl::Correspondence &corr) { return corr.index_query; });
-    fout << "id_src,id_tgt,is_correct,is_inlier\n";
-    for (const auto &correspondence: correspondences) {
-        fout << correspondence.index_query << "," << correspondence.index_match << ",";
-        fout << correct_cs_set.contains(correspondence.index_query) << ",";
-        fout << inliers_set.contains(correspondence.index_query) << "\n";
+    fout << "index_query,index_match,distance,is_correct\n";
+    for (const auto &corr: correspondences) {
+        fout << corr.index_query << "," << corr.index_match << "," << corr.distance << ",";
+        fout << correct_cs_set.contains(corr.index_query) << "\n";
     }
     fout.close();
 }
