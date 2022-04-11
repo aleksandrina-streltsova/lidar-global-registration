@@ -185,9 +185,10 @@ public:
         pcl::Correspondences correspondences_cluster;
         for (int i = 0; i < src->size(); ++i) {
             for (int j: mv_correspondences_ij[i].match_indices) {
-                float weight = calculateCorrespondenceWeight(i, j, mv_correspondences_ij, src_neighbors, tgt_neighbors);
-                if (weight < MATCHING_CLUSTER_THRESHOLD) {
-                    correspondences_cluster.push_back({i, j, weight});
+                float distance = calculateCorrespondenceDistance(i, j, mv_correspondences_ij,
+                                                                 src_neighbors, tgt_neighbors);
+                if (distance < MATCHING_CLUSTER_THRESHOLD) {
+                    correspondences_cluster.push_back({i, j, distance});
                 }
             }
         }
@@ -202,9 +203,9 @@ public:
     }
 
 protected:
-    float calculateCorrespondenceWeight(int i, int j,
-                                        const std::vector<MultivaluedCorrespondence> &mv_correspondences_ij,
-                                        const Neighbors &src_neighbors, const Neighbors &tgt_neighbors) {
+    float calculateCorrespondenceDistance(int i, int j,
+                                          const std::vector<MultivaluedCorrespondence> &mv_correspondences_ij,
+                                          const Neighbors &src_neighbors, const Neighbors &tgt_neighbors) {
         int count_consistent_pairs = 0, count_pairs = 0;
         for (int i_neighbor: src_neighbors[i]) {
             for (int i_neighbor_match: mv_correspondences_ij[i_neighbor].match_indices) {
