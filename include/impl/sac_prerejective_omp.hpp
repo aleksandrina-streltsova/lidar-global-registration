@@ -228,6 +228,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
     } else {
         pcl::ScopeTime t("Correspondence search");
         *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
+                                                            this->input_, this->target_,
                                                             point_representation_, this->k_correspondences_,
                                                             getNumberOfThreads(), use_bfmatcher_, bf_block_size_);
     }

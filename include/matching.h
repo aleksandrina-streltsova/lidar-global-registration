@@ -1,9 +1,14 @@
 #ifndef REGISTRATION_MATCHING_H
 #define REGISTRATION_MATCHING_H
 
-#include <pcl/point_cloud.h>
+#include <unordered_set>
 
+#include <pcl/point_cloud.h>
 #include <opencv2/features2d.hpp>
+
+#define MATCHING_RATIO_THRESHOLD 0.95f
+#define MATCHING_CLUSTER_THRESHOLD 0.6f
+#define MATCHING_CLUSTER_K_NEIGHBORS 100
 
 template<typename FeatureT>
 class FeatureMatcher {
@@ -13,18 +18,40 @@ public:
 
     virtual pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                        const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                                       const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                        const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                                       int k_corrs, int threads,
-                                       bool use_bfmatcher, int bf_block_size) = 0;
+                                       int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) = 0;
 
     virtual std::string getClassName() = 0;
+
+protected:
+    void printDebugInfo(const std::vector<MultivaluedCorrespondence> &mv_correspondences) {
+        float dists_sum = 0.f;
+        int n_dists = 0;
+        for (int i = 0; i < mv_correspondences.size(); i++) {
+            if (mv_correspondences[i].query_idx >= 0) {
+                dists_sum += mv_correspondences[i].distances[0];
+                n_dists++;
+            }
+        }
+        if (n_dists == 0) {
+            PCL_ERROR("[%s::match] no distances were calculated.\n", getClassName().c_str());
+        } else {
+            PCL_DEBUG("[%s::match] average distance to nearest neighbour: %0.7f.\n",
+                      getClassName().c_str(),
+                      dists_sum / (float) n_dists);
+        }
+    }
 };
 
 template<typename FeatureT>
 class LeftToRightFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
+    LeftToRightFeatureMatcher() = default;
+
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
         int nr_dims = point_representation->getNumberOfDimensions();
@@ -35,23 +62,7 @@ public:
             matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, threads);
         }
 
-        {
-            float dists_sum = 0.f;
-            int n_dists = 0;
-            for (int i = 0; i < src->size(); i++) {
-                if (mv_correspondences_ij[i].query_idx >= 0) {
-                    dists_sum += mv_correspondences_ij[i].distances[0];
-                    n_dists++;
-                }
-            }
-            if (n_dists == 0) {
-                PCL_ERROR("[%s::match] no distances were calculated.\n", getClassName().c_str());
-            } else {
-                PCL_DEBUG("[%s::match] average distance to nearest neighbour: %0.7f.\n",
-                          getClassName().c_str(),
-                          dists_sum / (float) n_dists);
-            }
-        }
+        this->printDebugInfo(mv_correspondences_ij);
 
         std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
         if (use_bfmatcher) {
@@ -72,7 +83,7 @@ public:
                 }
             }
         }
-        PCL_DEBUG("[%s::match] %i correspondences remain after mutual filter.\n",
+        PCL_DEBUG("[%s::match] %i correspondences remain after mutual filtering.\n",
                   getClassName().c_str(),
                   correspondences_mutual.size());
         return correspondences_mutual;
@@ -86,8 +97,11 @@ public:
 template<typename FeatureT>
 class RatioFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
+    RatioFeatureMatcher() = default;
+
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
         if (k_corrs != 1) {
@@ -102,23 +116,7 @@ public:
             matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, 2, threads);
         }
 
-        {
-            float dists_sum = 0.f;
-            int n_dists = 0;
-            for (int i = 0; i < src->size(); i++) {
-                if (mv_correspondences_ij[i].query_idx >= 0) {
-                    dists_sum += mv_correspondences_ij[i].distances[0];
-                    n_dists++;
-                }
-            }
-            if (n_dists == 0) {
-                PCL_ERROR("[%s::match] no distances were calculated.\n", getClassName().c_str());
-            } else {
-                PCL_DEBUG("[%s::match] average distance to nearest neighbour: %0.7f.\n",
-                          getClassName().c_str(),
-                          dists_sum / (float) n_dists);
-            }
-        }
+        this->printDebugInfo(mv_correspondences_ij);
 
         float dist1, dist2, ratio;
         pcl::Correspondences correspondences_ratio;
@@ -134,7 +132,7 @@ public:
                 correspondences_ratio.push_back({mv_corr.query_idx, mv_corr.match_indices[i], ratio});
             }
         }
-        PCL_DEBUG("[%s::match] %i correspondences remain after ratio filter.\n",
+        PCL_DEBUG("[%s::match] %i correspondences remain after ratio filtering.\n",
                   getClassName().c_str(),
                   correspondences_ratio.size());
         return correspondences_ratio;
@@ -146,9 +144,89 @@ public:
 };
 
 template<typename FeatureT>
+class ClusterFeatureMatcher : public FeatureMatcher<FeatureT> {
+public:
+    ClusterFeatureMatcher() = default;
+    typedef std::vector<std::unordered_set<int>> Neighbors;
+    pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
+                               const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
+                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
+                               const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
+                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
+        int nr_dims = point_representation->getNumberOfDimensions();
+        std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
+        if (use_bfmatcher) {
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, nr_dims, bf_block_size);
+        } else {
+            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, threads);
+        }
+
+        this->printDebugInfo(mv_correspondences_ij);
+
+        pcl::KdTreeFLANN<PointTN> pcd_tree_src, pcd_tree_tgt;
+        pcd_tree_src.setInputCloud(pcd_src);
+        pcd_tree_tgt.setInputCloud(pcd_tgt);
+        Neighbors src_neighbors(src->size()), tgt_neighbors(tgt->size());
+
+        pcl::Indices match_indices;
+        std::vector<float> distances;
+
+        for (int i = 0; i < src->size(); ++i) {
+            pcd_tree_src.nearestKSearch(i, MATCHING_CLUSTER_K_NEIGHBORS, match_indices, distances);
+            std::copy(match_indices.begin(), match_indices.end(),
+                      std::inserter(src_neighbors[i], src_neighbors[i].begin()));
+        }
+        for (int i = 0; i < tgt->size(); ++i) {
+            pcd_tree_tgt.nearestKSearch(i, MATCHING_CLUSTER_K_NEIGHBORS, match_indices, distances);
+            std::copy(match_indices.begin(), match_indices.end(),
+                      std::inserter(tgt_neighbors[i], tgt_neighbors[i].begin()));
+        }
+
+        pcl::Correspondences correspondences_cluster;
+        for (int i = 0; i < src->size(); ++i) {
+            for (int j: mv_correspondences_ij[i].match_indices) {
+                float weight = calculateCorrespondenceWeight(i, j, mv_correspondences_ij, src_neighbors, tgt_neighbors);
+                if (weight < MATCHING_CLUSTER_THRESHOLD) {
+                    correspondences_cluster.push_back({i, j, weight});
+                }
+            }
+        }
+        PCL_DEBUG("[%s::match] %i correspondences remain after cluster filtering.\n",
+                  getClassName().c_str(),
+                  correspondences_cluster.size());
+        return correspondences_cluster;
+    }
+
+    inline std::string getClassName() override {
+        return "ClusterFeatureMatcher";
+    }
+
+protected:
+    float calculateCorrespondenceWeight(int i, int j,
+                                        const std::vector<MultivaluedCorrespondence> &mv_correspondences_ij,
+                                        const Neighbors &src_neighbors, const Neighbors &tgt_neighbors) {
+        int count_consistent_pairs = 0, count_pairs = 0;
+        for (int i_neighbor: src_neighbors[i]) {
+            for (int i_neighbor_match: mv_correspondences_ij[i_neighbor].match_indices) {
+                if (tgt_neighbors[j].contains(i_neighbor_match)) {
+                    count_consistent_pairs++;
+                }
+                count_pairs++;
+            }
+        }
+        if (count_pairs == 0) {
+            return 0;
+        }
+        return 1.f - (float) count_consistent_pairs / (float) count_pairs;
+    }
+};
+
+template<typename FeatureT>
 typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const std::string &matching_id) {
     if (matching_id == MATCHING_RATIO) {
         return std::make_shared<RatioFeatureMatcher<FeatureT>>();
+    } else if (matching_id == MATCHING_CLUSTER) {
+        return std::make_shared<ClusterFeatureMatcher<FeatureT>>();
     } else if (matching_id != MATCHING_LEFT_TO_RIGHT) {
         PCL_WARN("[getFeatureMatcher] feature matcher %s isn't supported, left-to-right matcher will be used.",
                  matching_id.c_str());

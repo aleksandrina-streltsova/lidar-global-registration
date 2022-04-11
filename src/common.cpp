@@ -20,6 +20,7 @@ const std::string DEFAULT_LRF = "default";
 const std::string DEFAULT_METRIC = "correspondences";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 const std::string MATCHING_RATIO = "ratio";
+const std::string MATCHING_CLUSTER = "cluster";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),

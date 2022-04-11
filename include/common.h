@@ -24,8 +24,6 @@
 #define DEBUG_N_EDGES 100ul
 #define ROPS_DIM 135
 
-#define MATCHING_RATIO_THRESHOLD 0.95f
-
 // Types
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointNormal PointTN;
@@ -125,6 +123,7 @@ extern const std::string DEFAULT_LRF;
 extern const std::string DEFAULT_METRIC;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
+extern const std::string MATCHING_CLUSTER;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
