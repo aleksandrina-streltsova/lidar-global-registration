@@ -236,7 +236,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
     align.setInputTarget(tgt);
     align.setTargetFeatures(features_tgt);
 
-    align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters.matching_id));
+    align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters));
     align.setMetricEstimator(getMetricEstimator(parameters.metric_id));
 
     int n_samples = parameters.n_samples;

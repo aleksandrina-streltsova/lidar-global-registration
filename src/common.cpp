@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
-const std::string VERSION = "05";
+const std::string VERSION = "06";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
 const std::string DEFAULT_METRIC = "correspondences";

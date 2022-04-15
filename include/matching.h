@@ -5,10 +5,11 @@
 
 #include <pcl/point_cloud.h>
 #include <opencv2/features2d.hpp>
+#include <utility>
 
 #define MATCHING_RATIO_THRESHOLD 0.95f
-#define MATCHING_CLUSTER_THRESHOLD 0.6f
-#define MATCHING_CLUSTER_K_NEIGHBORS 100
+#define MATCHING_CLUSTER_THRESHOLD 0.8f
+#define MATCHING_CLUSTER_RADIUS_COEF 7.f
 
 template<typename FeatureT>
 class FeatureMatcher {
@@ -20,7 +21,7 @@ public:
                                        const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
                                        const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                        const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                                       int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) = 0;
+                                       int threads) = 0;
 
     virtual std::string getClassName() = 0;
 
@@ -42,33 +43,41 @@ protected:
                       dists_sum / (float) n_dists);
         }
     }
+
+    AlignmentParameters parameters_;
 };
 
 template<typename FeatureT>
 class LeftToRightFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    LeftToRightFeatureMatcher() = default;
+    LeftToRightFeatureMatcher() = delete;
+
+    LeftToRightFeatureMatcher(AlignmentParameters parameters) : parameters_(std::move(parameters)) {};
 
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
                                const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
+                               int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (use_bfmatcher) {
-            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, nr_dims, bf_block_size);
+        if (this->parameters_.use_bfmatcher) {
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
+                              this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
-            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, threads);
+            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
+                                 this->parameters_.randomness, threads);
         }
 
         this->printDebugInfo(mv_correspondences_ij);
 
         std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
-        if (use_bfmatcher) {
-            matchBF<FeatureT>(tgt, src, mv_correspondences_ji, point_representation, k_corrs, nr_dims, bf_block_size);
+        if (this->parameters_.use_bfmatcher) {
+            matchBF<FeatureT>(tgt, src, mv_correspondences_ji, point_representation,
+                              this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
-            matchFLANN<FeatureT>(tgt, src, mv_correspondences_ji, point_representation, k_corrs, threads);
+            matchFLANN<FeatureT>(tgt, src, mv_correspondences_ji, point_representation,
+                                 this->parameters_.randomness, threads);
         }
 
         pcl::Correspondences correspondences_mutual;
@@ -92,26 +101,32 @@ public:
     inline std::string getClassName() override {
         return "LeftToRightFeatureMatcher";
     }
+
+protected:
+    AlignmentParameters parameters_;
 };
 
 template<typename FeatureT>
 class RatioFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    RatioFeatureMatcher() = default;
+    RatioFeatureMatcher() = delete;
+
+    RatioFeatureMatcher(AlignmentParameters parameters) : parameters_(std::move(parameters)) {};
 
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
                                const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
-        if (k_corrs != 1) {
+                               int threads) override {
+        if (this->parameters_.randomness != 1) {
             PCL_WARN("[%s::match] k_corrs different from 1 cannot be used with ratio filtering, using k_corrs = 1.\n",
                      getClassName().c_str());
         }
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (use_bfmatcher) {
-            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, 2, nr_dims, bf_block_size);
+        if (this->parameters_.use_bfmatcher) {
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
+                              2, nr_dims, this->parameters_.bf_block_size);
         } else {
             matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, 2, threads);
         }
@@ -141,24 +156,33 @@ public:
     inline std::string getClassName() override {
         return "RatioFeatureMatcher";
     }
+
+protected:
+    AlignmentParameters parameters_;
 };
 
 template<typename FeatureT>
 class ClusterFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    ClusterFeatureMatcher() = default;
     typedef std::vector<std::unordered_set<int>> Neighbors;
+
+    ClusterFeatureMatcher() = delete;
+
+    ClusterFeatureMatcher(AlignmentParameters parameters) : parameters_(std::move(parameters)) {};
+
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
                                const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
-                               int k_corrs, int threads, bool use_bfmatcher, int bf_block_size) override {
+                               int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (use_bfmatcher) {
-            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, nr_dims, bf_block_size);
+        if (this->parameters_.use_bfmatcher) {
+            matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
+                              this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
-            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation, k_corrs, threads);
+            matchFLANN<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
+                                 this->parameters_.randomness, threads);
         }
 
         this->printDebugInfo(mv_correspondences_ij);
@@ -171,13 +195,14 @@ public:
         pcl::Indices match_indices;
         std::vector<float> distances;
 
+        float matching_cluster_radius = MATCHING_CLUSTER_RADIUS_COEF * this->parameters_.voxel_size;
         for (int i = 0; i < src->size(); ++i) {
-            pcd_tree_src.nearestKSearch(i, MATCHING_CLUSTER_K_NEIGHBORS, match_indices, distances);
+            pcd_tree_src.radiusSearch(i, matching_cluster_radius, match_indices, distances);
             std::copy(match_indices.begin(), match_indices.end(),
                       std::inserter(src_neighbors[i], src_neighbors[i].begin()));
         }
         for (int i = 0; i < tgt->size(); ++i) {
-            pcd_tree_tgt.nearestKSearch(i, MATCHING_CLUSTER_K_NEIGHBORS, match_indices, distances);
+            pcd_tree_tgt.radiusSearch(i, matching_cluster_radius, match_indices, distances);
             std::copy(match_indices.begin(), match_indices.end(),
                       std::inserter(tgt_neighbors[i], tgt_neighbors[i].begin()));
         }
@@ -220,19 +245,21 @@ protected:
         }
         return 1.f - (float) count_consistent_pairs / (float) count_pairs;
     }
+
+    AlignmentParameters parameters_;
 };
 
 template<typename FeatureT>
-typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const std::string &matching_id) {
-    if (matching_id == MATCHING_RATIO) {
-        return std::make_shared<RatioFeatureMatcher<FeatureT>>();
-    } else if (matching_id == MATCHING_CLUSTER) {
-        return std::make_shared<ClusterFeatureMatcher<FeatureT>>();
-    } else if (matching_id != MATCHING_LEFT_TO_RIGHT) {
+typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const AlignmentParameters &parameters) {
+    if (parameters.matching_id == MATCHING_RATIO) {
+        return std::make_shared<RatioFeatureMatcher<FeatureT>>(parameters);
+    } else if (parameters.matching_id == MATCHING_CLUSTER) {
+        return std::make_shared<ClusterFeatureMatcher<FeatureT>>(parameters);
+    } else if (parameters.matching_id != MATCHING_LEFT_TO_RIGHT) {
         PCL_WARN("[getFeatureMatcher] feature matcher %s isn't supported, left-to-right matcher will be used.",
-                 matching_id.c_str());
+                 parameters.matching_id.c_str());
     }
-    return std::make_shared<LeftToRightFeatureMatcher<FeatureT>>();
+    return std::make_shared<LeftToRightFeatureMatcher<FeatureT>>(parameters);
 }
 
 template<typename FeatureT>
