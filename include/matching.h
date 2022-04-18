@@ -16,10 +16,11 @@ class FeatureMatcher {
 public:
     using Ptr = std::shared_ptr<FeatureMatcher<FeatureT>>;
     using ConstPtr = std::shared_ptr<const FeatureMatcher<FeatureT>>;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
 
     virtual pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                        const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                                       const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
+                                       const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt,
                                        const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                        int threads) = 0;
 
@@ -50,13 +51,15 @@ protected:
 template<typename FeatureT>
 class LeftToRightFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+
     LeftToRightFeatureMatcher() = delete;
 
     LeftToRightFeatureMatcher(AlignmentParameters parameters) : parameters_(std::move(parameters)) {};
 
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
+                               const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
@@ -109,13 +112,15 @@ protected:
 template<typename FeatureT>
 class RatioFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+
     RatioFeatureMatcher() = delete;
 
     RatioFeatureMatcher(AlignmentParameters parameters) : parameters_(std::move(parameters)) {};
 
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
+                               const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                int threads) override {
         if (this->parameters_.randomness != 1) {
@@ -164,7 +169,7 @@ protected:
 template<typename FeatureT>
 class ClusterFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    typedef std::vector<std::unordered_set<int>> Neighbors;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
 
     ClusterFeatureMatcher() = delete;
 
@@ -172,7 +177,7 @@ public:
 
     pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
-                               const PointCloudTN::ConstPtr &pcd_src, const PointCloudTN::ConstPtr &pcd_tgt,
+                               const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt,
                                const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
@@ -187,31 +192,12 @@ public:
 
         this->printDebugInfo(mv_correspondences_ij);
 
-        pcl::KdTreeFLANN<PointTN> pcd_tree_src, pcd_tree_tgt;
-        pcd_tree_src.setInputCloud(pcd_src);
-        pcd_tree_tgt.setInputCloud(pcd_tgt);
-        Neighbors src_neighbors(src->size()), tgt_neighbors(tgt->size());
-
-        pcl::Indices match_indices;
-        std::vector<float> distances;
-
         float matching_cluster_radius = MATCHING_CLUSTER_RADIUS_COEF * this->parameters_.voxel_size;
-        for (int i = 0; i < src->size(); ++i) {
-            pcd_tree_src.radiusSearch(i, matching_cluster_radius, match_indices, distances);
-            std::copy(match_indices.begin(), match_indices.end(),
-                      std::inserter(src_neighbors[i], src_neighbors[i].begin()));
-        }
-        for (int i = 0; i < tgt->size(); ++i) {
-            pcd_tree_tgt.radiusSearch(i, matching_cluster_radius, match_indices, distances);
-            std::copy(match_indices.begin(), match_indices.end(),
-                      std::inserter(tgt_neighbors[i], tgt_neighbors[i].begin()));
-        }
-
         pcl::Correspondences correspondences_cluster;
         for (int i = 0; i < src->size(); ++i) {
             for (int j: mv_correspondences_ij[i].match_indices) {
-                float distance = calculateCorrespondenceDistance(i, j, mv_correspondences_ij,
-                                                                 src_neighbors, tgt_neighbors);
+                float distance = calculateCorrespondenceDistance(i, j, matching_cluster_radius, mv_correspondences_ij,
+                                                                 pcd_tree_src, pcd_tree_tgt);
                 if (distance < MATCHING_CLUSTER_THRESHOLD) {
                     correspondences_cluster.push_back({i, j, distance});
                 }
@@ -228,13 +214,23 @@ public:
     }
 
 protected:
-    float calculateCorrespondenceDistance(int i, int j,
+    float calculateCorrespondenceDistance(int i, int j, float radius,
                                           const std::vector<MultivaluedCorrespondence> &mv_correspondences_ij,
-                                          const Neighbors &src_neighbors, const Neighbors &tgt_neighbors) {
+                                          const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt) {
+        std::unordered_set<int> i_neighbors, j_neighbors;
+        pcl::Indices match_indices;
+        std::vector<float> distances;
+
+        pcd_tree_src->radiusSearch(i, radius, match_indices, distances);
+        std::copy(match_indices.begin(), match_indices.end(), std::inserter(i_neighbors, i_neighbors.begin()));
+
+        pcd_tree_tgt->radiusSearch(j, radius, match_indices, distances);
+        std::copy(match_indices.begin(), match_indices.end(), std::inserter(j_neighbors, j_neighbors.begin()));
+
         int count_consistent_pairs = 0, count_pairs = 0;
-        for (int i_neighbor: src_neighbors[i]) {
+        for (int i_neighbor: i_neighbors) {
             for (int i_neighbor_match: mv_correspondences_ij[i_neighbor].match_indices) {
-                if (tgt_neighbors[j].contains(i_neighbor_match)) {
+                if (j_neighbors.contains(i_neighbor_match)) {
                     count_consistent_pairs++;
                 }
                 count_pairs++;

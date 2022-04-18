@@ -208,6 +208,16 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
         return;
     }
 
+    // Initialize search trees
+    if (this->target_cloud_updated_ && !this->force_no_recompute_) {
+        this->tree_->setInputCloud(this->target_);
+        this->target_cloud_updated_ = false;
+    }
+    if (this->source_cloud_updated_ && !this->force_no_recompute_) {
+        this->tree_reciprocal_->setInputCloud(this->input_);
+        this->source_cloud_updated_ = false;
+    }
+
     // Initialize prerejector (similarity threshold already set to default value in
     // constructor)
     this->correspondence_rejector_poly_->setInputSource(this->input_);
@@ -228,7 +238,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudT
     } else {
         pcl::ScopeTime t("Correspondence search");
         *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
-                                                            this->input_, this->target_,
+                                                            this->tree_reciprocal_, this->tree_,
                                                             point_representation_, getNumberOfThreads());
     }
 
