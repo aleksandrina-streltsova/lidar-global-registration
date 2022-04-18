@@ -118,7 +118,7 @@ void estimateTestMetric(const YamlConfig &config) {
 
     for (auto &parameters: parameters_container) {
         parameters.testname = testname;
-        auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transforamtion"));
+        auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
@@ -173,7 +173,7 @@ void generateDebugFiles(const YamlConfig &config) {
     for (auto &parameters: parameters_container) {
         parameters.testname = testname;
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                                           constructName(parameters, "transforamtion"));
+                                           constructName(parameters, "transformation"));
         float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
