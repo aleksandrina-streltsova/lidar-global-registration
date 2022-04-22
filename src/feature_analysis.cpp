@@ -8,18 +8,18 @@
 #include "feature_analysis.h"
 #include "downsample.h"
 
-void saveNormals(const PointCloudTN::Ptr &pcd,
+void saveNormals(const PointNCloud::Ptr &pcd,
                  const Eigen::Matrix4f &transformation_gt, bool is_source,  const AlignmentParameters &parameters) {
     pcl::console::print_highlight("Saving %s normals...\n", is_source ? "source" : "target");
-    PointCloudTN pcd_aligned;
+    PointNCloud pcd_aligned;
     pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
     std::string filepath = constructPath(parameters,  std::string("normals_")+ (is_source ? "src" : "tgt"));
     pcl::io::savePLYFileBinary(filepath, pcd_aligned);
 }
 
-std::vector<int> getPointIds(const PointCloudTN::Ptr &all_points, const PointCloudTN::Ptr &extracted_points) {
+std::vector<int> getPointIds(const PointNCloud::Ptr &all_points, const PointNCloud::Ptr &extracted_points) {
     int n = extracted_points->size();
-    pcl::KdTreeFLANN<PointTN> tree(new pcl::KdTreeFLANN<PointTN>);
+    pcl::KdTreeFLANN<PointN> tree(new pcl::KdTreeFLANN<PointN>);
     tree.setInputCloud(all_points);
 
     std::vector<int> ids(n);
@@ -33,10 +33,10 @@ std::vector<int> getPointIds(const PointCloudTN::Ptr &all_points, const PointClo
     return ids;
 }
 
-void saveExtractedPointIds(const PointCloudTN::Ptr &src_fullsize, const PointCloudTN::Ptr &tgt_fullsize,
+void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNCloud::Ptr &tgt_fullsize,
                            const Eigen::Matrix4f &transformation_gt,
-                           const AlignmentParameters &parameters, const PointCloudTN::Ptr &extracted_points) {
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
+                           const AlignmentParameters &parameters, const PointNCloud::Ptr &extracted_points) {
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     // Downsample
     if (parameters.downsample) {
         pcl::console::print_highlight("Downsampling...\n");
@@ -44,7 +44,7 @@ void saveExtractedPointIds(const PointCloudTN::Ptr &src_fullsize, const PointClo
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
     }
 
-    PointCloudTN::Ptr src_aligned_gt(new PointCloudTN);
+    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
 
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
     std::string filepath = constructPath(parameters, "ids", "csv");
@@ -63,11 +63,11 @@ void saveExtractedPointIds(const PointCloudTN::Ptr &src_fullsize, const PointClo
     fout.close();
 }
 
-void saveExtractedPointIds(const PointCloudTN::Ptr &src_fullsize, const PointCloudTN::Ptr &tgt_fullsize,
+void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNCloud::Ptr &tgt_fullsize,
                            const Eigen::Matrix4f &transformation_gt,
                            const AlignmentParameters &parameters, const std::string &extracted_path) {
-    PointCloudTN::Ptr extracted_points(new PointCloudTN);
-    if (pcl::io::loadPLYFile<PointTN>(extracted_path, *extracted_points) < 0) {
+    PointNCloud::Ptr extracted_points(new PointNCloud);
+    if (pcl::io::loadPLYFile<PointN>(extracted_path, *extracted_points) < 0) {
         pcl::console::print_error("Error loading file with extracted point!\n");
         exit(1);
     }

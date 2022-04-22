@@ -25,14 +25,14 @@ void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features,  cons
     fout.close();
 }
 
-void saveNormals(const PointCloudTN::Ptr &pcd,
+void saveNormals(const PointNCloud::Ptr &pcd,
                  const Eigen::Matrix4f &transformation_gt, bool is_source, const AlignmentParameters &parameters);
 
-void saveExtractedPointIds(const PointCloudTN::Ptr &src, const PointCloudTN::Ptr &tgt,
+void saveExtractedPointIds(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
-                           const AlignmentParameters &parameters, const PointCloudTN::Ptr &extracted_points);
+                           const AlignmentParameters &parameters, const PointNCloud::Ptr &extracted_points);
 
-void saveExtractedPointIds(const PointCloudTN::Ptr &src, const PointCloudTN::Ptr &tgt,
+void saveExtractedPointIds(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
                            const AlignmentParameters &parameters, const std::string &extracted_path);
 #endif

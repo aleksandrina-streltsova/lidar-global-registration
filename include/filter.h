@@ -11,11 +11,11 @@ typedef std::vector<float> (*UniquenessFunction)(const pcl::PointCloud<pcl::FPFH
 UniquenessFunction getUniquenessFunction(const std::string& identifier);
 
 void filterPointCloud(UniquenessFunction func, const std::string &func_identifier,
-                      const PointCloudT::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
-                      PointCloudT::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
+                      const PointCloud::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
+                      PointCloud::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
                       const Eigen::Matrix4f &transformation_gt,
                       const AlignmentParameters &parameters, bool is_source);
 
-void filter_duplicate_points(PointCloudTN::Ptr &pcd);
+void filter_duplicate_points(PointNCloud::Ptr &pcd);
 
 #endif

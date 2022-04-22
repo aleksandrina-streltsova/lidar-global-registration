@@ -11,13 +11,13 @@ void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inl
     correct_inlier_pairs.clear();
     correct_inlier_pairs.reserve(inlier_pairs.size());
 
-    PointCloudTN src_transformed;
+    PointNCloud src_transformed;
     src_transformed.resize(src_->size());
     pcl::transformPointCloud(*src_, src_transformed, transformation_gt);
 
     for (const auto &ip: inlier_pairs) {
-        PointTN source_point(src_transformed.points[ip.idx_src]);
-        PointTN target_point(tgt_->points[ip.idx_tgt]);
+        PointN source_point(src_transformed.points[ip.idx_src]);
+        PointN target_point(tgt_->points[ip.idx_tgt]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
         if (e < inlier_threshold_) {
             correct_inlier_pairs.push_back(ip);
@@ -53,7 +53,7 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
     inlier_pairs.reserve(correspondences_.size());
     rmse = 0.0f;
 
-    PointCloudTN src_transformed;
+    PointNCloud src_transformed;
     src_transformed.resize(src_->size());
     pcl::transformPointCloud(*src_, src_transformed, transformation);
 
@@ -61,8 +61,8 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
     for (int i = 0; i < correspondences_.size(); ++i) {
         int query_idx = correspondences_[i].index_query;
         int match_idx = correspondences_[i].index_match;
-        PointTN source_point(src_transformed.points[query_idx]);
-        PointTN target_point(tgt_->points[match_idx]);
+        PointN source_point(src_transformed.points[query_idx]);
+        PointN target_point(tgt_->points[match_idx]);
 
         // Calculate correspondence distance
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3);
@@ -86,7 +86,16 @@ void CorrespondencesMetricEstimator::estimateMetric(const std::vector<InlierPair
     metric = (float) inlier_pairs.size() / (float) correspondences_.size();
 }
 
-void ClosestPointMetricEstimator::setTargetCloud(const PointCloudTN::ConstPtr &tgt) {
+void ClosestPointMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
+    src_ = src;
+    if (weighted_ && src_->size() != weights_.size()) {
+        PCL_WARN("[%s] weights and source cloud have different sizes, constant weights will be used.\n",
+                 getClassName().c_str());
+        weighted_ = false;
+    }
+}
+
+void ClosestPointMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
     tgt_ = tgt;
     tree_tgt_.setInputCloud(tgt);
 }
@@ -98,7 +107,7 @@ void ClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transf
     inlier_pairs.reserve(src_->size());
     rmse = 0.0f;
 
-    PointCloudTN src_transformed;
+    PointNCloud src_transformed;
     src_transformed.resize(src_->size());
     pcl::transformPointCloud(*src_, src_transformed, transformation);
 
@@ -125,12 +134,20 @@ void ClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transf
 }
 
 void ClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const {
-    metric = (float) inlier_pairs.size() / (float) src_->size();
+    if (weighted_) {
+        float sum = 0.0;
+        for (auto &inlier_pair: inlier_pairs) {
+            sum += weights_[inlier_pair.idx_src];
+        }
+        metric = sum / (float) src_->size();
+    } else {
+        metric = (float) inlier_pairs.size() / (float) src_->size();
+    }
 }
 
-MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id) {
+MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id, const std::vector<float> &weights) {
     if (metric_id == "closest_point") {
-        return std::make_shared<ClosestPointMetricEstimator>();
+        return std::make_shared<ClosestPointMetricEstimator>(weights);
     } else if (metric_id != DEFAULT_METRIC) {
         PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
                  metric_id.c_str());

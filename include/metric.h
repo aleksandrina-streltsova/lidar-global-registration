@@ -36,11 +36,11 @@ public:
         correspondences_ = correspondences;
     }
 
-    virtual inline void setSourceCloud(const PointCloudTN::ConstPtr &src) {
+    virtual inline void setSourceCloud(const PointNCloud::ConstPtr &src) {
         src_ = src;
     }
 
-    virtual inline void setTargetCloud(const PointCloudTN::ConstPtr &tgt) {
+    virtual inline void setTargetCloud(const PointNCloud::ConstPtr &tgt) {
         tgt_ = tgt;
     }
 
@@ -48,14 +48,18 @@ public:
         inlier_threshold_ = inlier_threshold;
     }
 
+    virtual std::string getClassName() = 0;
+
 protected:
     pcl::Correspondences correspondences_;
-    PointCloudTN::ConstPtr src_, tgt_;
+    PointNCloud::ConstPtr src_, tgt_;
     float inlier_threshold_;
 };
 
 class CorrespondencesMetricEstimator : public MetricEstimator {
 public:
+    CorrespondencesMetricEstimator() = default;
+
     inline float getInitialMetric() const override {
         return 0.0;
     }
@@ -68,10 +72,16 @@ public:
                           float &rmse) const override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
+
+    inline std::string getClassName() override {
+        return "CorrespondencesMetricEstimator";
+    }
 };
 
 class ClosestPointMetricEstimator : public MetricEstimator {
 public:
+    explicit ClosestPointMetricEstimator(std::vector<float> weights) : weights_(std::move(weights)) {}
+
     inline float getInitialMetric() const override {
         return 0.0;
     }
@@ -85,12 +95,20 @@ public:
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
 
-    void setTargetCloud(const PointCloudTN::ConstPtr &tgt) override;
+    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+
+    inline std::string getClassName() override {
+        return "ClosestPointMetricEstimator";
+    }
 
 protected:
-    pcl::KdTreeFLANN<PointTN> tree_tgt_;
+    pcl::KdTreeFLANN<PointN> tree_tgt_;
+    std::vector<float> weights_;
+    bool weighted_ = false;
 };
 
-MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id);
+MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id, const std::vector<float> &weights);
 
 #endif

@@ -54,7 +54,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
 
     bool use_normals = config.get<bool>("use_normals", false);
     // TODO: use normals even with one point cloud missing normals
-    bool normals_available = pointCloudHasNormals<PointTN>(fields_src) && pointCloudHasNormals<PointTN>(fields_tgt);
+    bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
     if (use_normals && !normals_available) {
         PCL_WARN("Point cloud doesn't have normals.\n");
     }
@@ -160,8 +160,8 @@ void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_
     corr.query_idx = query_idx;
 }
 
-float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
-    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointTN>(pcd);
+float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
+    auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointN>(pcd);
 
     Eigen::Vector3f min_point(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z);
     Eigen::Vector3f max_point(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
@@ -169,15 +169,15 @@ float getAABBDiagonal(const PointCloudTN::Ptr &pcd) {
     return (max_point - min_point).norm();
 }
 
-void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
+void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const pcl::Correspondences &correspondences,
                              const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source) {
-    PointCloudTN pcd_aligned;
+    PointNCloud pcd_aligned;
     pcl::transformPointCloud(*pcd, pcd_aligned, transformation_gt);
 
-    PointCloudColoredTN dst;
+    PointColoredNCloud dst;
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
@@ -262,12 +262,12 @@ void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t m
     fs::rename(filepath_tmp, filepath);
 }
 
-void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                          const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse) {
-    PointCloudColoredTN::Ptr dst(new PointCloudColoredTN);
-    PointCloudTN::Ptr src_aligned_gt(new PointCloudTN);
+    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
+    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
     pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
     float diagonal = getAABBDiagonal(src_aligned_gt);
 
@@ -305,7 +305,7 @@ void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::
     }
 }
 
-void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters) {
@@ -313,13 +313,13 @@ void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointC
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
-    PointCloudTN src_aligned_gt;
+    PointNCloud src_aligned_gt;
     pcl::transformPointCloud(*src, src_aligned_gt, transformation_gt);
 
     fout << "distance\n";
     for (const auto &correspondence: correspondences) {
-        PointTN source_point(src_aligned_gt.points[correspondence.index_query]);
-        PointTN target_point(tgt->points[correspondence.index_match]);
+        PointN source_point(src_aligned_gt.points[correspondence.index_query]);
+        PointN target_point(tgt->points[correspondence.index_match]);
         float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
         fout << dist << "\n";
     }
@@ -346,19 +346,19 @@ void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
     fout.close();
 }
 
-void setPointColor(PointColoredTN &point, int color) {
+void setPointColor(PointColoredN &point, int color) {
     point.r = (color >> 16) & 0xff;
     point.g = (color >> 8) & 0xff;
     point.b = (color >> 0) & 0xff;
 }
 
-void mixPointColor(PointColoredTN &point, int color) {
+void mixPointColor(PointColoredN &point, int color) {
     point.r = point.r / 2 + ((color >> 16) & 0xff) / 2;
     point.g = point.g / 2 + ((color >> 8) & 0xff) / 2;
     point.b = point.b / 2 + ((color >> 0) & 0xff) / 2;
 }
 
-void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
+void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
     point.r = red;
     point.g = green;
     point.b = blue;

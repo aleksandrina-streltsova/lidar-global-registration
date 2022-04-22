@@ -17,7 +17,7 @@ std::vector<float> computeDistanceMean(const pcl::PointCloud<pcl::FPFHSignature3
 
 std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features);
 
-void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
+void saveUniquenesses(const PointCloud::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
                       const AlignmentParameters &parameters, const std::string &func_identifier,
                       bool is_source, const Eigen::Matrix4f &transformation_gt);
 
@@ -32,8 +32,8 @@ UniquenessFunction getUniquenessFunction(const std::string &identifier) {
 }
 
 void filterPointCloud(UniquenessFunction func, const std::string &func_identifier,
-                      const PointCloudT::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
-                      PointCloudT::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
+                      const PointCloud::Ptr &pcd, const pcl::PointCloud<pcl::FPFHSignature33>::Ptr &features,
+                      PointCloud::Ptr &dst_pcd, pcl::PointCloud<pcl::FPFHSignature33>::Ptr &dst_features,
                       const Eigen::Matrix4f &transformation_gt,
                       const AlignmentParameters &parameters, bool is_source) {
     std::vector<float> uniquenesses = func(features);
@@ -51,7 +51,7 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
     saveUniquenesses(pcd, uniquenesses, indices, parameters, func_identifier, is_source, transformation_gt);
 
     // Filter point cloud
-    pcl::ExtractIndices<PointT> pcd_filter;
+    pcl::ExtractIndices<Point> pcd_filter;
     pcd_filter.setInputCloud(pcd);
     pcd_filter.setIndices(point_indices);
     pcd_filter.setNegative(false);
@@ -128,7 +128,7 @@ std::vector<float> computeDistanceRandom(const pcl::PointCloud<pcl::FPFHSignatur
     return distances;
 }
 
-void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
+void saveUniquenesses(const PointCloud::Ptr &pcd, const std::vector<float> &uniquenesses, const pcl::Indices &indices,
                       const AlignmentParameters &parameters, const std::string &func_identifier,
                       bool is_source, const Eigen::Matrix4f &transformation_gt) {
     std::string name = std::string("uniquenesses_") + (is_source ? "src_" : "tgt_") + func_identifier;
@@ -143,7 +143,7 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     }
     fout.close();
 
-    PointCloudColoredTN dst;
+    PointColoredNCloud dst;
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         dst.points[i].x = pcd->points[i].x;
@@ -161,8 +161,8 @@ void saveUniquenesses(const PointCloudT::Ptr &pcd, const std::vector<float> &uni
     pcl::io::savePLYFileASCII(filepath, dst);
 }
 
-void filter_duplicate_points(PointCloudTN::Ptr &pcd) {
-    std::unordered_set<PointTN, PointHash, PointEqual<PointTN>> unique_points;
+void filter_duplicate_points(PointNCloud::Ptr &pcd) {
+    std::unordered_set<PointN, PointHash, PointEqual<PointN>> unique_points;
     std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
     pcd->points.clear();
     std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));

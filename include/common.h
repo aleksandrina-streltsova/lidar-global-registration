@@ -25,15 +25,15 @@
 #define ROPS_DIM 135
 
 // Types
-typedef pcl::PointXYZ PointT;
-typedef pcl::PointNormal PointTN;
+typedef pcl::PointXYZ Point;
+typedef pcl::PointNormal PointN;
 typedef pcl::ReferenceFrame PointRF;
-typedef pcl::PointXYZRGBNormal PointColoredTN;
-typedef pcl::PointCloud<PointT> PointCloudT;
-typedef pcl::PointCloud<PointColoredTN> PointCloudColoredTN;
-typedef pcl::PointCloud<pcl::Normal> PointCloudN;
-typedef pcl::PointCloud<PointTN> PointCloudTN;
-typedef pcl::PointCloud<PointRF> PointCloudRF;
+typedef pcl::PointXYZRGBNormal PointColoredN;
+typedef pcl::PointCloud<Point> PointCloud;
+typedef pcl::PointCloud<PointColoredN> PointColoredNCloud;
+typedef pcl::PointCloud<pcl::Normal> NormalCloud;
+typedef pcl::PointCloud<PointN> PointNCloud;
+typedef pcl::PointCloud<PointRF> PointRFCloud;
 
 // Feature types
 typedef pcl::Histogram<ROPS_DIM> RoPS135;
@@ -82,7 +82,7 @@ struct InlierPair {
 };
 
 struct PointHash {
-    inline size_t operator()(const PointTN &point) const {
+    inline size_t operator()(const PointN &point) const {
         size_t seed = 0;
         combineHash(seed, point.x);
         combineHash(seed, point.y);
@@ -170,20 +170,20 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pc
     return distances[n_points / 2];
 }
 
-float getAABBDiagonal(const PointCloudTN::Ptr &pcd);
+float getAABBDiagonal(const PointNCloud::Ptr &pcd);
 
-void saveColorizedPointCloud(const PointCloudTN::ConstPtr &pcd,
+void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const pcl::Correspondences &correspondences,
                              const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source);
 
-void saveCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                          const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse = false);
 
-void saveCorrespondenceDistances(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,
                                  const AlignmentParameters &parameters);
@@ -192,11 +192,11 @@ void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
                               const pcl::Correspondences &correct_correspondences,
                               const AlignmentParameters &parameters);
 
-void setPointColor(PointColoredTN &point, int color);
+void setPointColor(PointColoredN &point, int color);
 
-void mixPointColor(PointColoredTN &point, int color);
+void mixPointColor(PointColoredN &point, int color);
 
-void setPointColor(PointColoredTN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
+void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
                           bool with_version = true, bool with_metric = true);

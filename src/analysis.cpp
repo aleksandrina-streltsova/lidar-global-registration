@@ -25,10 +25,10 @@ std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::M
     return {rotation_error, translation_error};
 }
 
-float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
+float calculate_point_cloud_mean_error(const PointNCloud::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation,
                                        const Eigen::Matrix4f &transformation_gt) {
-    PointCloudTN::Ptr pcd_transformed(new PointCloudTN);
+    PointNCloud::Ptr pcd_transformed(new PointNCloud);
     Eigen::Matrix4f transformation_diff = transformation.inverse() * transformation_gt;
     pcl::transformPointCloud(*pcd, *pcd_transformed, transformation_diff);
 
@@ -40,23 +40,23 @@ float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
     return error;
 }
 
-float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                           const pcl::Correspondences &correct_correspondences,
                                           const AlignmentParameters &parameters,
                                           const Eigen::Matrix4f &transformation_gt) {
-    PointCloudTN::Ptr src_aligned(new PointCloudTN);
+    PointNCloud::Ptr src_aligned(new PointNCloud);
     pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
-    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+    pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(tgt);
 
     pcl::Indices indices;
     std::vector<float> distances;
     // calculate bbox of overlapping area
-    PointTN min_point, max_point;
+    PointN min_point, max_point;
     float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
     for (int i = 0; i < src_aligned->size(); ++i) {
         (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
-        const PointTN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
+        const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
         if (std::sqrt(distances[0]) < error_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
             min_point.x = std::min(min_point.x, p_src.x);
             min_point.y = std::min(min_point.y, p_src.y);
@@ -96,11 +96,11 @@ float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, con
     return std::cbrt(entropy[0] * entropy[1] * entropy[2]);
 }
 
-float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+float calculate_normal_difference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                   const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt) {
-    PointCloudTN::Ptr src_aligned(new PointCloudTN);
+    PointNCloud::Ptr src_aligned(new PointNCloud);
     pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
-    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+    pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(tgt);
 
     pcl::Indices indices;
@@ -110,7 +110,7 @@ float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const Point
     int n_points_overlap = 0;
     for (int i = 0; i < src_aligned->size(); ++i) {
         (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
-        const PointTN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
+        const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
         if (std::sqrt(distances[0]) < error_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
             float cos = std::clamp(p_src.normal_x * p_tgt.normal_x + p_src.normal_y * p_tgt.normal_y +
                                    p_src.normal_z * p_tgt.normal_z, -1.f, 1.f);
@@ -121,20 +121,20 @@ float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const Point
     return difference / (float) n_points_overlap;
 }
 
-void buildCorrectCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
                                  pcl::Correspondences &correct_correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float error_threshold) {
     correct_correspondences.clear();
     correct_correspondences.reserve(correspondences.size());
 
-    PointCloudTN input_transformed;
+    PointNCloud input_transformed;
     input_transformed.resize(src->size());
     pcl::transformPointCloud(*src, input_transformed, transformation_gt);
 
     for (const auto &correspondence: correspondences) {
-        PointTN source_point(input_transformed.points[correspondence.index_query]);
-        PointTN target_point(tgt->points[correspondence.index_match]);
+        PointN source_point(input_transformed.points[correspondence.index_query]);
+        PointN target_point(tgt->points[correspondence.index_match]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
         if (e < error_threshold) {
             correct_correspondences.push_back(correspondence);

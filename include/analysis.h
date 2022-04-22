@@ -11,18 +11,18 @@
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
 
-float calculate_point_cloud_mean_error(const PointCloudTN::ConstPtr &pcd,
+float calculate_point_cloud_mean_error(const PointNCloud::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
-float calculate_correspondence_uniformity(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                           const pcl::Correspondences &correct_correspondences,
                                           const AlignmentParameters &parameters,
                                           const Eigen::Matrix4f &transformation_gt);
 
-float calculate_normal_difference(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+float calculate_normal_difference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                   const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
 
-void buildCorrectCorrespondences(const PointCloudTN::ConstPtr &src, const PointCloudTN::ConstPtr &tgt,
+void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
                                  pcl::Correspondences &correct_correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float error_threshold);
@@ -32,7 +32,7 @@ public:
     AlignmentAnalysis() {}
 
     AlignmentAnalysis(AlignmentParameters parameters, MetricEstimator::ConstPtr metric_estimator,
-                      PointCloudTN::ConstPtr src, PointCloudTN::ConstPtr tgt, std::vector<InlierPair> inlier_pairs,
+                      PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt, std::vector<InlierPair> inlier_pairs,
                       pcl::Correspondences correspondences, float rmse,
                       int iterations, Eigen::Matrix4f transformation) : parameters_(std::move(parameters)),
                                                                         metric_estimator_(std::move(metric_estimator)),
@@ -59,7 +59,7 @@ private:
     AlignmentParameters parameters_;
     MetricEstimator::ConstPtr metric_estimator_;
     int iterations_;
-    PointCloudTN::ConstPtr src_, tgt_;
+    PointNCloud::ConstPtr src_, tgt_;
     Eigen::Matrix4f transformation_, transformation_gt_;
     pcl::Correspondences correspondences_, correct_correspondences_;
     std::vector<InlierPair> inlier_pairs_, correct_inlier_pairs_;

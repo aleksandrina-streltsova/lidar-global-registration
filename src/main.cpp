@@ -1,6 +1,7 @@
 #include <Eigen/Core>
 #include <string>
 #include <filesystem>
+#include <array>
 
 #include "io.h"
 #include "config.h"
@@ -15,14 +16,14 @@ const std::string METRIC_ANALYSIS = "metric";
 const std::string DEBUG = "debug";
 
 void loadPointClouds(const YamlConfig &config, std::string &testname,
-                     PointCloudTN::Ptr &src, PointCloudTN::Ptr &tgt,
+                     PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt) {
     pcl::console::print_highlight("Loading point clouds...\n");
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    if (loadPLYFile<PointTN>(src_path, *src, fields_src) < 0 ||
-        loadPLYFile<PointTN>(tgt_path, *tgt, fields_tgt) < 0) {
+    if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
+        loadPLYFile<PointN>(tgt_path, *tgt, fields_tgt) < 0) {
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
@@ -46,7 +47,7 @@ void loadTransformationGt(const YamlConfig &config, Eigen::Matrix4f &transformat
 }
 
 std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation_gt;
     std::string testname;
@@ -55,8 +56,8 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     loadTransformationGt(config, transformation_gt);
     std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
 
-    float src_density = calculatePointCloudDensity<PointTN>(src);
-    float tgt_density = calculatePointCloudDensity<PointTN>(tgt);
+    float src_density = calculatePointCloudDensity<PointN>(src);
+    float tgt_density = calculatePointCloudDensity<PointN>(tgt);
     PCL_DEBUG("[runTest] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
 
     std::vector<AlignmentAnalysis> analyses;
@@ -84,7 +85,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
         if (analysis.alignmentHasConverged()) {
             analysis.start(transformation_gt, testname);
             saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                               constructName(parameters, "transforamtion"), analysis.getTransformation());
+                               constructName(parameters, "transformation"), analysis.getTransformation());
         }
         analyses.push_back(analysis);
     }
@@ -102,28 +103,36 @@ void estimateTestMetric(const YamlConfig &config) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout << "testname,metric_corr,metric_icp,inliers_corr,inliers_icp\n";
+            fout << "testname,metric_corr,metric_icp,inliers_corr,inliers_icp,";
+            fout << "metric_corr_gt,metric_icp_gt,inliers_corr_gt,inliers_icp_gt\n";
         }
     } else {
         perror(("error while opening file " + filepath).c_str());
     }
 
-    PointCloudTN::Ptr src_fullsize(new PointCloudTN), tgt_fullsize(new PointCloudTN);
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
+    PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    NormalCloud::Ptr normals_src(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
+    Eigen::Matrix4f transformation_gt;
     std::string testname;
 
     loadPointClouds(config, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt);
+    loadTransformationGt(config, transformation_gt);
     std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
 
     for (auto &parameters: parameters_container) {
         parameters.testname = testname;
+        float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
         auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        estimateNormals(normal_radius, src, normals_src, false);
+        WeightFunction weight_function = getWeightFunction(parameters.weight_id);
+        auto weights = weight_function(normal_radius, src, normals_src);
         CorrespondencesMetricEstimator estimator_corr;
-        ClosestPointMetricEstimator estimator_icp;
+        ClosestPointMetricEstimator estimator_icp(weights);
         pcl::Correspondences correspondences;
         std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
         float error, metric_icp, metric_corr;
@@ -139,26 +148,31 @@ void estimateTestMetric(const YamlConfig &config) {
         estimator_corr.setTargetCloud(tgt);
         estimator_corr.setInlierThreshold(parameters.voxel_size * parameters.distance_thr_coef);
         estimator_corr.setCorrespondences(correspondences);
-        estimator_corr.buildInlierPairs(transformation, inlier_pairs_corr, error);
-        estimator_corr.estimateMetric(inlier_pairs_corr, metric_corr);
 
         estimator_icp.setSourceCloud(src);
         estimator_icp.setTargetCloud(tgt);
         estimator_icp.setInlierThreshold(parameters.voxel_size * parameters.distance_thr_coef);
         estimator_icp.setCorrespondences(correspondences);
-        estimator_icp.buildInlierPairs(transformation, inlier_pairs_icp, error);
-        estimator_icp.estimateMetric(inlier_pairs_icp, metric_icp);
 
-        fout << constructName(parameters, "metric", true, false) << ",";
-        fout << metric_corr << "," << metric_icp << ",";
-        fout << inlier_pairs_corr.size() << "," << inlier_pairs_icp.size() << "\n";
+        fout << constructName(parameters, "metric", true, false);
+        std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt};
+        for (auto &tn: transformations) {
+            estimator_corr.buildInlierPairs(tn, inlier_pairs_corr, error);
+            estimator_corr.estimateMetric(inlier_pairs_corr, metric_corr);
+            estimator_icp.buildInlierPairs(tn, inlier_pairs_icp, error);
+            estimator_icp.estimateMetric(inlier_pairs_icp, metric_icp);
+            fout << "," << metric_corr << "," << metric_icp;
+            fout << "," << inlier_pairs_corr.size() << "," << inlier_pairs_icp.size();
+        }
+        fout << "\n";
     }
 }
 
 void generateDebugFiles(const YamlConfig &config) {
-    PointCloudTN::Ptr src_fullsize(new PointCloudTN), tgt_fullsize(new PointCloudTN);
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
-    PointCloudTN::Ptr src_fullsize_aligned(new PointCloudTN), src_fullsize_aligned_gt(new PointCloudTN);
+    PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
+    NormalCloud::Ptr normals_src(new NormalCloud);
     pcl::Correspondences correspondences, correct_correspondences;
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
@@ -174,16 +188,20 @@ void generateDebugFiles(const YamlConfig &config) {
         parameters.testname = testname;
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                            constructName(parameters, "transformation"));
+        float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
         float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        estimateNormals(normal_radius, src, normals_src, false);
         bool success = false;
         readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false), correspondences, success);
         if (!success) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", parameters.testname.c_str());
             exit(1);
         }
-        auto metric_estimator = getMetricEstimator(parameters.metric_id);
+        WeightFunction weight_function = getWeightFunction(parameters.weight_id);
+        auto weights = weight_function(normal_radius, src, normals_src);
+        auto metric_estimator = getMetricEstimator(parameters.metric_id, weights);
         metric_estimator->setSourceCloud(src);
         metric_estimator->setTargetCloud(tgt);
         metric_estimator->setInlierThreshold(parameters.voxel_size * parameters.distance_thr_coef);
@@ -195,6 +213,7 @@ void generateDebugFiles(const YamlConfig &config) {
         saveCorrespondenceDistances(src, tgt, correspondences, transformation_gt, parameters.voxel_size, parameters);
         saveColorizedPointCloud(src, correspondences, correct_correspondences, inlier_pairs, parameters, transformation_gt, true);
         saveColorizedPointCloud(tgt, correspondences, correct_correspondences, inlier_pairs, parameters, Eigen::Matrix4f::Identity(), false);
+        saveColorizedWeights(src, weights, parameters, transformation_gt);
         saveCorrespondencesDebug(correspondences, correct_correspondences, parameters);
 
         pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);

@@ -7,7 +7,7 @@ int main(int argc, char **argv) {
     YamlConfig config;
     config.init(argv[1]);
 
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN);
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
 
     // Load src and tgt
@@ -15,8 +15,8 @@ int main(int argc, char **argv) {
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    if (loadPLYFile<PointTN>(src_path, *src, fields_src) < 0 ||
-        loadPLYFile<PointTN>(tgt_path, *tgt, fields_tgt) < 0) {
+    if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
+        loadPLYFile<PointN>(tgt_path, *tgt, fields_tgt) < 0) {
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }

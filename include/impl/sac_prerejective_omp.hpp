@@ -50,13 +50,13 @@ const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
-    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
+    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false, false);
     readCorrespondencesFromCSV(filepath, *(this->correspondences_), correspondence_ids_from_file);
 }
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
-    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false);
+    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false, false);
     saveCorrespondencesToCSV(filepath, *(this->correspondences_));
 }
 
@@ -149,7 +149,7 @@ unsigned int SampleConsensusPrerejectiveOMP<FeatureT>::getNumberOfThreads() {
 }
 
 template<typename FeatureT>
-void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointCloudTN &output,
+void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud &output,
                                                                      const Eigen::Matrix4f &guess) {
     // Some sanity checks first
     if (!this->input_features_) {

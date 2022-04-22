@@ -16,7 +16,7 @@ class FeatureMatcher {
 public:
     using Ptr = std::shared_ptr<FeatureMatcher<FeatureT>>;
     using ConstPtr = std::shared_ptr<const FeatureMatcher<FeatureT>>;
-    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointN>::ConstPtr;
 
     virtual pcl::Correspondences match(const typename pcl::PointCloud<FeatureT>::ConstPtr &src,
                                        const typename pcl::PointCloud<FeatureT>::ConstPtr &tgt,
@@ -51,7 +51,7 @@ protected:
 template<typename FeatureT>
 class LeftToRightFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointN>::ConstPtr;
 
     LeftToRightFeatureMatcher() = delete;
 
@@ -112,7 +112,7 @@ protected:
 template<typename FeatureT>
 class RatioFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointN>::ConstPtr;
 
     RatioFeatureMatcher() = delete;
 
@@ -169,7 +169,7 @@ protected:
 template<typename FeatureT>
 class ClusterFeatureMatcher : public FeatureMatcher<FeatureT> {
 public:
-    using KdTreeConstPtr = typename pcl::search::KdTree<PointTN>::ConstPtr;
+    using KdTreeConstPtr = typename pcl::search::KdTree<PointN>::ConstPtr;
 
     ClusterFeatureMatcher() = delete;
 

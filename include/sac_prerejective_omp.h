@@ -27,9 +27,9 @@
 #endif
 
 template<typename FeatureT>
-class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointTN, PointTN, FeatureT> {
+class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointN, PointN, FeatureT> {
 public:
-    using Matrix4 = typename pcl::Registration<PointTN, PointTN>::Matrix4;
+    using Matrix4 = typename pcl::Registration<PointN, PointN>::Matrix4;
 
     SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation<FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
@@ -77,7 +77,7 @@ public:
     AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters) const;
 
 protected:
-    void computeTransformation(PointCloudTN &output, const Eigen::Matrix4f &guess) override;
+    void computeTransformation(PointNCloud &output, const Eigen::Matrix4f &guess) override;
 
     void buildIndices(const pcl::Indices &sample_indices,
                       pcl::Indices &source_indices,

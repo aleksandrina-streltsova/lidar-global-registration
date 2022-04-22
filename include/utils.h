@@ -33,6 +33,27 @@ T calculate_combination_or_max(T n, T k) {
     return result > max ? max : (T)result;
 }
 
+template <typename T>
+T quantile(double q, const std::vector<T> &values) {
+    if (q < 0.0 || q > 1.0 || values.empty()) {
+        return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (values.size() == 1) {
+        return values[0];
+    }
+    std::size_t n = values.size();
+    std::size_t i = std::floor(q * (double)(n - 1));
+    std::size_t j = std::min(i + 1, n - 1);
+
+    std::vector<T> v = values;
+    std::nth_element(v.begin(), v.begin() + i, v.end());
+    if (i < j) {
+        std::nth_element(v.begin(), v.begin() + j, v.end());
+        return values[i] * ((double)n * q - (double)i) + values[j] * ((double)j - (double)n * q);
+    }
+    return values[i];
+}
+
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
 
 #endif

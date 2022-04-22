@@ -24,10 +24,10 @@ void assertCorrespondencesEqual(int i, const pcl::Correspondence &corr1, const p
 }
 
 template<typename FeatureT>
-void run_test(const PointCloudTN::Ptr &src_fullsize,
-              const PointCloudTN::Ptr &tgt_fullsize,
+void run_test(const PointNCloud::Ptr &src_fullsize,
+              const PointNCloud::Ptr &tgt_fullsize,
               const AlignmentParameters &parameters) {
-    PointCloudTN::Ptr src_downsize(new PointCloudTN), tgt_downsize(new PointCloudTN);
+    PointNCloud::Ptr src_downsize(new PointNCloud), tgt_downsize(new PointNCloud);
     // Downsample
     if (parameters.downsample) {
         pcl::console::print_highlight("Downsampling...\n");
@@ -35,9 +35,9 @@ void run_test(const PointCloudTN::Ptr &src_fullsize,
         downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters);
     }
 
-    PointCloudTN::Ptr src(new PointCloudTN), tgt(new PointCloudTN), src_aligned(new PointCloudTN);
-    PointCloudN::Ptr normals_src(new PointCloudN), normals_tgt(new PointCloudN);
-    PointCloudRF::Ptr frames_src(nullptr), frames_tgt(nullptr);
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud), src_aligned(new PointNCloud);
+    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
+    PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
 

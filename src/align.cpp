@@ -68,13 +68,13 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
     return tgt_position.inverse() * src_position;
 }
 
-void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointCloudN::Ptr &normals,
+void estimateNormals(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
                      bool normals_available) {
-    pcl::NormalEstimationOMP<PointTN, pcl::Normal> normal_est;
+    pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
     normal_est.setRadiusSearch(radius_search);
 
     normal_est.setInputCloud(pcd);
-    pcl::search::KdTree<PointTN>::Ptr tree(new pcl::search::KdTree<PointTN>());
+    pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*normals);
     // use normals from point cloud to orient estimated normals and replace NaN normals
@@ -107,9 +107,9 @@ void estimateNormals(float radius_search, const PointCloudTN::Ptr &pcd, PointClo
     PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
 }
 
-void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Ptr &pcd) {
-    PointCloudN::Ptr old_normals(new PointCloudN);
-    pcl::KdTreeFLANN<PointTN>::Ptr tree(new pcl::KdTreeFLANN<PointTN>());
+void smoothNormals(float radius_search, float voxel_size, const PointNCloud::Ptr &pcd) {
+    NormalCloud::Ptr old_normals(new NormalCloud);
+    pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(pcd);
 
     std::vector<pcl::Indices> vector_of_indices(pcd->size());
@@ -138,8 +138,8 @@ void smoothNormals(float radius_search, float voxel_size, const PointCloudTN::Pt
     }
 }
 
-void estimateReferenceFrames(const PointCloudTN::Ptr &pcd, const PointCloudN::Ptr &normals,
-                             PointCloudRF::Ptr &frames, const AlignmentParameters &parameters, bool is_source) {
+void estimateReferenceFrames(const PointNCloud::Ptr &pcd, const NormalCloud::Ptr &normals,
+                             PointRFCloud::Ptr &frames, const AlignmentParameters &parameters, bool is_source) {
     std::string lrf_id = parameters.lrf_id;
     std::transform(lrf_id.begin(), lrf_id.end(), lrf_id.begin(), [](unsigned char c) { return std::tolower(c); });
     if (lrf_id == "gt") {
@@ -157,17 +157,17 @@ void estimateReferenceFrames(const PointCloudTN::Ptr &pcd, const PointCloudN::Pt
             lrf.y_axis[d] = lrf_eigen.col (1)[d];
             lrf.z_axis[d] = lrf_eigen.col (2)[d];
         }
-        frames = std::make_shared<PointCloudRF>(PointCloudRF());
+        frames = std::make_shared<PointRFCloud>(PointRFCloud());
         frames->resize(pcd->size(), lrf);
     }  else if (lrf_id == "gravity") {
-        frames = std::make_shared<PointCloudRF>(PointCloudRF());
+        frames = std::make_shared<PointRFCloud>(PointRFCloud());
         frames->resize(pcd->size());
 
-        pcl::search::KdTree<PointTN>::Ptr tree(new pcl::search::KdTree<PointTN>());
+        pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         tree->setInputCloud(pcd);
         tree->setSortedResults(true);
 
-        pcl::SHOTLocalReferenceFrameEstimation<PointTN, PointRF>::Ptr lrf_estimator(new pcl::SHOTLocalReferenceFrameEstimation<PointTN, PointRF>());
+        pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>::Ptr lrf_estimator(new pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>());
         float lrf_radius = parameters.voxel_size * parameters.feature_radius_coef;
         lrf_estimator->setRadiusSearch(lrf_radius);
         lrf_estimator->setInputCloud(pcd);
