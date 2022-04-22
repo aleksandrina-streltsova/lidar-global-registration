@@ -56,7 +56,7 @@ struct AlignmentParameters {
     bool use_bfmatcher;
     int bf_block_size;
     int randomness, n_samples;
-    std::string func_id, descriptor_id, lrf_id, metric_id, matching_id;
+    std::string func_id, descriptor_id, lrf_id, metric_id, matching_id, weight_id;
     std::optional<int> max_iterations;
 
     bool save_features;
@@ -124,6 +124,8 @@ extern const std::string DEFAULT_METRIC;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
 extern const std::string MATCHING_CLUSTER;
+extern const std::string METRIC_WEIGHT_CONSTANT;
+extern const std::string METRIC_WEIGHT_EXPONENTIAL;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -178,6 +180,9 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source);
 
+void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights,
+                          const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
+
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                          const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
@@ -199,13 +204,14 @@ void mixPointColor(PointColoredN &point, int color);
 void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
-                          bool with_version = true, bool with_metric = true);
+                          bool with_version = true, bool with_metric = true, bool with_weights = true);
 
 std::string constructPath(const std::string &test, const std::string &name,
                           const std::string &extension = "ply", bool with_version = true);
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
-                          const std::string &extension = "ply", bool with_version = true, bool with_metric = true);
+                          const std::string &extension = "ply",
+                          bool with_version = true, bool with_metric = true, bool with_weights = true);
 
 template<typename PointT>
 bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {

@@ -21,6 +21,9 @@ const std::string DEFAULT_METRIC = "correspondences";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 const std::string MATCHING_RATIO = "ratio";
 const std::string MATCHING_CLUSTER = "cluster";
+const std::string METRIC_WEIGHT_CONSTANT = "constant";
+const std::string METRIC_WEIGHT_EXPONENTIAL = "exponential";
+
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -142,6 +145,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    auto weight_ids = config.getVector<std::string>("weight", METRIC_WEIGHT_CONSTANT);
+    for (const auto &id: weight_ids) {
+        for (auto ps: parameters_container) {
+            ps.weight_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     return parameters_container;
 }
 
@@ -208,7 +221,21 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
     pcl::io::savePLYFileBinary(filepath, dst);
 }
 
-void writeFacesToPLYFileASCII(const PointCloudColoredTN::Ptr &pcd, std::size_t match_offset,
+void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights,
+                          const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt) {
+    PointColoredNCloud dst;
+    dst.resize(pcd->size());
+    for (int i = 0; i < pcd->size(); ++i) {
+        pcl::copyPoint(pcd->points[i], dst.points[i]);
+        auto r = (std::uint8_t)((1.f - weights[i]) * 255.f);
+        setPointColor(dst.points[i], r, 0, r);
+    }
+    pcl::transformPointCloud(dst, dst, transformation_gt);
+    std::string filepath = constructPath(parameters, std::string("weights_") + parameters.weight_id);
+    pcl::io::savePLYFileBinary(filepath, dst);
+}
+
+void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t match_offset,
                               const pcl::Correspondences &correspondences,
                               const std::string &filepath) {
     std::string filepath_tmp = filepath + "tmp";
@@ -376,14 +403,14 @@ std::string constructPath(const std::string &test, const std::string &name,
 }
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
-                          const std::string &extension, bool with_version, bool with_metric) {
-    std::string filename = constructName(parameters, name, with_version, with_metric);
+                          const std::string &extension, bool with_version, bool with_metric, bool with_weights) {
+    std::string filename = constructName(parameters, name, with_version, with_metric, with_weights);
     filename += "." + extension;
     return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
 }
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
-                          bool with_version, bool with_metric) {
+                          bool with_version, bool with_metric, bool with_weights) {
     std::string full_name = parameters.testname + "_" + name +
                        "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
                        "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
@@ -391,7 +418,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                        "_" + std::to_string((int) parameters.feature_radius_coef) +
                        "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
                        "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
-                       (parameters.use_normals ? "_normals" : "");
+                       (with_weights ? "_" + parameters.weight_id : "") + (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         full_name += "_" + VERSION;
     }
