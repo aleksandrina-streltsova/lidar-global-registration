@@ -17,13 +17,18 @@ const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string VERSION = "06";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
-const std::string DEFAULT_METRIC = "correspondences";
+const std::string METRIC_CORRESPONDENCES = "correspondences";
+const std::string METRIC_CLOSEST_POINT = "closest_point";
+const std::string METRIC_WEIGHTED_CLOSEST_POINT = "weighted_closest_point";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 const std::string MATCHING_RATIO = "ratio";
 const std::string MATCHING_CLUSTER = "cluster";
 const std::string METRIC_WEIGHT_CONSTANT = "constant";
-const std::string METRIC_WEIGHT_EXPONENTIAL = "exponential";
-
+const std::string METRIC_WEIGHT_EXP_CURVATURE = "exp_curvature";
+const std::string METRIC_WEIGHT_CURVEDNESS = "curvedness";
+const std::string METRIC_WEIGHT_HARRIS = "harris";
+const std::string METRIC_WEIGHT_TOMASI = "tomasi";
+const std::string METRIC_WEIGHT_CURVATURE = "curvature";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -125,7 +130,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto metric_ids = config.getVector<std::string>("metric", DEFAULT_METRIC);
+    auto metric_ids = config.getVector<std::string>("metric", METRIC_CORRESPONDENCES);
     for (const auto &id: metric_ids) {
         for (auto ps: parameters_container) {
             ps.metric_id = id;
@@ -161,12 +166,12 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
 void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
                                      int k_matches, int match_idx, float distance) {
     int pos = 0;
-    while(corr.match_indices.begin() + pos != corr.match_indices.end() && corr.distances[pos] < distance) {
+    while (corr.match_indices.begin() + pos != corr.match_indices.end() && corr.distances[pos] < distance) {
         pos++;
     }
     corr.match_indices.insert(corr.match_indices.begin() + pos, match_idx);
     corr.distances.insert(corr.distances.begin() + pos, distance);
-    if(corr.match_indices.size() > k_matches) {
+    if (corr.match_indices.size() > k_matches) {
         corr.match_indices.erase(corr.match_indices.begin() + k_matches);
         corr.distances.erase(corr.distances.begin() + k_matches);
     }
@@ -221,17 +226,40 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
     pcl::io::savePLYFileBinary(filepath, dst);
 }
 
-void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights,
+int getColor(float v, float vmin, float vmax) {
+    float r = 1.0, g = 1.0, b = 1.0;
+    float dv = vmax - vmin;
+    v = std::max(vmin, std::min(v, vmax));
+
+    if (v < (vmin + 0.25 * dv)) {
+        r = 0.f;
+        g = 4.f * (v - vmin) / dv;
+    } else if (v < (vmin + 0.5 * dv)) {
+        r = 0.f;
+        b = 1.f + 4.f * (vmin + 0.25 * dv - v) / dv;
+    } else if (v < (vmin + 0.75 * dv)) {
+        r = 4.f * (v - vmin - 0.5 * dv) / dv;
+        b = 0.f;
+    } else {
+        g = 1.f + 4.f * (vmin + 0.75 * dv - v) / dv;
+        b = 0.f;
+    }
+    int r8 = (std::uint8_t) (255.f * r), g8 = (std::uint8_t) (255.f * g), b8 = (std::uint8_t) (255.f * b);
+    return (r8 << 16) + (g8 << 8) + b8;
+}
+
+void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt) {
     PointColoredNCloud dst;
     dst.resize(pcd->size());
+    float weights_min = quantile(0.01, weights);
+    float weights_max = quantile(0.99, weights);
     for (int i = 0; i < pcd->size(); ++i) {
         pcl::copyPoint(pcd->points[i], dst.points[i]);
-        auto r = (std::uint8_t)((1.f - weights[i]) * 255.f);
-        setPointColor(dst.points[i], r, 0, r);
+        setPointColor(dst.points[i], getColor(weights[i], weights_min, weights_max));
     }
     pcl::transformPointCloud(dst, dst, transformation_gt);
-    std::string filepath = constructPath(parameters, std::string("weights_") + parameters.weight_id);
+    std::string filepath = constructPath(parameters, name);
     pcl::io::savePLYFileBinary(filepath, dst);
 }
 
@@ -411,14 +439,17 @@ std::string constructPath(const AlignmentParameters &parameters, const std::stri
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
                           bool with_version, bool with_metric, bool with_weights) {
+    with_weights = parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT &&
+                   parameters.weight_id != METRIC_WEIGHT_CONSTANT && with_weights;
     std::string full_name = parameters.testname + "_" + name +
-                       "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
-                       "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
-                       "_" + std::to_string((int) parameters.normal_radius_coef) +
-                       "_" + std::to_string((int) parameters.feature_radius_coef) +
-                       "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
-                       "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
-                       (with_weights ? "_" + parameters.weight_id : "") + (parameters.use_normals ? "_normals" : "");
+                            "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
+                            "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
+                            "_" + std::to_string((int) parameters.normal_radius_coef) +
+                            "_" + std::to_string((int) parameters.feature_radius_coef) +
+                            "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
+                            "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
+                            (with_weights ? "_" + parameters.weight_id : "") +
+                            (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         full_name += "_" + VERSION;
     }

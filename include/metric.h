@@ -80,7 +80,7 @@ public:
 
 class ClosestPointMetricEstimator : public MetricEstimator {
 public:
-    explicit ClosestPointMetricEstimator(std::vector<float> weights) : weights_(std::move(weights)) {}
+    ClosestPointMetricEstimator() = default;
 
     inline float getInitialMetric() const override {
         return 0.0;
@@ -95,8 +95,6 @@ public:
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
 
-    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
-
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
     inline std::string getClassName() override {
@@ -105,10 +103,24 @@ public:
 
 protected:
     pcl::KdTreeFLANN<PointN> tree_tgt_;
-    std::vector<float> weights_;
-    bool weighted_ = false;
 };
 
-MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id, const std::vector<float> &weights);
+class WeightedClosestPointMetricEstimator : public ClosestPointMetricEstimator {
+public:
+    explicit WeightedClosestPointMetricEstimator(const std::string &weight_id, float curvature_radius)
+            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius) {}
+
+    void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
+
+    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+
+protected:
+    std::string weight_id_;
+    std::vector<float> weights_;
+    float curvature_radius_;
+    float weights_sum_ = 0.f;
+};
+
+MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters);
 
 #endif

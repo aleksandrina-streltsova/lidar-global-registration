@@ -1,9 +1,10 @@
-#include "metric.h"
-
 #include <unordered_set>
 
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
+
+#include "metric.h"
+#include "weights.h"
 
 void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
                                               std::vector<InlierPair> &correct_inlier_pairs,
@@ -86,15 +87,6 @@ void CorrespondencesMetricEstimator::estimateMetric(const std::vector<InlierPair
     metric = (float) inlier_pairs.size() / (float) correspondences_.size();
 }
 
-void ClosestPointMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
-    src_ = src;
-    if (weighted_ && src_->size() != weights_.size()) {
-        PCL_WARN("[%s] weights and source cloud have different sizes, constant weights will be used.\n",
-                 getClassName().c_str());
-        weighted_ = false;
-    }
-}
-
 void ClosestPointMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
     tgt_ = tgt;
     tree_tgt_.setInputCloud(tgt);
@@ -134,23 +126,37 @@ void ClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transf
 }
 
 void ClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const {
-    if (weighted_) {
-        float sum = 0.0;
-        for (auto &inlier_pair: inlier_pairs) {
-            sum += weights_[inlier_pair.idx_src];
-        }
-        metric = sum / (float) src_->size();
-    } else {
-        metric = (float) inlier_pairs.size() / (float) src_->size();
+    metric = (float) inlier_pairs.size() / (float) src_->size();
+}
+
+void WeightedClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs,
+                                                         float &metric) const {
+    float sum = 0.0;
+    for (auto &inlier_pair: inlier_pairs) {
+        sum += weights_[inlier_pair.idx_src];
+    }
+    metric = sum / weights_sum_;
+}
+
+void WeightedClosestPointMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
+    src_ = src;
+    auto weight_function = getWeightFunction(weight_id_);
+    weights_ = weight_function(curvature_radius_, src_);
+    weights_sum_ = 0.f;
+    for (float weight: weights_) {
+        weights_sum_ += weight;
     }
 }
 
-MetricEstimator::Ptr getMetricEstimator(const std::string &metric_id, const std::vector<float> &weights) {
-    if (metric_id == "closest_point") {
-        return std::make_shared<ClosestPointMetricEstimator>(weights);
-    } else if (metric_id != DEFAULT_METRIC) {
+MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters) {
+    if (parameters.metric_id == METRIC_CLOSEST_POINT) {
+        return std::make_shared<ClosestPointMetricEstimator>();
+    } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {
+        float curvature_radius = 2.f * parameters.normal_radius_coef * parameters.voxel_size;
+        return std::make_shared<WeightedClosestPointMetricEstimator>(parameters.weight_id, curvature_radius);
+    } else if (parameters.metric_id != METRIC_CORRESPONDENCES) {
         PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
-                 metric_id.c_str());
+                 parameters.metric_id.c_str());
     }
     return std::make_shared<CorrespondencesMetricEstimator>();
 }

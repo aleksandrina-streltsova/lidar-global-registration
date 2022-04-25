@@ -120,12 +120,18 @@ extern const std::string TRANSFORMATIONS_CSV;
 extern const std::string VERSION;
 extern const std::string DEFAULT_DESCRIPTOR;
 extern const std::string DEFAULT_LRF;
-extern const std::string DEFAULT_METRIC;
+extern const std::string METRIC_CORRESPONDENCES;
+extern const std::string METRIC_CLOSEST_POINT;
+extern const std::string METRIC_WEIGHTED_CLOSEST_POINT;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
 extern const std::string MATCHING_CLUSTER;
 extern const std::string METRIC_WEIGHT_CONSTANT;
-extern const std::string METRIC_WEIGHT_EXPONENTIAL;
+extern const std::string METRIC_WEIGHT_EXP_CURVATURE;
+extern const std::string METRIC_WEIGHT_CURVEDNESS;
+extern const std::string METRIC_WEIGHT_HARRIS;
+extern const std::string METRIC_WEIGHT_TOMASI;
+extern const std::string METRIC_WEIGHT_CURVATURE;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -180,7 +186,7 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source);
 
-void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights,
+void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,

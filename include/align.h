@@ -238,10 +238,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
     align.setTargetFeatures(features_tgt);
 
     align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters));
-
-    WeightFunction weight_function = getWeightFunction(parameters.weight_id);
-    auto weights = weight_function(normal_radius, src, normals_src);
-    align.setMetricEstimator(getMetricEstimator(parameters.metric_id, weights));
+    align.setMetricEstimator(getMetricEstimator(parameters));
 
     int n_samples = parameters.n_samples;
     int iteration_brute_force = calculate_combination_or_max<int>((int) std::min(src->size(), tgt->size()), n_samples);

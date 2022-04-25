@@ -129,15 +129,14 @@ void estimateTestMetric(const YamlConfig &config) {
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         estimateNormals(normal_radius, src, normals_src, false);
-        WeightFunction weight_function = getWeightFunction(parameters.weight_id);
-        auto weights = weight_function(normal_radius, src, normals_src);
+        pcl::concatenateFields(*src, *normals_src, *src);
         CorrespondencesMetricEstimator estimator_corr;
-        ClosestPointMetricEstimator estimator_icp(weights);
+        ClosestPointMetricEstimator estimator_icp;
         pcl::Correspondences correspondences;
         std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
         float error, metric_icp, metric_corr;
         bool success = false;
-        readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false),
+        readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false, false),
                                    correspondences, success);
         if (!success) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", parameters.testname.c_str());
@@ -154,7 +153,7 @@ void estimateTestMetric(const YamlConfig &config) {
         estimator_icp.setInlierThreshold(parameters.voxel_size * parameters.distance_thr_coef);
         estimator_icp.setCorrespondences(correspondences);
 
-        fout << constructName(parameters, "metric", true, false);
+        fout << constructName(parameters, "metric", true, false, false);
         std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt};
         for (auto &tn: transformations) {
             estimator_corr.buildInlierPairs(tn, inlier_pairs_corr, error);
@@ -193,15 +192,15 @@ void generateDebugFiles(const YamlConfig &config) {
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         estimateNormals(normal_radius, src, normals_src, false);
+        pcl::concatenateFields(*src, *normals_src, *src);
         bool success = false;
-        readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false), correspondences, success);
+        readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false, false),
+                                   correspondences, success);
         if (!success) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", parameters.testname.c_str());
             exit(1);
         }
-        WeightFunction weight_function = getWeightFunction(parameters.weight_id);
-        auto weights = weight_function(normal_radius, src, normals_src);
-        auto metric_estimator = getMetricEstimator(parameters.metric_id, weights);
+        auto metric_estimator = getMetricEstimator(parameters);
         metric_estimator->setSourceCloud(src);
         metric_estimator->setTargetCloud(tgt);
         metric_estimator->setInlierThreshold(parameters.voxel_size * parameters.distance_thr_coef);
@@ -213,13 +212,19 @@ void generateDebugFiles(const YamlConfig &config) {
         saveCorrespondenceDistances(src, tgt, correspondences, transformation_gt, parameters.voxel_size, parameters);
         saveColorizedPointCloud(src, correspondences, correct_correspondences, inlier_pairs, parameters, transformation_gt, true);
         saveColorizedPointCloud(tgt, correspondences, correct_correspondences, inlier_pairs, parameters, Eigen::Matrix4f::Identity(), false);
-        saveColorizedWeights(src, weights, parameters, transformation_gt);
         saveCorrespondencesDebug(correspondences, correct_correspondences, parameters);
+
+        if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {
+            WeightFunction weight_function = getWeightFunction(parameters.weight_id);
+            auto weights = weight_function(2.f * parameters.normal_radius_coef * parameters.voxel_size, src);
+            saveColorizedWeights(src, weights, "weights", parameters, transformation_gt);
+        }
 
         pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
         pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);
         pcl::io::savePLYFileBinary(constructPath(parameters, "aligned"), *src_fullsize_aligned);
-        pcl::io::savePLYFileBinary(constructPath(parameters.testname, "aligned_gt", "ply", false), *src_fullsize_aligned_gt);
+        pcl::io::savePLYFileBinary(constructPath(parameters.testname, "aligned_gt", "ply", false),
+                                   *src_fullsize_aligned_gt);
     }
 }
 

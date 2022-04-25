@@ -5,7 +5,7 @@
 
 #include "common.h"
 
-typedef std::vector<float> (*WeightFunction) (float radius_search, const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstPtr &normals);
+typedef std::vector<float> (*WeightFunction)(float curvature_radius, const PointNCloud::ConstPtr &pcd);
 
 WeightFunction getWeightFunction(const std::string &identifier);
 

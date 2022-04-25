@@ -1,6 +1,7 @@
 #ifndef REGISTRATION_UTILS_H
 #define REGISTRATION_UTILS_H
 
+#include <iostream>
 #include <random>
 #include <functional>
 
@@ -47,11 +48,13 @@ T quantile(double q, const std::vector<T> &values) {
 
     std::vector<T> v = values;
     std::nth_element(v.begin(), v.begin() + i, v.end());
+    T ith = v[i];
     if (i < j) {
         std::nth_element(v.begin(), v.begin() + j, v.end());
-        return values[i] * ((double)n * q - (double)i) + values[j] * ((double)j - (double)n * q);
+        T jth = v[j];
+        return ith * ((double)n * q - (double)i) + jth * ((double)j - (double)n * q);
     }
-    return values[i];
+    return ith;
 }
 
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
