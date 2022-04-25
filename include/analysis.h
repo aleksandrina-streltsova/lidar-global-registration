@@ -31,17 +31,10 @@ class AlignmentAnalysis {
 public:
     AlignmentAnalysis() {}
 
-    AlignmentAnalysis(AlignmentParameters parameters, MetricEstimator::ConstPtr metric_estimator,
-                      PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt, std::vector<InlierPair> inlier_pairs,
-                      pcl::Correspondences correspondences, float rmse,
-                      int iterations, Eigen::Matrix4f transformation) : parameters_(std::move(parameters)),
-                                                                        metric_estimator_(std::move(metric_estimator)),
-                                                                        src_(std::move(src)), tgt_(std::move(tgt)),
-                                                                        inlier_pairs_(std::move(inlier_pairs)),
-                                                                        correspondences_(std::move(correspondences)),
-                                                                        rmse_(rmse), iterations_(iterations),
-                                                                        transformation_(std::move(transformation)),
-                                                                        has_converged_(true) {}
+    AlignmentAnalysis(const AlignmentParameters &parameters,
+                      const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                      const pcl::Correspondences &correspondences,
+                      int iterations, const Eigen::Matrix4f &transformation);
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
@@ -57,7 +50,7 @@ public:
 
 private:
     AlignmentParameters parameters_;
-    MetricEstimator::ConstPtr metric_estimator_;
+    MetricEstimator::Ptr metric_estimator_;
     int iterations_;
     PointNCloud::ConstPtr src_, tgt_;
     Eigen::Matrix4f transformation_, transformation_gt_;

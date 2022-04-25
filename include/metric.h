@@ -12,6 +12,8 @@
 
 #include "common.h"
 
+#define SPARSE_POINTS_FRACTION 0.05f
+
 class MetricEstimator {
 public:
     using Ptr = std::shared_ptr<MetricEstimator>;
@@ -22,7 +24,7 @@ public:
     virtual bool isBetter(float new_value, float old_value) const = 0;
 
     virtual void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                                  float &rmse) const = 0;
+                                  float &rmse) = 0;
 
     virtual void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const = 0;
 
@@ -69,7 +71,7 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) const override;
+                          float &rmse) override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
 
@@ -80,7 +82,7 @@ public:
 
 class ClosestPointMetricEstimator : public MetricEstimator {
 public:
-    ClosestPointMetricEstimator() = default;
+    explicit ClosestPointMetricEstimator(bool sparse = false) : sparse_(sparse) {};
 
     inline float getInitialMetric() const override {
         return 0.0;
@@ -91,7 +93,7 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) const override;
+                          float &rmse) override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
 
@@ -103,24 +105,49 @@ public:
 
 protected:
     pcl::KdTreeFLANN<PointN> tree_tgt_;
+    UniformRandIntGenerator rand_{0, std::numeric_limits<int>::max(), SEED};
+    bool sparse_;
 };
 
-class WeightedClosestPointMetricEstimator : public ClosestPointMetricEstimator {
+class WeightedClosestPointMetricEstimator : public MetricEstimator {
 public:
-    explicit WeightedClosestPointMetricEstimator(const std::string &weight_id, float curvature_radius)
-            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius) {}
+    WeightedClosestPointMetricEstimator() = delete;
+
+    WeightedClosestPointMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false)
+            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius), sparse_(sparse) {}
+
+
+    inline float getInitialMetric() const override {
+        return 0.0;
+    }
+
+    inline bool isBetter(float new_value, float old_value) const override {
+        return new_value > old_value;
+    }
+
+    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
+                          float &rmse) override;
 
     void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+
+    inline std::string getClassName() override {
+        return "WeightedClosestPointMetricEstimator";
+    }
+
 protected:
+    pcl::KdTreeFLANN<PointN> tree_tgt_;
     std::string weight_id_;
     std::vector<float> weights_;
     float curvature_radius_;
     float weights_sum_ = 0.f;
+    UniformRandIntGenerator rand_{0, std::numeric_limits<int>::max(), SEED};
+    bool sparse_;
 };
 
-MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters);
+MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, bool sparse = false);
 
 #endif

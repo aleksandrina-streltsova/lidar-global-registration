@@ -65,9 +65,8 @@ AlignmentAnalysis SampleConsensusPrerejectiveOMP<FeatureT>::getAlignmentAnalysis
         const AlignmentParameters &parameters
 ) const {
     if (this->hasConverged()) {
-        return AlignmentAnalysis(parameters, this->metric_estimator_, this->input_, this->target_,
-                                 this->inlier_pairs_, *(this->correspondences_),
-                                 this->getRMSEScore(), this->ransac_iterations_, this->final_transformation_);
+        return AlignmentAnalysis(parameters, this->input_, this->target_, *(this->correspondences_),
+                                 this->ransac_iterations_, this->final_transformation_);
     } else {
         pcl::console::print_error("Alignment failed!\n");
         return {};

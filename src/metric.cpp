@@ -6,6 +6,43 @@
 #include "metric.h"
 #include "weights.h"
 
+void buildClosestPointInliers(const PointNCloud &src,
+                              const pcl::KdTreeFLANN<PointN> &tree_tgt,
+                              const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
+                              float inlier_threshold, float &rmse, bool sparse, UniformRandIntGenerator &rand) {
+    inlier_pairs.clear();
+    inlier_pairs.reserve(src.size());
+    rmse = 0.0f;
+
+    PointNCloud src_transformed;
+    src_transformed.resize(src.size());
+    pcl::transformPointCloud(src, src_transformed, transformation);
+
+    int n = (int) ((sparse ? SPARSE_POINTS_FRACTION : 1.f) * (float) src.size());
+    // For point in the source dataset
+    for (int i = 0; i < n; ++i) {
+        int idx = sparse ? rand() % (int) src.size() : i;
+
+        // Find its nearest neighbor in the target
+        pcl::Indices nn_indices(1);
+        std::vector<float> nn_dists(1);
+        tree_tgt.nearestKSearch(src_transformed[idx], 1, nn_indices, nn_dists);
+
+        // Check if point is an inlier
+        if (nn_dists[0] < inlier_threshold * inlier_threshold) {
+            // Update inliers and rmse
+            inlier_pairs.push_back({(int) idx, nn_indices[0]});
+            rmse += nn_dists[0];
+        }
+    }
+
+    // Calculate RMSE
+    if (!inlier_pairs.empty())
+        rmse = std::sqrt(rmse / static_cast<float>(inlier_pairs.size()));
+    else
+        rmse = std::numeric_limits<float>::max();
+}
+
 void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
                                               std::vector<InlierPair> &correct_inlier_pairs,
                                               const Eigen::Matrix4f &transformation_gt) const {
@@ -49,7 +86,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
 
 void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
                                                       std::vector<InlierPair> &inlier_pairs,
-                                                      float &rmse) const {
+                                                      float &rmse) {
     inlier_pairs.clear();
     inlier_pairs.reserve(correspondences_.size());
     rmse = 0.0f;
@@ -94,39 +131,18 @@ void ClosestPointMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tg
 
 void ClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
                                                    std::vector<InlierPair> &inlier_pairs,
-                                                   float &rmse) const {
-    inlier_pairs.clear();
-    inlier_pairs.reserve(src_->size());
-    rmse = 0.0f;
-
-    PointNCloud src_transformed;
-    src_transformed.resize(src_->size());
-    pcl::transformPointCloud(*src_, src_transformed, transformation);
-
-    // For each point in the source dataset
-    for (std::size_t i = 0; i < src_transformed.size(); ++i) {
-        // Find its nearest neighbor in the target
-        pcl::Indices nn_indices(1);
-        std::vector<float> nn_dists(1);
-        tree_tgt_.nearestKSearch(src_transformed[i], 1, nn_indices, nn_dists);
-
-        // Check if point is an inlier
-        if (nn_dists[0] < inlier_threshold_ * inlier_threshold_) {
-            // Update inliers and rmse
-            inlier_pairs.push_back({(int) i, nn_indices[0]});
-            rmse += nn_dists[0];
-        }
-    }
-
-    // Calculate RMSE
-    if (!inlier_pairs.empty())
-        rmse = std::sqrt(rmse / static_cast<float>(inlier_pairs.size()));
-    else
-        rmse = std::numeric_limits<float>::max();
+                                                   float &rmse) {
+    buildClosestPointInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
 }
 
 void ClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const {
-    metric = (float) inlier_pairs.size() / (float) src_->size();
+    metric = (float) inlier_pairs.size() / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
+}
+
+void WeightedClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
+                                                           std::vector<InlierPair> &inlier_pairs,
+                                                           float &rmse) {
+    buildClosestPointInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
 }
 
 void WeightedClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs,
@@ -135,7 +151,7 @@ void WeightedClosestPointMetricEstimator::estimateMetric(const std::vector<Inlie
     for (auto &inlier_pair: inlier_pairs) {
         sum += weights_[inlier_pair.idx_src];
     }
-    metric = sum / weights_sum_;
+    metric = sum / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * weights_sum_);
 }
 
 void WeightedClosestPointMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
@@ -148,12 +164,19 @@ void WeightedClosestPointMetricEstimator::setSourceCloud(const PointNCloud::Cons
     }
 }
 
-MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters) {
+void WeightedClosestPointMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
+    tgt_ = tgt;
+    tree_tgt_.setInputCloud(tgt);
+}
+
+// if sparse is true then only fixed percentage of points from source point cloud will be used
+// to estimate metrics based on closest point
+MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, bool sparse) {
     if (parameters.metric_id == METRIC_CLOSEST_POINT) {
-        return std::make_shared<ClosestPointMetricEstimator>();
+        return std::make_shared<ClosestPointMetricEstimator>(sparse);
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {
         float curvature_radius = 2.f * parameters.normal_radius_coef * parameters.voxel_size;
-        return std::make_shared<WeightedClosestPointMetricEstimator>(parameters.weight_id, curvature_radius);
+        return std::make_shared<WeightedClosestPointMetricEstimator>(parameters.weight_id, curvature_radius, sparse);
     } else if (parameters.metric_id != METRIC_CORRESPONDENCES) {
         PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
                  parameters.metric_id.c_str());

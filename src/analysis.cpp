@@ -142,6 +142,25 @@ void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNC
     }
 }
 
+AlignmentAnalysis::AlignmentAnalysis(const AlignmentParameters &parameters,
+                                     const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                     const pcl::Correspondences &correspondences,
+                                     int iterations, const Eigen::Matrix4f &transformation) {
+    parameters_ = parameters;
+    src_ = src;
+    tgt_ = tgt;
+    correspondences_ = correspondences;
+    iterations_ = iterations;
+    transformation_ = transformation;
+    has_converged_ = true;
+    metric_estimator_ = getMetricEstimator(parameters);
+    metric_estimator_->setSourceCloud(src);
+    metric_estimator_->setTargetCloud(tgt);
+    metric_estimator_->setCorrespondences(correspondences);
+    metric_estimator_->setInlierThreshold(parameters.distance_thr_coef * parameters.voxel_size);
+    metric_estimator_->buildInlierPairs(transformation_, inlier_pairs_, rmse_);
+}
+
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
     testname_ = testname;
     float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
