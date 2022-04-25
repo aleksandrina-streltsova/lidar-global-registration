@@ -15,6 +15,7 @@
 #include "config.h"
 #include "utils.h"
 
+#define SEED 566
 #define COLOR_BEIGE 0xf8c471
 #define COLOR_BROWN 0xd68910
 #define COLOR_PURPLE 0xaf7ac5
