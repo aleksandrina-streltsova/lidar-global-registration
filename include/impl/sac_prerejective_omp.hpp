@@ -279,6 +279,8 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     reduction(+:num_rejections, ransac_iterations)
 #endif
         {
+            int omp_num_threads = omp_get_num_threads();
+
             // Local best results
             std::vector<InlierPair> best_inlier_pairs;
             float min_error_local = std::numeric_limits<float>::max();
@@ -290,11 +292,11 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
             std::vector<InlierPair> inlier_pairs;
             float metric, error;
 
-            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, SEED);
+            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, SEED + omp_get_thread_num());
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
-                if (i >= iters_local) {
+                if (ransac_iterations / omp_num_threads >= iters_local) {
                     continue;
                 }
                 ++ransac_iterations;
