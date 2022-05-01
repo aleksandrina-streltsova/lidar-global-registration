@@ -156,6 +156,42 @@ protected:
     bool sparse_;
 };
 
+class CombinationMetricEstimator : public MetricEstimator {
+public:
+    explicit CombinationMetricEstimator(bool sparse = false) : closest_point_estimator(sparse) {}
+
+    float getInitialMetric() const override {
+        return 0.0;
+    }
+
+    inline bool isBetter(float new_value, float old_value) const override {
+        return new_value > old_value;
+    }
+
+    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
+                          float &rmse) override;
+
+    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                           std::vector<InlierPair> &inlier_pairs,
+                                           float &rmse, float &metric) override;
+
+    void setCorrespondences(const pcl::Correspondences &correspondences) override;
+
+    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+
+    void setInlierThreshold(float inlier_threshold) override;
+
+    inline std::string getClassName() override {
+        return "CombinationMetricEstimator";
+    }
+
+protected:
+    CorrespondencesMetricEstimator correspondences_estimator;
+    ClosestPointMetricEstimator closest_point_estimator;
+};
+
 MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, bool sparse = false);
 
 #endif

@@ -124,6 +124,7 @@ extern const std::string DEFAULT_LRF;
 extern const std::string METRIC_CORRESPONDENCES;
 extern const std::string METRIC_CLOSEST_POINT;
 extern const std::string METRIC_WEIGHTED_CLOSEST_POINT;
+extern const std::string METRIC_COMBINATION;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
 extern const std::string MATCHING_CLUSTER;

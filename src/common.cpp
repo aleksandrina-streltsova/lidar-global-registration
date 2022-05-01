@@ -20,6 +20,7 @@ const std::string DEFAULT_LRF = "default";
 const std::string METRIC_CORRESPONDENCES = "correspondences";
 const std::string METRIC_CLOSEST_POINT = "closest_point";
 const std::string METRIC_WEIGHTED_CLOSEST_POINT = "weighted_closest_point";
+const std::string METRIC_COMBINATION = "combination";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 const std::string MATCHING_RATIO = "ratio";
 const std::string MATCHING_CLUSTER = "cluster";

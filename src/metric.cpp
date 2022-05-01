@@ -177,6 +177,46 @@ void WeightedClosestPointMetricEstimator::setTargetCloud(const PointNCloud::Cons
     tree_tgt_.setInputCloud(tgt);
 }
 
+void CombinationMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
+                                                  std::vector<InlierPair> &inlier_pairs, float &rmse) {
+    correspondences_estimator.buildInlierPairs(transformation, inlier_pairs, rmse);
+}
+
+void CombinationMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                   std::vector<InlierPair> &inlier_pairs,
+                                                                   float &rmse, float &metric) {
+    float metric_cs, metric_cp;
+    float rmse_cp;
+    std::vector<InlierPair> inlier_pairs_cp;
+    correspondences_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, rmse, metric_cs);
+    closest_point_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp);
+    metric = metric_cs * metric_cp;
+}
+
+void CombinationMetricEstimator::setCorrespondences(const pcl::Correspondences &correspondences) {
+    correspondences_ = correspondences;
+    correspondences_estimator.setCorrespondences(correspondences);
+    closest_point_estimator.setCorrespondences(correspondences);
+}
+
+void CombinationMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
+    src_ = src;
+    correspondences_estimator.setSourceCloud(src);
+    closest_point_estimator.setSourceCloud(src);
+}
+
+void CombinationMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
+    tgt_ = tgt;
+    correspondences_estimator.setTargetCloud(tgt);
+    closest_point_estimator.setTargetCloud(tgt);
+}
+
+void CombinationMetricEstimator::setInlierThreshold(float inlier_threshold) {
+    inlier_threshold_ = inlier_threshold;
+    correspondences_estimator.setInlierThreshold(inlier_threshold);
+    closest_point_estimator.setInlierThreshold(inlier_threshold);
+}
+
 // if sparse is true then only fixed percentage of points from source point cloud will be used
 // to estimate metrics based on closest point
 MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, bool sparse) {
@@ -185,6 +225,8 @@ MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, b
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {
         float curvature_radius = 2.f * parameters.normal_radius_coef * parameters.voxel_size;
         return std::make_shared<WeightedClosestPointMetricEstimator>(parameters.weight_id, curvature_radius, sparse);
+    } else if (parameters.metric_id == METRIC_COMBINATION) {
+        return std::make_shared<CombinationMetricEstimator>(sparse);
     } else if (parameters.metric_id != METRIC_CORRESPONDENCES) {
         PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
                  parameters.metric_id.c_str());
