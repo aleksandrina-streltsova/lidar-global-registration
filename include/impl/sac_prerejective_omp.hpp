@@ -51,7 +51,7 @@ const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false, false);
-    readCorrespondencesFromCSV(filepath, *(this->correspondences_), correspondence_ids_from_file);
+    readCorrespondencesFromCSV(filepath, *(this->correspondences_), correspondence_ids_from_file_);
 }
 
 template<typename FeatureT>
@@ -232,7 +232,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     float best_metric = metric_estimator_->getInitialMetric();
     this->converged_ = false;
 
-    if (correspondence_ids_from_file) {
+    if (correspondence_ids_from_file_) {
         PCL_DEBUG("[%s::computeTransformation] read correspondences from file\n", this->getClassName().c_str());
     } else {
         pcl::ScopeTime t("Correspondence search");

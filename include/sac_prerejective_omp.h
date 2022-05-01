@@ -67,6 +67,10 @@ public:
         return inlier_pairs_;
     }
 
+    inline bool correspondencesFromFile() const {
+        return correspondence_ids_from_file_;
+    }
+
     const pcl::Indices &getInliers() const;
 
     void readCorrespondences(const AlignmentParameters &parameters);
@@ -91,7 +95,7 @@ protected:
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
     std::vector<InlierPair> inlier_pairs_;
-    bool correspondence_ids_from_file = false;
+    bool correspondence_ids_from_file_ = false;
     bool use_bfmatcher_ = false;
     int bf_block_size_ = 10000;
     float rmse_ = std::numeric_limits<float>::max();

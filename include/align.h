@@ -201,18 +201,25 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }
 
-    // Estimate reference frames
-    estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
-    estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
+    align.readCorrespondences(parameters);
+    if (!align.correspondencesFromFile()) {
+        // Estimate reference frames
+        pcl::console::print_highlight("Estimating local reference frames...\n");
+        estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
+        estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
 
-    // Estimate features
-    pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
+        // Estimate features
+        pcl::console::print_highlight("Estimating features...\n");
+        estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
+        estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
 
-    if (parameters.save_features) {
-        saveFeatures<FeatureT>(features_src, parameters, true);
-        saveFeatures<FeatureT>(features_tgt, parameters, false);
+        if (parameters.save_features) {
+            saveFeatures<FeatureT>(features_src, parameters, true);
+            saveFeatures<FeatureT>(features_tgt, parameters, false);
+        }
+    } else {
+        features_src->resize(src->size());
+        features_tgt->resize(tgt->size());
     }
     // Filter point clouds
     // TODO: fix filtering (separate debug from actual filtering)
@@ -251,7 +258,6 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
     align.setInlierFraction(parameters.inlier_fraction); // Required inlier fraction for accepting a pose hypothesis
     std::cout << "    iteration: " << align.getMaximumIterations() << std::endl;
     std::cout << "    voxel size: " << voxel_size << std::endl;
-    align.readCorrespondences(parameters);
     {
         pcl::ScopeTime t("Alignment");
         align.align(*src_aligned);
