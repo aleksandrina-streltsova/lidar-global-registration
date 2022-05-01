@@ -120,7 +120,10 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
         rmse = std::numeric_limits<float>::max();
 }
 
-void CorrespondencesMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const {
+void CorrespondencesMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                       std::vector<InlierPair> &inlier_pairs,
+                                                                       float &rmse, float &metric) {
+    buildInlierPairs(transformation, inlier_pairs, rmse);
     metric = (float) inlier_pairs.size() / (float) correspondences_.size();
 }
 
@@ -135,7 +138,10 @@ void ClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transf
     buildClosestPointInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
 }
 
-void ClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const {
+void ClosestPointMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                    std::vector<InlierPair> &inlier_pairs,
+                                                                    float &rmse, float &metric) {
+    buildInlierPairs(transformation, inlier_pairs, rmse);
     metric = (float) inlier_pairs.size() / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
 }
 
@@ -145,8 +151,10 @@ void WeightedClosestPointMetricEstimator::buildInlierPairs(const Eigen::Matrix4f
     buildClosestPointInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
 }
 
-void WeightedClosestPointMetricEstimator::estimateMetric(const std::vector<InlierPair> &inlier_pairs,
-                                                         float &metric) const {
+void WeightedClosestPointMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                            std::vector<InlierPair> &inlier_pairs,
+                                                                            float &rmse, float &metric) {
+    buildInlierPairs(transformation, inlier_pairs, rmse);
     float sum = 0.0;
     for (auto &inlier_pair: inlier_pairs) {
         sum += weights_[inlier_pair.idx_src];

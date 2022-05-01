@@ -26,7 +26,9 @@ public:
     virtual void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
                                   float &rmse) = 0;
 
-    virtual void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const = 0;
+    virtual void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                   std::vector<InlierPair> &inlier_pairs,
+                                                   float &rmse, float &metric) = 0;
 
     virtual int estimateMaxIterations(const Eigen::Matrix4f &transformation, float confidence, int nr_samples) const;
 
@@ -73,7 +75,9 @@ public:
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
                           float &rmse) override;
 
-    void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
+    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                           std::vector<InlierPair> &inlier_pairs,
+                                           float &rmse, float &metric) override;
 
     inline std::string getClassName() override {
         return "CorrespondencesMetricEstimator";
@@ -95,7 +99,9 @@ public:
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
                           float &rmse) override;
 
-    void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
+    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                           std::vector<InlierPair> &inlier_pairs,
+                                           float &rmse, float &metric) override;
 
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
@@ -128,7 +134,9 @@ public:
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
                           float &rmse) override;
 
-    void estimateMetric(const std::vector<InlierPair> &inlier_pairs, float &metric) const override;
+    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                           std::vector<InlierPair> &inlier_pairs,
+                                           float &rmse, float &metric) override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 

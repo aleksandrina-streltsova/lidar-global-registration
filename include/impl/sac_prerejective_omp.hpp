@@ -256,9 +256,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
 
         // If guess is not the Identity matrix we check it
         if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
-            metric_estimator_->buildInlierPairs(guess, inlier_pairs, error);
-            metric_estimator_->estimateMetric(inlier_pairs, metric);
-
+            metric_estimator_->buildInlierPairsAndEstimateMetric(guess, inlier_pairs, error, metric);
             if (metric_estimator_->isBetter(metric, best_metric)) {
                 this->inlier_pairs_ = inlier_pairs;
                 rmse_ = error;
@@ -325,9 +323,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
                                                                               *(this->target_),
                                                                               target_indices, transformation);
                 // If the new fit is better, update results
-                metric_estimator_->buildInlierPairs(transformation, inlier_pairs, error);
-                metric_estimator_->estimateMetric(inlier_pairs, metric);
-
+                metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
                 if (metric_estimator_->isBetter(metric, best_metric_local)) {
                     min_error_local = error;
                     best_metric_local = metric;

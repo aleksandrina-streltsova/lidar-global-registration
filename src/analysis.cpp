@@ -158,7 +158,6 @@ AlignmentAnalysis::AlignmentAnalysis(const AlignmentParameters &parameters,
     metric_estimator_->setTargetCloud(tgt);
     metric_estimator_->setCorrespondences(correspondences);
     metric_estimator_->setInlierThreshold(parameters.distance_thr_coef * parameters.voxel_size);
-    metric_estimator_->buildInlierPairs(transformation_, inlier_pairs_, rmse_);
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
@@ -167,8 +166,8 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     transformation_gt_ = transformation_gt;
 
     buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_, error_thr);
+    metric_estimator_->buildInlierPairsAndEstimateMetric(transformation_, inlier_pairs_, rmse_, fitness_);
     metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
-    metric_estimator_->estimateMetric(inlier_pairs_, fitness_);
     pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
     normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
     corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,

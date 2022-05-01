@@ -156,10 +156,8 @@ void estimateTestMetric(const YamlConfig &config) {
         fout << constructName(parameters, "metric", true, false, false);
         std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt};
         for (auto &tn: transformations) {
-            estimator_corr.buildInlierPairs(tn, inlier_pairs_corr, error);
-            estimator_corr.estimateMetric(inlier_pairs_corr, metric_corr);
-            estimator_icp.buildInlierPairs(tn, inlier_pairs_icp, error);
-            estimator_icp.estimateMetric(inlier_pairs_icp, metric_icp);
+            estimator_corr.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_corr, error, metric_corr);
+            estimator_icp.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_icp, error, metric_icp);
             fout << "," << metric_corr << "," << metric_icp;
             fout << "," << inlier_pairs_corr.size() << "," << inlier_pairs_icp.size();
         }
