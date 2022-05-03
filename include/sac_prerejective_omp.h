@@ -30,11 +30,14 @@ template<typename FeatureT>
 class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<PointN, PointN, FeatureT> {
 public:
     using Matrix4 = typename pcl::Registration<PointN, PointN>::Matrix4;
+    using FeatureCloud = pcl::PointCloud<FeatureT>;
 
     SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation<FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
         setNumberOfThreads(0);
     }
+
+    void setTargetFeatures(const typename FeatureCloud::ConstPtr &features);
 
     void setConfidence(float confidence);
 

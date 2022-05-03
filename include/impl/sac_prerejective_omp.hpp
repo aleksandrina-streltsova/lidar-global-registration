@@ -38,7 +38,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::buildIndices(const pcl::Indices &
 template<typename FeatureT>
 const pcl::Indices &SampleConsensusPrerejectiveOMP<FeatureT>::getInliers() const {
     if (this->inliers_.empty()) {
-        const auto& inlier_pairs = getInlierPairs();
+        const auto &inlier_pairs = getInlierPairs();
         this->inliers_.clear();
         this->inliers.reserve(inlier_pairs.size());
         for (const auto &ip: inlier_pairs) {
@@ -148,6 +148,16 @@ unsigned int SampleConsensusPrerejectiveOMP<FeatureT>::getNumberOfThreads() {
 }
 
 template<typename FeatureT>
+void SampleConsensusPrerejectiveOMP<FeatureT>::setTargetFeatures(const typename FeatureCloud::ConstPtr &features) {
+    if (features == nullptr || features->empty()) {
+        PCL_ERROR("[pcl::%s::setTargetFeatures] Invalid or empty point cloud dataset given!\n",
+                  this->getClassName().c_str());
+        return;
+    }
+    this->target_features_ = features;
+}
+
+template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud &output,
                                                                      const Eigen::Matrix4f &guess) {
     // Some sanity checks first
@@ -248,7 +258,8 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     metric_estimator_->setInlierThreshold(this->corr_dist_threshold_);
 
     this->max_iterations_ = std::min(
-            calculate_combination_or_max<int>(this->correspondences_->size(), this->nr_samples_), this->max_iterations_);
+            calculate_combination_or_max<int>(this->correspondences_->size(), this->nr_samples_),
+            this->max_iterations_);
     int estimated_iters = this->max_iterations_; // For debugging
     {
         std::vector<InlierPair> inlier_pairs;
@@ -292,7 +303,8 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
             std::vector<InlierPair> inlier_pairs;
             float metric, error;
 
-            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, SEED + omp_get_thread_num());
+            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1,
+                                                   SEED + omp_get_thread_num());
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {

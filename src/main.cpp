@@ -169,7 +169,7 @@ void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud);
+    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     pcl::Correspondences correspondences, correct_correspondences;
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
@@ -190,7 +190,9 @@ void generateDebugFiles(const YamlConfig &config) {
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         estimateNormals(normal_radius, src, normals_src, false);
+        estimateNormals(normal_radius, tgt, normals_tgt, false);
         pcl::concatenateFields(*src, *normals_src, *src);
+        pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
         bool success = false;
         readCorrespondencesFromCSV(constructPath(parameters, "correspondences", "csv", true, false, false),
                                    correspondences, success);
