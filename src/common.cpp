@@ -46,7 +46,8 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
-                                                         const std::vector<::pcl::PCLPointField> &fields_tgt) {
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt,
+                                                         float min_voxel_size) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
     parameters.downsample = config.get<bool>("downsample", true);
@@ -161,6 +162,14 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    for (auto &parameters: parameters_container) {
+        if (parameters.voxel_size < min_voxel_size) {
+            PCL_WARN("[getParametersFromConfig] "
+                     "voxel size %.5f is greater than estimated point cloud density, setting voxel size to %.5f\n",
+                     parameters.voxel_size, min_voxel_size);
+            parameters.voxel_size = min_voxel_size;
+        }
+    }
     return parameters_container;
 }
 

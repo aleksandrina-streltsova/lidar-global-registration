@@ -168,10 +168,6 @@ SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
         pcl::console::print_highlight("Downsampling...\n");
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
-    } else {
-        pcl::console::print_highlight("Filtering duplicate points...\n");
-        pcl::copyPointCloud(*src_fullsize, *src);
-        pcl::copyPointCloud(*tgt_fullsize, *tgt);
     }
 
     PointNCloud::Ptr src_aligned(new PointNCloud);

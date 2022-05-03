@@ -17,7 +17,8 @@ const std::string DEBUG = "debug";
 
 void loadPointClouds(const YamlConfig &config, std::string &testname,
                      PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt) {
+                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
+                     float &min_voxel_size) {
     pcl::console::print_highlight("Loading point clouds...\n");
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
@@ -29,6 +30,11 @@ void loadPointClouds(const YamlConfig &config, std::string &testname,
     }
     filter_duplicate_points(src);
     filter_duplicate_points(tgt);
+
+    float src_density = calculatePointCloudDensity<PointN>(src);
+    float tgt_density = calculatePointCloudDensity<PointN>(tgt);
+    PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
+    min_voxel_size = std::max(src_density, tgt_density);
 
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
@@ -51,17 +57,12 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation_gt;
     std::string testname;
+    float min_voxel_size;
 
-    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt, min_voxel_size);
     loadTransformationGt(config, transformation_gt);
-    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
-
-    float src_density = calculatePointCloudDensity<PointN>(src);
-    float tgt_density = calculatePointCloudDensity<PointN>(tgt);
-    PCL_DEBUG("[runTest] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
-
     std::vector<AlignmentAnalysis> analyses;
-    for (auto &parameters: parameters_container) {
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
         parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt);
         if (parameters.save_features) {
@@ -116,12 +117,12 @@ void estimateTestMetric(const YamlConfig &config) {
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation_gt;
     std::string testname;
+    float min_voxel_size;
 
-    loadPointClouds(config, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt);
+    loadPointClouds(config, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt, min_voxel_size);
     loadTransformationGt(config, transformation_gt);
-    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
 
-    for (auto &parameters: parameters_container) {
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
         float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
         auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
@@ -175,13 +176,12 @@ void generateDebugFiles(const YamlConfig &config) {
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation, transformation_gt;
     std::string testname;
-    float error;
+    float min_voxel_size, error;
 
-    loadPointClouds(config, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt);
+    loadPointClouds(config, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt, min_voxel_size);
     loadTransformationGt(config, transformation_gt);
 
-    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
-    for (auto &parameters: parameters_container) {
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                            constructName(parameters, "transformation"));

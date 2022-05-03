@@ -67,7 +67,8 @@ struct AlignmentParameters {
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
-                                                         const std::vector<::pcl::PCLPointField> &fields_tgt);
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt,
+                                                         float min_voxel_size);
 
 struct MultivaluedCorrespondence {
     int query_idx = -1;
