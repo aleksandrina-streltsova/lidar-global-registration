@@ -62,11 +62,11 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const Alignme
 
 template<typename FeatureT>
 AlignmentAnalysis SampleConsensusPrerejectiveOMP<FeatureT>::getAlignmentAnalysis(
-        const AlignmentParameters &parameters
+        const AlignmentParameters &parameters, double time
 ) const {
     if (this->hasConverged()) {
         return AlignmentAnalysis(parameters, this->input_, this->target_, *(this->correspondences_),
-                                 this->ransac_iterations_, this->final_transformation_);
+                                 this->ransac_iterations_, this->final_transformation_, time);
     } else {
         pcl::console::print_error("Alignment failed!\n");
         return {};
@@ -308,7 +308,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
-                if (ransac_iterations / omp_num_threads >= iters_local) {
+                if (ransac_iterations * omp_num_threads >= iters_local) {
                     continue;
                 }
                 ++ransac_iterations;

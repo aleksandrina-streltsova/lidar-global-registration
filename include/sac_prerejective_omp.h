@@ -37,10 +37,9 @@ public:
         setNumberOfThreads(0);
     }
 
-    void setGuessWithMatchSearchRadius(const Eigen::Matrix4f &guess, float match_search_radius) {
+    void setTransformationGuess(const Eigen::Matrix4f &guess) {
         guess_available_ = true;
         guess_ = guess;
-        match_search_radius_ = match_search_radius;
     }
 
     void setTargetFeatures(const typename FeatureCloud::ConstPtr &features);
@@ -55,13 +54,12 @@ public:
         feature_matcher_ = feature_matcher;
     }
 
-    // TODO: fix
-    inline void useBFMatcher() {
-        use_bfmatcher_ = true;
+    inline MetricEstimator::ConstPtr getMetricEstimator() const {
+        return metric_estimator_;
     }
 
-    inline void setBFBlockSize(int bf_block_size) {
-        bf_block_size_ = bf_block_size;
+    inline typename FeatureMatcher<FeatureT>::ConstPtr getFeatureMatcher() const {
+        return feature_matcher_;
     }
 
     inline float getRMSEScore() const {
@@ -87,7 +85,7 @@ public:
     void saveCorrespondences(const AlignmentParameters &parameters);
 
 
-    AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters) const;
+    AlignmentAnalysis getAlignmentAnalysis(const AlignmentParameters &parameters, double time) const;
 
 protected:
     void computeTransformation(PointNCloud &output, const Eigen::Matrix4f &guess) override;
@@ -105,12 +103,9 @@ protected:
 
     std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file_ = false;
-    bool use_bfmatcher_ = false;
     bool guess_available_ = false;
-    int bf_block_size_ = 10000;
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
-    float match_search_radius_;
     unsigned int threads_{};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     MetricEstimator::Ptr metric_estimator_{nullptr};

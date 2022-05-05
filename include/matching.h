@@ -29,6 +29,10 @@ public:
                                        const typename pcl::PointRepresentation<FeatureT>::Ptr &point_representation,
                                        int threads) = 0;
 
+    inline float getAverageDistance() const {
+        return average_distance_;
+    }
+
     virtual std::string getClassName() = 0;
 
 protected:
@@ -44,12 +48,14 @@ protected:
         if (n_dists == 0) {
             PCL_ERROR("[%s::match] no distances were calculated.\n", getClassName().c_str());
         } else {
+            average_distance_ = dists_sum / (float) n_dists;
             PCL_DEBUG("[%s::match] average distance to nearest neighbour: %0.7f.\n",
                       getClassName().c_str(),
-                      dists_sum / (float) n_dists);
+                      average_distance_);
         }
     }
 
+    float average_distance_ = std::numeric_limits<float>::max();
     AlignmentParameters parameters_;
 };
 
@@ -84,7 +90,11 @@ public:
         this->printDebugInfo(mv_correspondences_ij);
 
         std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
-        if (this->parameters_.use_bfmatcher) {
+        if (this->parameters_.guess != nullptr) {
+            matchLocal<FeatureT>(pcd_tree_tgt->getInputCloud(), pcd_tree_src, tgt, src, mv_correspondences_ji,
+                                 point_representation, parameters_.guess->inverse(),
+                                 parameters_.match_search_radius, parameters_.randomness, threads);
+        } else if (this->parameters_.use_bfmatcher) {
             matchBF<FeatureT>(tgt, src, mv_correspondences_ji, point_representation,
                               this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
@@ -359,7 +369,7 @@ void matchFLANN(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_featur
                 int k_matches, int threads) {
     pcl::KdTreeFLANN<FeatureT> feature_tree(new pcl::KdTreeFLANN<FeatureT>);
     feature_tree.setInputCloud(train_features);
-    int n = query_features->size();
+    auto n = query_features->size();
     mv_correspondences.resize(n, MultivaluedCorrespondence{});
 #pragma omp parallel for num_threads(threads) default(none) shared(mv_correspondences, query_features, point_representation, feature_tree) firstprivate(n, k_matches)
     for (int i = 0; i < n; i++) {
@@ -434,7 +444,7 @@ void matchLocal(const PointNCloud::ConstPtr &query_pcd,
                 const Eigen::Matrix4f &guess, float match_search_radius, int k_matches, int threads) {
     PointNCloud transformed_query_pcd;
     pcl::transformPointCloudWithNormals(*query_pcd, transformed_query_pcd, guess);
-    int n = transformed_query_pcd.size();
+    auto n = transformed_query_pcd.size();
     mv_correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
 
 #pragma omp parallel num_threads(threads) default(none) \
@@ -445,19 +455,17 @@ void matchLocal(const PointNCloud::ConstPtr &query_pcd,
         pcl::Indices indices;
 
         int nr_dims = point_representation->getNumberOfDimensions();
-        auto *query_feature = new float[nr_dims];
-        auto *train_feature = new float[nr_dims];
 #pragma omp for
         for (int query_idx = 0; query_idx < n; ++query_idx) {
             if (point_representation->isValid(query_features->points[query_idx])) {
-                point_representation->copyToFloatArray(query_features->points[query_idx], query_feature);
                 KNNResult<float> knnResult(k_matches);
                 train_tree->radiusSearch(transformed_query_pcd.points[query_idx],
                                          match_search_radius, indices, distances);
                 for (int train_idx: indices) {
                     if (point_representation->isValid(train_features->points[train_idx])) {
-                        point_representation->copyToFloatArray(train_features->points[train_idx], train_feature);
-                        knnResult.addPoint(pcl::L2_Norm(query_feature, train_feature, nr_dims), train_idx);
+                        float dist = pcl::L2_Norm((float *) &query_features->points[query_idx],
+                                                  (float *) &train_features->points[train_idx], nr_dims);
+                        knnResult.addPoint(dist, train_idx);
                     }
                 }
                 if (knnResult.size() > 0) {
@@ -467,8 +475,6 @@ void matchLocal(const PointNCloud::ConstPtr &query_pcd,
                 }
             }
         }
-        delete[] query_feature;
-        delete[] train_feature;
     }
 }
 

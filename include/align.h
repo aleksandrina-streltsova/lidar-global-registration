@@ -20,7 +20,8 @@
 #include "feature_analysis.h"
 #include "weights.h"
 
-#define INITIAL_STEP_COEF 8
+#define INITIAL_STEP_VOXEL_SIZE_COEF 8
+#define FINAL_STEP_EDG_THR_COEF 0.99
 #define MATCH_SEARCH_RADIUS_COEF 4
 
 namespace fs = std::filesystem;
@@ -213,12 +214,6 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
         features_src->resize(src->size());
         features_tgt->resize(tgt->size());
     }
-
-    if (parameters.use_bfmatcher) {
-        align.useBFMatcher();
-        align.setBFBlockSize(parameters.bf_block_size);
-    }
-
     align.setInputSource(src);
     align.setSourceFeatures(features_src);
 
@@ -238,7 +233,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
     align.setConfidence(parameters.confidence); // Confidence in adaptive RANSAC
     align.setInlierFraction(parameters.inlier_fraction); // Required inlier fraction for accepting a pose hypothesis
     if (!is_initial) {
-        align.setGuessWithMatchSearchRadius(*parameters.guess, parameters.match_search_radius);
+        align.setTransformationGuess(*parameters.guess);
     }
     {
         pcl::ScopeTime t(is_initial ? "Initial alignment step" : "Alignment step");
@@ -251,32 +246,50 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
 }
 
 template<typename FeatureT>
-SampleConsensusPrerejectiveOMP<FeatureT> align_point_clouds(
+std::pair<SampleConsensusPrerejectiveOMP<FeatureT>, double> align_point_clouds(
         const PointNCloud::Ptr &src_fullsize,
         const PointNCloud::Ptr &tgt_fullsize,
         const AlignmentParameters &parameters
 ) {
-    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    downsamplePointCloud(src_fullsize, src, parameters);
-    downsamplePointCloud(tgt_fullsize, tgt, parameters);
-    float final_voxel_size = parameters.voxel_size;
-    float initial_voxel_size = INITIAL_STEP_COEF * final_voxel_size;
+    SampleConsensusPrerejectiveOMP<FeatureT> final_alignment;
+    double time;
+    {
+        pcl::ScopeTime t("Alignment");
+        if (parameters.coarse_to_fine) {
+            PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+            downsamplePointCloud(src_fullsize, src, parameters);
+            downsamplePointCloud(tgt_fullsize, tgt, parameters);
+            float final_voxel_size = parameters.voxel_size;
+            float initial_voxel_size = INITIAL_STEP_VOXEL_SIZE_COEF * final_voxel_size;
 
-    // initial step
-    AlignmentParameters initial_parameters(parameters);
-    initial_parameters.voxel_size = initial_voxel_size;
-    auto initial_alignment = executeAlignmentStep<FeatureT>(src, tgt, initial_parameters);
+            // initial step
+            AlignmentParameters initial_parameters(parameters);
+            initial_parameters.voxel_size = initial_voxel_size;
+            auto initial_alignment = executeAlignmentStep<FeatureT>(src, tgt, initial_parameters);
 
-    // final step
-    AlignmentParameters final_parameters(parameters);
-    final_parameters.voxel_size = final_voxel_size;
-    final_parameters.match_search_radius = MATCH_SEARCH_RADIUS_COEF * initial_voxel_size;
-    final_parameters.guess = std::make_shared<Eigen::Matrix4f>(initial_alignment.getFinalTransformation());
-    auto final_alignment = executeAlignmentStep<FeatureT>(src, tgt, final_parameters);
+            // final step
+            AlignmentParameters final_parameters(parameters);
+            final_parameters.voxel_size = final_voxel_size;
+            final_parameters.match_search_radius = MATCH_SEARCH_RADIUS_COEF * initial_voxel_size;
+            final_parameters.guess = std::make_shared<Eigen::Matrix4f>(initial_alignment.getFinalTransformation());
+            final_parameters.matching_id = MATCHING_LEFT_TO_RIGHT;
+            final_parameters.metric_id = METRIC_CORRESPONDENCES;
+            final_parameters.edge_thr_coef = FINAL_STEP_EDG_THR_COEF;
+            final_alignment = executeAlignmentStep<FeatureT>(src, tgt, final_parameters);
 
-    saveIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV), constructName(parameters, "iterations"),
-                       {initial_voxel_size, final_voxel_size});
-    return final_alignment;
+            saveIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
+                               constructName(parameters, "iterations"),
+                               {initial_voxel_size, final_voxel_size},
+                               {initial_parameters.matching_id, final_parameters.matching_id});
+        } else {
+            final_alignment = executeAlignmentStep<FeatureT>(src_fullsize, tgt_fullsize, parameters);
+            saveIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
+                               constructName(parameters, "iterations"),
+                               {parameters.voxel_size}, {parameters.matching_id});
+        }
+        time = t.getTimeSeconds();
+    }
+    return {final_alignment, time};
 }
 
 #endif

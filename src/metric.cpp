@@ -91,19 +91,16 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
     inlier_pairs.reserve(correspondences_.size());
     rmse = 0.0f;
 
-    PointNCloud src_transformed;
-    src_transformed.resize(src_->size());
-    pcl::transformPointCloud(*src_, src_transformed, transformation);
-
     // For each point from correspondences in the source dataset
+    Eigen::Vector4f source_point, target_point;
     for (int i = 0; i < correspondences_.size(); ++i) {
         int query_idx = correspondences_[i].index_query;
         int match_idx = correspondences_[i].index_match;
-        PointN source_point(src_transformed.points[query_idx]);
-        PointN target_point(tgt_->points[match_idx]);
+        source_point = transformation * src_->points[query_idx].getVector4fMap();
+        target_point = tgt_->points[match_idx].getVector4fMap();
 
         // Calculate correspondence distance
-        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3);
+        float dist = (source_point - target_point).norm();
 
         // Check if correspondence is an inlier
         if (dist < inlier_threshold_) {

@@ -49,6 +49,7 @@ class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepre
 };
 
 struct AlignmentParameters {
+    bool coarse_to_fine;
     bool use_normals, normals_available;
     float voxel_size;
     float edge_thr_coef, distance_thr_coef;
@@ -151,9 +152,13 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string
 void saveTransformation(const std::string &csv_path, const std::string &transformation_name,
                         const Eigen::Matrix4f &transformation);
 
-void getIterationsInfo(const std::string &csv_path, const std::string &name, std::vector<float> voxel_sizes);
+void getIterationsInfo(const std::string &csv_path, const std::string &name,
+                       std::vector<float> &voxel_sizes,
+                       std::vector<std::string> &matching_ids);
 
-void saveIterationsInfo(const std::string &csv_path, const std::string &name, const std::vector<float> &voxel_sizes);
+void saveIterationsInfo(const std::string &csv_path, const std::string &name,
+                        const std::vector<float> &voxel_sizes,
+                        const std::vector<std::string> &matching_ids);
 
 template<typename PointT>
 std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::Ptr &pcd) {

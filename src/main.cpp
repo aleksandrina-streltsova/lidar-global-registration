@@ -31,10 +31,15 @@ void loadPointClouds(const YamlConfig &config, std::string &testname,
     filter_duplicate_points(src);
     filter_duplicate_points(tgt);
 
-    float src_density = calculatePointCloudDensity<PointN>(src);
-    float tgt_density = calculatePointCloudDensity<PointN>(tgt);
-    PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
-    min_voxel_size = std::max(src_density, tgt_density);
+    std::optional<float> density = config.get<float>("density");
+    if (density.has_value()) {
+        min_voxel_size = density.value();
+    } else {
+        float src_density = calculatePointCloudDensity<PointN>(src);
+        float tgt_density = calculatePointCloudDensity<PointN>(tgt);
+        PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
+        min_voxel_size = std::max(src_density, tgt_density);
+    }
 
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
@@ -73,13 +78,17 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
         AlignmentAnalysis analysis;
         auto descriptor_id = parameters.descriptor_id;
         if (descriptor_id == "fpfh") {
-            analysis = align_point_clouds<FPFH>(src, tgt, parameters).getAlignmentAnalysis(parameters);
+            auto [alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
         } else if (descriptor_id == "usc") {
-            analysis = align_point_clouds<USC>(src, tgt, parameters).getAlignmentAnalysis(parameters);
+            auto [alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
         } else if (descriptor_id == "rops") {
-            analysis = align_point_clouds<RoPS135>(src, tgt, parameters).getAlignmentAnalysis(parameters);
+            auto [alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
         } else if (descriptor_id == "shot") {
-            analysis = align_point_clouds<SHOT>(src, tgt, parameters).getAlignmentAnalysis(parameters);
+            auto [alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
         } else {
             pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
         }
@@ -125,11 +134,13 @@ void estimateTestMetric(const YamlConfig &config) {
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         std::vector<float> voxel_sizes;
+        std::vector<std::string> matching_ids;
         getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                          constructName(parameters, "iterations"), voxel_sizes);
-        for (float voxel_size: voxel_sizes) {
+                          constructName(parameters, "iterations"), voxel_sizes, matching_ids);
+        for (int i = 0; i < voxel_sizes.size(); ++i) {
             AlignmentParameters curr_parameters(parameters);
-            curr_parameters.voxel_size = voxel_size;
+            curr_parameters.voxel_size = voxel_sizes[i];
+            curr_parameters.matching_id = matching_ids[i];
             PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
             downsamplePointCloud(src, curr_src, curr_parameters);
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
@@ -195,11 +206,13 @@ void generateDebugFiles(const YamlConfig &config) {
         downsamplePointCloud(src_fullsize, src, parameters);
         downsamplePointCloud(tgt_fullsize, tgt, parameters);
         std::vector<float> voxel_sizes;
+        std::vector<std::string> matching_ids;
         getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                          constructName(parameters, "iterations"), voxel_sizes);
-        for (float voxel_size: voxel_sizes) {
+                          constructName(parameters, "iterations"), voxel_sizes, matching_ids);
+        for (int i = 0; i < voxel_sizes.size(); ++i) {
             AlignmentParameters curr_parameters(parameters);
-            curr_parameters.voxel_size = voxel_size;
+            curr_parameters.voxel_size = voxel_sizes[i];
+            curr_parameters.matching_id = matching_ids[i];
             PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
             downsamplePointCloud(src, curr_src, curr_parameters);
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);

@@ -107,7 +107,9 @@ void saveTransformation(const std::string &csv_path, const std::string &transfor
     fout << "\n";
 }
 
-void getIterationsInfo(const std::string &csv_path, const std::string &name, std::vector<float> voxel_sizes) {
+void getIterationsInfo(const std::string &csv_path, const std::string &name,
+                       std::vector<float> &voxel_sizes,
+                       std::vector<std::string> &matching_ids) {
     std::ifstream file(csv_path);
     Eigen::Matrix4f transformation;
 
@@ -117,13 +119,16 @@ void getIterationsInfo(const std::string &csv_path, const std::string &name, std
         if (row[0] == name) {
             int n = std::stoi(row[1]);
             for (int i = 0; i < n; ++i) {
-                voxel_sizes.push_back(std::stof(row[i + 2]));
+                voxel_sizes.push_back(std::stof(row[2 * i + 2]));
+                matching_ids.push_back(row[2 * i + 3]);
             }
         }
     }
 }
 
-void saveIterationsInfo(const std::string &csv_path, const std::string &name, const std::vector<float> &voxel_sizes) {
+void saveIterationsInfo(const std::string &csv_path, const std::string &name,
+                        const std::vector<float> &voxel_sizes,
+                        const std::vector<std::string> &matching_ids) {
     bool file_exists = std::filesystem::exists(csv_path);
     std::fstream fout;
     if (!file_exists) {
@@ -133,8 +138,8 @@ void saveIterationsInfo(const std::string &csv_path, const std::string &name, co
     }
     if (fout.is_open()) {
         fout << name << "," << voxel_sizes.size();
-        for (float voxel_size: voxel_sizes) {
-            fout << "," << voxel_size;
+        for (int i = 0; i < voxel_sizes.size(); ++i) {
+            fout << "," << voxel_sizes[i] << "," << matching_ids[i];
         }
         fout << "\n";
     } else {
@@ -149,6 +154,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
                                                          float min_voxel_size) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
+    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", true);
     parameters.edge_thr_coef = config.get<float>("edge_thr").value();
     parameters.distance_thr_coef = config.get<float>("distance_thr_coef").value();
     parameters.max_iterations = config.get<int>("iteration");
@@ -556,6 +562,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                             "_" + std::to_string((int) parameters.feature_radius_coef) +
                             "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
                             "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
+                            (parameters.coarse_to_fine ? "_ctf" : "") +
                             (with_weights ? "_" + parameters.weight_id : "") +
                             (parameters.use_normals ? "_normals" : "");
     if (with_version) {

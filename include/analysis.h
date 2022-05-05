@@ -14,6 +14,11 @@ std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::M
 float calculate_point_cloud_mean_error(const PointNCloud::ConstPtr &pcd,
                                        const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
+float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                             const Eigen::Matrix4f &transformation,
+                             const Eigen::Matrix4f &transformation_gt,
+                             float inlier_threshold);
+
 float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                           const pcl::Correspondences &correct_correspondences,
                                           const AlignmentParameters &parameters,
@@ -34,7 +39,7 @@ public:
     AlignmentAnalysis(const AlignmentParameters &parameters,
                       const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                       const pcl::Correspondences &correspondences,
-                      int iterations, const Eigen::Matrix4f &transformation);
+                      int iterations, const Eigen::Matrix4f &transformation, double time);
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
@@ -57,9 +62,10 @@ private:
     pcl::Correspondences correspondences_, correct_correspondences_;
     std::vector<InlierPair> inlier_pairs_, correct_inlier_pairs_;
     float fitness_, rmse_;
-    float pcd_error_, r_error_, t_error_;
+    float pcd_error_, overlap_error_, r_error_, t_error_;
     float normal_diff_;
     float corr_uniformity_;
+    double time_;
     std::string testname_;
     bool has_converged_ = false;
 
