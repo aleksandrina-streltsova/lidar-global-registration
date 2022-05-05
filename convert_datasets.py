@@ -75,6 +75,21 @@ def _parse_conf(conf_path: str):
     return gt_df
 
 
+@cli.command('eth_gt')
+@click.argument('path', type=click.Path(exists=True, file_okay=False))
+def parse_gt_eth(path):
+    ply_names = sorted(list(map(lambda s: s[:s.find('.')], filter(lambda s: s.endswith('.ply'), os.listdir(path)))))
+    with open(os.path.join(path, 'ground_truth.csv'), 'w+') as file:
+        file.write(','.join(GROUND_TRUTH_COLUMNS) + '\n')
+        file.write(ply_names[0] + '.ply,' + ','.join(map(str, np.eye(4).flatten())) + '\n')
+        for i, ply_name in enumerate(ply_names[1:]):
+            with open(os.path.join(path, 'groundtruth', f'{ply_name}-{ply_names[0]}.tfm'), 'r') as tn_file:
+                file.write(ply_name + '.ply')
+                for line in tn_file.readlines():
+                    file.write(',' + ','.join(line.split()))
+                file.write('\n')
+
+
 @cli.command('stanford')
 @click.argument('input-dir', type=click.Path(exists=True, file_okay=False))
 @click.option('-o', '--output-dir', type=click.Path(file_okay=False))
