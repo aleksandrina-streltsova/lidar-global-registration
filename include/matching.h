@@ -2,10 +2,15 @@
 #define REGISTRATION_MATCHING_H
 
 #include <unordered_set>
-
-#include <pcl/point_cloud.h>
-#include <opencv2/features2d.hpp>
 #include <utility>
+#include <opencv2/features2d.hpp>
+
+#include <pcl/common/norms.h>
+#include <pcl/point_cloud.h>
+#include <pcl/search/kdtree.h>
+#include <pcl/common/transforms.h>
+
+#include "common.h"
 
 #define MATCHING_RATIO_THRESHOLD 0.95f
 #define MATCHING_CLUSTER_THRESHOLD 0.8f
@@ -64,7 +69,11 @@ public:
                                int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (this->parameters_.use_bfmatcher) {
+        if (this->parameters_.guess != nullptr) {
+            matchLocal<FeatureT>(pcd_tree_src->getInputCloud(), pcd_tree_tgt, src, tgt, mv_correspondences_ij,
+                                 point_representation, *parameters_.guess,
+                                 parameters_.match_search_radius, parameters_.randomness, threads);
+        } else if (this->parameters_.use_bfmatcher) {
             matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
                               this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
@@ -129,7 +138,11 @@ public:
         }
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (this->parameters_.use_bfmatcher) {
+        if (this->parameters_.guess != nullptr) {
+            matchLocal<FeatureT>(pcd_tree_src->getInputCloud(), pcd_tree_tgt, src, tgt, mv_correspondences_ij,
+                                 point_representation, *parameters_.guess,
+                                 parameters_.match_search_radius, parameters_.randomness, threads);
+        } else if (this->parameters_.use_bfmatcher) {
             matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
                               2, nr_dims, this->parameters_.bf_block_size);
         } else {
@@ -182,7 +195,11 @@ public:
                                int threads) override {
         int nr_dims = point_representation->getNumberOfDimensions();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-        if (this->parameters_.use_bfmatcher) {
+        if (this->parameters_.guess != nullptr) {
+            matchLocal<FeatureT>(pcd_tree_src->getInputCloud(), pcd_tree_tgt, src, tgt, mv_correspondences_ij,
+                                 point_representation, *parameters_.guess,
+                                 parameters_.match_search_radius, parameters_.randomness, threads);
+        } else if (this->parameters_.use_bfmatcher) {
             matchBF<FeatureT>(src, tgt, mv_correspondences_ij, point_representation,
                               this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
         } else {
@@ -257,6 +274,58 @@ typename FeatureMatcher<FeatureT>::Ptr getFeatureMatcher(const AlignmentParamete
     }
     return std::make_shared<LeftToRightFeatureMatcher<FeatureT>>(parameters);
 }
+
+template<typename T>
+class KNNResult {
+private:
+    int capacity_;
+    int count_;
+    std::vector<int> indices_;
+    std::vector<T> dists_;
+public:
+    inline KNNResult(int capacity) : capacity_(capacity), count_(0) {
+        indices_.reserve(capacity);
+        dists_.reserve(capacity);
+    }
+
+    inline int size() const {
+        return count_;
+    }
+
+    inline std::vector<int> getIndices() const {
+        return indices_;
+    }
+
+    inline std::vector<T> getDistances() const {
+        return dists_;
+    }
+
+    inline bool addPoint(T dist, int index) {
+        if (count_ < capacity_) {
+            indices_.resize(count_ + 1);
+            dists_.resize(count_ + 1);
+        }
+        int i;
+        for (i = count_; i > 0; --i) {
+            if (dists_[i - 1] > dist) {
+                if (i < capacity_) {
+                    dists_[i] = dists_[i - 1];
+                    indices_[i] = indices_[i - 1];
+                }
+            } else {
+                break;
+            }
+        }
+        if (i < capacity_) {
+            dists_[i] = dist;
+            indices_[i] = index;
+        }
+        if (count_ < capacity_) {
+            count_++;
+        }
+        return true;
+    }
+};
 
 template<typename FeatureT>
 void pcl2cv(int nr_dims, const typename pcl::PointCloud<FeatureT>::ConstPtr &src, cv::OutputArray &dst, int size = 0,
@@ -337,6 +406,54 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
         if (!point_representation->isValid(query_features->points[i])) {
             mv_correspondences[i] = MultivaluedCorrespondence{};
         }
+    }
+}
+
+template<typename FeatureT>
+void matchLocal(const PointNCloud::ConstPtr &query_pcd,
+                const typename pcl::search::KdTree<PointN>::ConstPtr &train_tree,
+                const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
+                const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
+                std::vector<MultivaluedCorrespondence> &mv_correspondences,
+                const typename pcl::PointRepresentation<FeatureT>::Ptr point_representation,
+                const Eigen::Matrix4f &guess, float match_search_radius, int k_matches, int threads) {
+    PointNCloud transformed_query_pcd;
+    pcl::transformPointCloudWithNormals(*query_pcd, transformed_query_pcd, guess);
+    int n = transformed_query_pcd.size();
+    mv_correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
+
+#pragma omp parallel num_threads(threads) default(none) \
+    shared(transformed_query_pcd, train_tree, query_features, train_features, mv_correspondences, point_representation) \
+    firstprivate(n, k_matches, match_search_radius)
+    {
+        std::vector<float> distances;
+        pcl::Indices indices;
+
+        int nr_dims = point_representation->getNumberOfDimensions();
+        auto *query_feature = new float[nr_dims];
+        auto *train_feature = new float[nr_dims];
+#pragma omp for
+        for (int query_idx = 0; query_idx < n; ++query_idx) {
+            if (point_representation->isValid(query_features->points[query_idx])) {
+                point_representation->copyToFloatArray(query_features->points[query_idx], query_feature);
+                KNNResult<float> knnResult(k_matches);
+                train_tree->radiusSearch(transformed_query_pcd.points[query_idx],
+                                         match_search_radius, indices, distances);
+                for (int train_idx: indices) {
+                    if (point_representation->isValid(train_features->points[train_idx])) {
+                        point_representation->copyToFloatArray(train_features->points[train_idx], train_feature);
+                        knnResult.addPoint(pcl::L2_Norm(query_feature, train_feature, nr_dims), train_idx);
+                    }
+                }
+                if (knnResult.size() > 0) {
+                    mv_correspondences[query_idx].query_idx = query_idx;
+                    mv_correspondences[query_idx].match_indices = knnResult.getIndices();
+                    mv_correspondences[query_idx].distances = knnResult.getDistances();
+                }
+            }
+        }
+        delete[] query_feature;
+        delete[] train_feature;
     }
 }
 

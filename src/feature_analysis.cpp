@@ -38,11 +38,9 @@ void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNClo
                            const AlignmentParameters &parameters, const PointNCloud::Ptr &extracted_points) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     // Downsample
-    if (parameters.downsample) {
-        pcl::console::print_highlight("Downsampling...\n");
-        downsamplePointCloud(src_fullsize, src, parameters);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters);
-    }
+    pcl::console::print_highlight("Downsampling...\n");
+    downsamplePointCloud(src_fullsize, src, parameters);
+    downsamplePointCloud(tgt_fullsize, tgt, parameters);
 
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
 

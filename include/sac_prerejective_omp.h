@@ -37,6 +37,12 @@ public:
         setNumberOfThreads(0);
     }
 
+    void setGuessWithMatchSearchRadius(const Eigen::Matrix4f &guess, float match_search_radius) {
+        guess_available_ = true;
+        guess_ = guess;
+        match_search_radius_ = match_search_radius;
+    }
+
     void setTargetFeatures(const typename FeatureCloud::ConstPtr &features);
 
     void setConfidence(float confidence);
@@ -100,13 +106,16 @@ protected:
     std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file_ = false;
     bool use_bfmatcher_ = false;
+    bool guess_available_ = false;
     int bf_block_size_ = 10000;
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
+    float match_search_radius_;
     unsigned int threads_{};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     MetricEstimator::Ptr metric_estimator_{nullptr};
     typename FeatureMatcher<FeatureT>::Ptr feature_matcher_{nullptr};
+    Eigen::Matrix4f guess_;
 
 private:
     unsigned int getNumberOfThreads();

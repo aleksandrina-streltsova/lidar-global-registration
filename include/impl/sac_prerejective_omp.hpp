@@ -159,7 +159,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::setTargetFeatures(const typename 
 
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud &output,
-                                                                     const Eigen::Matrix4f &guess) {
+                                                                     const Eigen::Matrix4f &) {
     // Some sanity checks first
     if (!this->input_features_) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
@@ -236,7 +236,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     int ransac_iterations = 0;
 
     // Initialize results
-    this->final_transformation_ = guess;
+    this->final_transformation_ = Eigen::Matrix4f::Identity();
     this->inlier_pairs_.clear();
     rmse_ = std::numeric_limits<float>::max();
     float best_metric = metric_estimator_->getInitialMetric();
@@ -265,15 +265,15 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
         std::vector<InlierPair> inlier_pairs;
         float metric, error;
 
-        // If guess is not the Identity matrix we check it
-        if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f)) {
-            metric_estimator_->buildInlierPairsAndEstimateMetric(guess, inlier_pairs, error, metric);
+        // If guess is available we check it
+        if (guess_available_) {
+            metric_estimator_->buildInlierPairsAndEstimateMetric(guess_, inlier_pairs, error, metric);
             if (metric_estimator_->isBetter(metric, best_metric)) {
                 this->inlier_pairs_ = inlier_pairs;
                 rmse_ = error;
                 best_metric = metric;
                 this->converged_ = true;
-                this->final_transformation_ = guess;
+                this->final_transformation_ = guess_;
             }
         }
     }

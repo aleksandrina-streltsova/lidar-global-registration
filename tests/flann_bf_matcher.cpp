@@ -20,20 +20,22 @@ int main(int argc, char **argv) {
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
-    std::vector<AlignmentParameters> parameters_container = getParametersFromConfig(config, fields_src, fields_tgt);
+    float src_density = calculatePointCloudDensity<PointN>(src);
+    float tgt_density = calculatePointCloudDensity<PointN>(tgt);
+    float min_voxel_size = std::max(src_density, tgt_density);
 
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
 
-    for (auto &parameters: parameters_container) {
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         std::cout << "descriptor id: " << parameters.descriptor_id << std::endl;
         auto descriptor_id = parameters.descriptor_id;
         if (descriptor_id == "fpfh") {
-            run_test<FPFH>(src, tgt, parameters);
+            runTest<FPFH>(src, tgt, parameters);
         }  else if (descriptor_id == "rops") {
-            run_test<RoPS135>(src, tgt, parameters);
+            runTest<RoPS135>(src, tgt, parameters);
         } else if (descriptor_id == "shot"){
-            run_test<SHOT>(src, tgt, parameters);
+            runTest<SHOT>(src, tgt, parameters);
         } else {
             pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
         }

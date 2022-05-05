@@ -49,7 +49,7 @@ class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepre
 };
 
 struct AlignmentParameters {
-    bool downsample, use_normals, normals_available;
+    bool use_normals, normals_available;
     float voxel_size;
     float edge_thr_coef, distance_thr_coef;
     float normal_radius_coef, feature_radius_coef;
@@ -63,6 +63,10 @@ struct AlignmentParameters {
     bool save_features;
     std::string testname;
     std::shared_ptr<Eigen::Matrix4f> ground_truth{nullptr};
+
+    // these parameters cannot be set in config, they are set before alignment steps
+    float match_search_radius = 0;
+    std::shared_ptr<Eigen::Matrix4f> guess{nullptr};
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
@@ -119,6 +123,7 @@ public:
 
 extern const std::string DATA_DEBUG_PATH;
 extern const std::string TRANSFORMATIONS_CSV;
+extern const std::string ITERATIONS_CSV;
 extern const std::string VERSION;
 extern const std::string DEFAULT_DESCRIPTOR;
 extern const std::string DEFAULT_LRF;
@@ -137,6 +142,18 @@ extern const std::string METRIC_WEIGHT_TOMASI;
 extern const std::string METRIC_WEIGHT_CURVATURE;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
+
+Eigen::Matrix4f getTransformation(const std::string &csv_path,
+                                  const std::string &src_filename, const std::string &tgt_filename);
+
+Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name);
+
+void saveTransformation(const std::string &csv_path, const std::string &transformation_name,
+                        const Eigen::Matrix4f &transformation);
+
+void getIterationsInfo(const std::string &csv_path, const std::string &name, std::vector<float> voxel_sizes);
+
+void saveIterationsInfo(const std::string &csv_path, const std::string &name, const std::vector<float> &voxel_sizes);
 
 template<typename PointT>
 std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::Ptr &pcd) {

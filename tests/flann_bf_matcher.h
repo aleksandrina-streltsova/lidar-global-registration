@@ -11,35 +11,41 @@ inline bool isclose(float a, float b, float rtol=1e-5, float atol=1e-8) {
     return std::fabs(a - b) <= (atol + rtol * std::fabs(b));
 }
 
-void assertCorrespondencesEqual(int i, const pcl::Correspondence &corr1, const pcl::Correspondence &corr2) {
-    if (corr1.index_query != corr2.index_query) {
-        std::cerr << "{" << i << "} query indices differ: [" << corr1.index_query << "] [" << corr2.index_query << "]" << std::endl;
+void assertCorrespondencesEqual(int i,
+                                const MultivaluedCorrespondence &corr1,
+                                const MultivaluedCorrespondence &corr2) {
+    if (corr1.query_idx != corr2.query_idx) {
+        std::cerr << "{" << i << "} query indices differ: [" << corr1.query_idx << "] [" << corr2.query_idx << "]" << std::endl;
         abort();
     }
-    if (corr1.index_match!= corr2.index_match) {
-        std::cerr << "{" << i << "} match indices differ: [" << corr1.index_match << "] [" << corr2.index_match << "]\n";
-        std::cerr << "{" << i << "} with distances: [" << corr1.distance << "] [" << corr2.distance << "]" << std::endl;
-        abort();
+    if (corr1.match_indices.size() != corr2.match_indices.size()) {
+        std::cerr << "{" << i << "} size of match indices differ: [" << corr1.match_indices.size() << "] [" << corr2.match_indices.size() << "]\n";
+    }
+    for (int j = 0; j < corr1.match_indices.size(); ++j) {
+        if (!corr1.match_indices.empty() && corr1.match_indices[j] != corr2.match_indices[j]) {
+            std::cerr << "{" << i << "} match indices at position " << j << " differ: [" << corr1.match_indices[j] << "] [" << corr2.match_indices[j] << "]\n";
+            std::cerr << "{" << i << "} with distances: [" << corr1.distances[j] << "] [" << corr2.distances[j] << "]" << std::endl;
+            abort();
+        }
     }
 }
 
 template<typename FeatureT>
-void run_test(const PointNCloud::Ptr &src_fullsize,
-              const PointNCloud::Ptr &tgt_fullsize,
-              const AlignmentParameters &parameters) {
+void runTest(const PointNCloud::Ptr &src_fullsize,
+             const PointNCloud::Ptr &tgt_fullsize,
+             const AlignmentParameters &parameters) {
     PointNCloud::Ptr src_downsize(new PointNCloud), tgt_downsize(new PointNCloud);
     // Downsample
-    if (parameters.downsample) {
-        pcl::console::print_highlight("Downsampling...\n");
-        downsamplePointCloud(src_fullsize, src_downsize, parameters);
-        downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters);
-    }
+    pcl::console::print_highlight("Downsampling...\n");
+    downsamplePointCloud(src_fullsize, src_downsize, parameters);
+    downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters);
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud), src_aligned(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
+    pcl::search::KdTree<PointN>::Ptr tree_src(new pcl::search::KdTree<PointN>), tree_tgt(new pcl::search::KdTree<PointN>);
 
     float voxel_size = parameters.voxel_size;
     float normal_radius = parameters.normal_radius_coef * voxel_size;
@@ -53,6 +59,9 @@ void run_test(const PointNCloud::Ptr &src_fullsize,
     pcl::concatenateFields(*src_downsize, *normals_src, *src);
     pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);
 
+    tree_src->setInputCloud(src);
+    tree_tgt->setInputCloud(tgt);
+
     // Estimate reference frames
     estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
     estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
@@ -62,8 +71,9 @@ void run_test(const PointNCloud::Ptr &src_fullsize,
     estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
     estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
 
-    pcl::Correspondences correspondences_bf;
-    pcl::Correspondences correspondences_flann;
+    std::vector<MultivaluedCorrespondence> mv_correspondences_bf;
+    std::vector<MultivaluedCorrespondence> mv_correspondences_flann;
+    std::vector<MultivaluedCorrespondence> mv_correspondences_local;
 
     auto point_representation = std::shared_ptr<pcl::PointRepresentation<FeatureT>>(new pcl::DefaultPointRepresentation<FeatureT>);
     int nr_dims = point_representation->getNumberOfDimensions();
@@ -72,19 +82,26 @@ void run_test(const PointNCloud::Ptr &src_fullsize,
     threads = omp_get_num_procs();
 #endif
     int k_matches = parameters.randomness;
-    matchBF<FeatureT>(features_src, features_tgt, correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
-    matchFLANN<FeatureT>(features_src, features_tgt, correspondences_flann, point_representation, k_matches, threads);
+    matchBF<FeatureT>(features_src, features_tgt, mv_correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
+    matchFLANN<FeatureT>(features_src, features_tgt, mv_correspondences_flann, point_representation, k_matches, threads);
+    matchLocal<FeatureT>(src, tree_tgt, features_src, features_tgt, mv_correspondences_local, point_representation,
+                         Eigen::Matrix4f::Identity(), std::numeric_limits<float>::max(), k_matches, threads);
     for (int i = 0; i < features_src->size(); ++i) {
-        assertCorrespondencesEqual(i, correspondences_bf[i], correspondences_flann[i]);
+        assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
+        assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);
     }
 
-    correspondences_bf.clear();
-    correspondences_flann.clear();
+    mv_correspondences_bf.clear();
+    mv_correspondences_flann.clear();
+    mv_correspondences_local.clear();
 
-    matchBF<FeatureT>(features_tgt, features_src, correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
-    matchFLANN<FeatureT>(features_tgt, features_src, correspondences_flann, point_representation, k_matches, threads);
+    matchBF<FeatureT>(features_tgt, features_src, mv_correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
+    matchFLANN<FeatureT>(features_tgt, features_src, mv_correspondences_flann, point_representation, k_matches, threads);
+    matchLocal<FeatureT>(tgt, tree_src, features_tgt, features_src, mv_correspondences_local, point_representation,
+                         Eigen::Matrix4f::Identity(), std::numeric_limits<float>::max(), k_matches, threads);
     for (int i = 0; i < features_tgt->size(); ++i) {
-        assertCorrespondencesEqual(i, correspondences_bf[i], correspondences_flann[i]);
+        assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
+        assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);
     }
 }
 

@@ -9,12 +9,14 @@
 #include <pcl/io/ply_io.h>
 
 #include "common.h"
+#include "csv_parser.h"
 
 namespace fs = std::filesystem;
 
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
-const std::string VERSION = "06";
+const std::string ITERATIONS_CSV = "iterations.csv";
+const std::string VERSION = "07";
 const std::string DEFAULT_DESCRIPTOR = "fpfh";
 const std::string DEFAULT_LRF = "default";
 const std::string METRIC_CORRESPONDENCES = "correspondences";
@@ -44,13 +46,109 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("\n");
 }
 
+Eigen::Matrix4f getTransformation(const std::string &csv_path,
+                                  const std::string &src_filename, const std::string &tgt_filename) {
+    std::ifstream file(csv_path);
+    Eigen::Matrix4f src_position, tgt_position;
+
+    CSVRow row;
+    while (file >> row) {
+        if (row[0] == src_filename) {
+            for (int i = 0; i < 16; ++i) {
+                src_position(i / 4, i % 4) = std::stof(row[i + 1]);
+            }
+        }
+        if (row[0] == tgt_filename) {
+            for (int i = 0; i < 16; ++i) {
+                tgt_position(i / 4, i % 4) = std::stof(row[i + 1]);
+            }
+        }
+    }
+    return tgt_position.inverse() * src_position;
+}
+
+Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name) {
+    std::ifstream file(csv_path);
+    Eigen::Matrix4f transformation;
+
+    CSVRow row;
+    while (file >> row) {
+        if (row[0] == transformation_name) {
+            for (int i = 0; i < 16; ++i) {
+                transformation(i / 4, i % 4) = std::stof(row[i + 1]);
+            }
+        }
+    }
+    return transformation;
+}
+
+void saveTransformation(const std::string &csv_path, const std::string &transformation_name,
+                        const Eigen::Matrix4f &transformation) {
+    bool file_exists = std::filesystem::exists(csv_path);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(csv_path, std::ios_base::out);
+    } else {
+        fout.open(csv_path, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        if (!file_exists) {
+            fout << "reading,gT00,gT01,gT02,gT03,gT10,gT11,gT12,gT13,gT20,gT21,gT22,gT23,gT30,gT31,gT32,gT33\n";
+        }
+    } else {
+        perror(("error while opening file " + csv_path).c_str());
+    }
+    fout << transformation_name;
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            fout << "," << transformation(i, j);
+        }
+    }
+    fout << "\n";
+}
+
+void getIterationsInfo(const std::string &csv_path, const std::string &name, std::vector<float> voxel_sizes) {
+    std::ifstream file(csv_path);
+    Eigen::Matrix4f transformation;
+
+    CSVRow row;
+    voxel_sizes.clear();
+    while (file >> row) {
+        if (row[0] == name) {
+            int n = std::stoi(row[1]);
+            for (int i = 0; i < n; ++i) {
+                voxel_sizes.push_back(std::stof(row[i + 2]));
+            }
+        }
+    }
+}
+
+void saveIterationsInfo(const std::string &csv_path, const std::string &name, const std::vector<float> &voxel_sizes) {
+    bool file_exists = std::filesystem::exists(csv_path);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(csv_path, std::ios_base::out);
+    } else {
+        fout.open(csv_path, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        fout << name << "," << voxel_sizes.size();
+        for (float voxel_size: voxel_sizes) {
+            fout << "," << voxel_size;
+        }
+        fout << "\n";
+    } else {
+        perror(("error while opening file " + csv_path).c_str());
+    }
+
+}
+
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt,
                                                          float min_voxel_size) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
-    parameters.downsample = config.get<bool>("downsample", true);
     parameters.edge_thr_coef = config.get<float>("edge_thr").value();
     parameters.distance_thr_coef = config.get<float>("distance_thr_coef").value();
     parameters.max_iterations = config.get<int>("iteration");
@@ -165,7 +263,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     for (auto &parameters: parameters_container) {
         if (parameters.voxel_size < min_voxel_size) {
             PCL_WARN("[getParametersFromConfig] "
-                     "voxel size %.5f is greater than estimated point cloud density, setting voxel size to %.5f\n",
+                     "voxel size %.5f is less than estimated point cloud density, setting voxel size to %.5f\n",
                      parameters.voxel_size, min_voxel_size);
             parameters.voxel_size = min_voxel_size;
         }
