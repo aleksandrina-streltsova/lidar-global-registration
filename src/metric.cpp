@@ -77,7 +77,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
         }
     }
     float supporting_corr_fraction = (float) count_supporting_corrs / (float) correspondences_.size();
-    if (supporting_corr_fraction <= 0.0) {
+    if (supporting_corr_fraction <= 0.0 || std::log(1.0 - std::pow(supporting_corr_fraction, nr_samples)) >= 0.0) {
         return std::numeric_limits<int>::max();
     }
     double iterations = std::log(1.0 - confidence) / std::log(1.0 - std::pow(supporting_corr_fraction, nr_samples));

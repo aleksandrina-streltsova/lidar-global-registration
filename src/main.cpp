@@ -131,8 +131,13 @@ void estimateTestMetric(const YamlConfig &config) {
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
-        downsamplePointCloud(src_fullsize, src, parameters);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        if (parameters.coarse_to_fine) {
+            downsamplePointCloud(src_fullsize, src, parameters);
+            downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        } else {
+            src = src_fullsize;
+            tgt = tgt_fullsize;
+        }
         std::vector<float> voxel_sizes;
         std::vector<std::string> matching_ids;
         getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
@@ -203,8 +208,13 @@ void generateDebugFiles(const YamlConfig &config) {
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
-        downsamplePointCloud(src_fullsize, src, parameters);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        if (parameters.coarse_to_fine) {
+            downsamplePointCloud(src_fullsize, src, parameters);
+            downsamplePointCloud(tgt_fullsize, tgt, parameters);
+        } else {
+            src = src_fullsize;
+            tgt = tgt_fullsize;
+        }
         std::vector<float> voxel_sizes;
         std::vector<std::string> matching_ids;
         getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
