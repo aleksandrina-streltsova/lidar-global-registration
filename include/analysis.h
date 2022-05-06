@@ -11,8 +11,8 @@
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
 
-float calculate_point_cloud_mean_error(const PointNCloud::ConstPtr &pcd,
-                                       const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
+float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
+                                 const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
 float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                              const Eigen::Matrix4f &transformation,

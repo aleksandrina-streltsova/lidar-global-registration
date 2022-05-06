@@ -25,19 +25,23 @@ std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::M
     return {rotation_error, translation_error};
 }
 
-float calculate_point_cloud_mean_error(const PointNCloud::ConstPtr &pcd,
-                                       const Eigen::Matrix4f &transformation,
-                                       const Eigen::Matrix4f &transformation_gt) {
+inline float dist2(const PointN &p1, const PointN &p2) {
+    return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
+};
+
+float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
+                                 const Eigen::Matrix4f &transformation,
+                                 const Eigen::Matrix4f &transformation_gt) {
     PointNCloud pcd_transformed;
     Eigen::Matrix4f transformation_diff = transformation.inverse() * transformation_gt;
     pcl::transformPointCloud(*pcd, pcd_transformed, transformation_diff);
 
-    float error = 0.f;
+    float rmse = 0.f;
     for (int i = 0; i < pcd->size(); ++i) {
-        error += pcl::L2_Norm(pcd->points[i].data, std::as_const(pcd_transformed.points[i].data), 3);
+        rmse += dist2(pcd->points[i], pcd_transformed.points[i]);
     }
-    error /= pcd->size();
-    return error;
+    rmse /= (float) pcd->size();
+    return rmse;
 }
 
 float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
@@ -58,13 +62,12 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
     for (int i = 0; i < src->size(); ++i) {
         tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_dists);
         if (nn_dists[0] < inlier_threshold * inlier_threshold) {
-            tree_tgt.nearestKSearch(src_aligned[i], 1, nn_indices, nn_dists);
-            rmse += nn_dists[0];
+            rmse += dist2(src_aligned.points[i], tgt->points[nn_indices[0]]);
             overlap_size++;
         }
     }
     if (overlap_size != 0) {
-        rmse = std::sqrt(rmse / overlap_size);
+        rmse = std::sqrt(rmse / (float)overlap_size);
     } else {
         rmse = std::numeric_limits<float>::quiet_NaN();
     }
@@ -201,7 +204,7 @@ void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const st
     buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_, error_thr);
     metric_estimator_->buildInlierPairsAndEstimateMetric(transformation_, inlier_pairs_, rmse_, fitness_);
     metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
-    pcd_error_ = calculate_point_cloud_mean_error(src_, transformation_, transformation_gt_);
+    pcd_error_ = calculate_point_cloud_rmse(src_, transformation_, transformation_gt_);
     overlap_error_ = calculate_overlap_rmse(src_, tgt_, transformation_, transformation_gt_, error_thr);
     normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
     corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
