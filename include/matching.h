@@ -209,14 +209,29 @@ public:
 
         this->printDebugInfo(mv_correspondences_ij);
 
+        std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
+        if (this->parameters_.guess != nullptr) {
+            matchLocal<FeatureT>(pcd_tree_tgt->getInputCloud(), pcd_tree_src, tgt, src, mv_correspondences_ji,
+                                 point_representation, parameters_.guess->inverse(),
+                                 parameters_.match_search_radius, parameters_.randomness, threads);
+        } else if (this->parameters_.use_bfmatcher) {
+            matchBF<FeatureT>(tgt, src, mv_correspondences_ji, point_representation,
+                              this->parameters_.randomness, nr_dims, this->parameters_.bf_block_size);
+        } else {
+            matchFLANN<FeatureT>(tgt, src, mv_correspondences_ji, point_representation,
+                                 this->parameters_.randomness, threads);
+        }
+
         float matching_cluster_radius = MATCHING_CLUSTER_RADIUS_COEF * this->parameters_.voxel_size;
         pcl::Correspondences correspondences_cluster;
         for (int i = 0; i < src->size(); ++i) {
             for (int j: mv_correspondences_ij[i].match_indices) {
-                float distance = calculateCorrespondenceDistance(i, j, matching_cluster_radius, mv_correspondences_ij,
-                                                                 pcd_tree_src, pcd_tree_tgt);
-                if (distance < MATCHING_CLUSTER_THRESHOLD) {
-                    correspondences_cluster.push_back({i, j, distance});
+                float distance_i = calculateCorrespondenceDistance(i, j, matching_cluster_radius, mv_correspondences_ij,
+                                                                   pcd_tree_src, pcd_tree_tgt);
+                float distance_j = calculateCorrespondenceDistance(j, i, matching_cluster_radius, mv_correspondences_ji,
+                                                                   pcd_tree_tgt, pcd_tree_src);
+                if (distance_i < MATCHING_CLUSTER_THRESHOLD && distance_j < MATCHING_CLUSTER_THRESHOLD) {
+                    correspondences_cluster.push_back({i, j, distance_i});
                 }
             }
         }
