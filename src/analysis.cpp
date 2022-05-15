@@ -40,7 +40,7 @@ float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
     for (int i = 0; i < pcd->size(); ++i) {
         rmse += dist2(pcd->points[i], pcd_transformed.points[i]);
     }
-    rmse /= (float) pcd->size();
+    rmse = std::sqrt(rmse / (float) pcd->size());
     return rmse;
 }
 
@@ -61,8 +61,8 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
     std::vector<float> nn_dists;
     for (int i = 0; i < src->size(); ++i) {
         tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_dists);
-        if (nn_dists[0] < inlier_threshold * inlier_threshold) {
-            rmse += dist2(src_aligned.points[i], tgt->points[nn_indices[0]]);
+        if (nn_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
+            rmse += dist2(src_aligned.points[i], src_aligned_gt.points[i]);
             overlap_size++;
         }
     }
