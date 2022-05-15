@@ -474,6 +474,53 @@ void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::Co
     }
 }
 
+void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                const pcl::Correspondences &correspondences,
+                                const pcl::Correspondences &correct_correspondences,
+                                const Eigen::Matrix4f &transformation_gt,
+                                const AlignmentParameters &parameters, bool sparse) {
+    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
+    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
+    pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
+    float half_diagonal = 0.5 * getAABBDiagonal(src_aligned_gt);
+
+    dst->resize(src_aligned_gt->size() + tgt->size());
+    for (int i = 0; i < src_aligned_gt->size(); ++i) {
+        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
+        setPointColor(dst->points[i], COLOR_BEIGE);
+    }
+    for (int i = 0; i < tgt->size(); ++i) {
+        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
+        dst->points[src_aligned_gt->size() + i].x += half_diagonal;
+        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
+    }
+    UniformRandIntGenerator rand_generator(0, 255);
+    for (const auto &corr: correspondences) {
+        setPointColor(dst->points[corr.index_query], COLOR_ROSE);
+        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_ROSE);
+    }
+    for (const auto &corr: correct_correspondences) {
+        setPointColor(dst->points[corr.index_query], COLOR_PARAKEET);
+        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_PARAKEET);
+    }
+    std::string filepath;
+    if (sparse) {
+        filepath = constructPath(parameters, "correspondences_sparse");
+    } else {
+        filepath = constructPath(parameters, "correspondences");
+    }
+    pcl::io::savePLYFileASCII(filepath, *dst);
+    if (sparse) {
+        std::vector correspondences_sparse(correspondences);
+        std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
+                     std::mt19937(std::random_device()()));
+        correspondences_sparse.resize((int) (0.01 * correspondences_sparse.size()));
+        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
+    } else {
+        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
+    }
+}
+
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, float voxel_size,

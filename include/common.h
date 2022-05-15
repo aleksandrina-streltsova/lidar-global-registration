@@ -20,6 +20,9 @@
 #define COLOR_BROWN 0xd68910
 #define COLOR_PURPLE 0xaf7ac5
 #define COLOR_RED 0xff0000
+#define COLOR_GREEN 0x00ff00
+#define COLOR_PARAKEET 0x03c04a
+#define COLOR_ROSE 0xe3242b
 #define COLOR_BLUE 0x0000ff
 #define COLOR_WHITE 0xffffff
 #define DEBUG_N_EDGES 100ul
@@ -218,6 +221,12 @@ void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::Co
                          const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse = false);
+
+void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                const pcl::Correspondences &correspondences,
+                                const pcl::Correspondences &correct_correspondences,
+                                const Eigen::Matrix4f &transformation_gt,
+                                const AlignmentParameters &parameters, bool sparse = false);
 
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
