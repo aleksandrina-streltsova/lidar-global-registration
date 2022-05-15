@@ -54,6 +54,10 @@ public:
         feature_matcher_ = feature_matcher;
     }
 
+    inline void setRandomness(bool fix_seed) {
+        fix_seed_ = fix_seed;
+    }
+
     inline MetricEstimator::ConstPtr getMetricEstimator() const {
         return metric_estimator_;
     }
@@ -104,6 +108,7 @@ protected:
     std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file_ = false;
     bool guess_available_ = false;
+    bool fix_seed_ = true;
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
     unsigned int threads_{};

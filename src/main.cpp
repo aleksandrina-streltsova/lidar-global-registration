@@ -270,17 +270,105 @@ void generateDebugFiles(const YamlConfig &config) {
     }
 }
 
+void measureTestResults(const YamlConfig &config) {
+    pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
+    std::string filepath = constructPath("test", "measurements", "csv", false);
+    bool file_exists = std::filesystem::exists(filepath);
+    std::fstream fout;
+    if (!file_exists) {
+        fout.open(filepath, std::ios_base::out);
+    } else {
+        fout.open(filepath, std::ios_base::app);
+    }
+    if (fout.is_open()) {
+        if (!file_exists) {
+            fout << "testname,success_rate,mae,sae,mte,ste,mrmse,srmse\n";
+        }
+    } else {
+        perror(("error while opening file " + filepath).c_str());
+    }
+
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
+    Eigen::Matrix4f transformation_gt;
+    std::string testname;
+    float min_voxel_size;
+    int n_times = config.get<int>("n_times", 10);
+
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt, min_voxel_size);
+    loadTransformationGt(config, transformation_gt);
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
+        parameters.fix_seed = false;
+        parameters.testname = testname;
+        parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt);
+        if (parameters.save_features) {
+            saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
+        }
+        std::vector<float> rotation_errors;
+        std::vector<float> translation_errors;
+        std::vector<float> overlap_errors;
+        int n_successful_times = 0;
+        for (int i = 0; i < n_times; ++i) {
+            pcl::console::print_highlight("Starting alignment...\n");
+            AlignmentAnalysis analysis;
+            auto descriptor_id = parameters.descriptor_id;
+            if (descriptor_id == "fpfh") {
+                auto[alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
+                analysis = alignment.getAlignmentAnalysis(parameters, time);
+            } else if (descriptor_id == "usc") {
+                auto[alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
+                analysis = alignment.getAlignmentAnalysis(parameters, time);
+            } else if (descriptor_id == "rops") {
+                auto[alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
+                analysis = alignment.getAlignmentAnalysis(parameters, time);
+            } else if (descriptor_id == "shot") {
+                auto[alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
+                analysis = alignment.getAlignmentAnalysis(parameters, time);
+            } else {
+                pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
+            }
+            if (analysis.alignmentHasConverged()) {
+                analysis.start(transformation_gt, testname);
+                bool success = analysis.getOverlapError() < parameters.distance_thr_coef * parameters.voxel_size;
+                if (success) {
+                    rotation_errors.push_back(analysis.getRotationError());
+                    translation_errors.push_back(analysis.getTranslationError());
+                    overlap_errors.push_back(analysis.getOverlapError());
+                    n_successful_times++;
+                }
+            }
+        }
+        float success_rate = (float) n_successful_times / (float) n_times;
+        auto mean_rotation_error = calculate_mean<float>(rotation_errors);
+        auto std_rotation_error = calculate_standard_deviation<float>(rotation_errors);
+        auto mean_translation_error = calculate_mean<float>(translation_errors);
+        auto std_translation_error = calculate_standard_deviation<float>(translation_errors);
+        auto mean_overlap_error = calculate_mean<float>(overlap_errors);
+        auto std_overlap_error = calculate_standard_deviation<float>(overlap_errors);
+        fout << constructName(parameters, "measure") << "," << success_rate << ","
+             << mean_rotation_error << "," << std_rotation_error << ","
+             << mean_translation_error << "," << std_translation_error << ","
+             << mean_overlap_error << "," << std_overlap_error << "\n";
+    }
+}
+
 void processTests(const std::vector<YAML::Node> &tests, const std::string &command) {
     for (auto &test: tests) {
         YamlConfig config;
         config.config = (*test.begin()).second;
-        if (command == ALIGNMENT) {
-            runTest(config);
-        } else if (command == METRIC_ANALYSIS) {
-            estimateTestMetric(config);
-        } else if (command == DEBUG) {
-            generateDebugFiles(config);
+        auto test_type = (*test.begin()).first.as<std::string>();
+        if (test_type == "test") {
+            if (command == ALIGNMENT) {
+                runTest(config);
+            } else if (command == METRIC_ANALYSIS) {
+                estimateTestMetric(config);
+            } else if (command == DEBUG) {
+                generateDebugFiles(config);
+            }
+        } else if (test_type == "measure") {
+            measureTestResults(config);
         }
+
     }
 }
 

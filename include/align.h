@@ -235,6 +235,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
     if (!is_initial) {
         align.setTransformationGuess(*parameters.guess);
     }
+    align.setRandomness(parameters.fix_seed);
     {
         pcl::ScopeTime t(is_initial ? "Initial alignment step" : "Alignment step");
         align.align(*src_aligned);

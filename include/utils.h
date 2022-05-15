@@ -57,6 +57,28 @@ T quantile(double q, const std::vector<T> &values) {
     return ith;
 }
 
+template<typename T>
+T calculate_mean(const std::vector<T> &v) {
+    if (v.empty()) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    return std::accumulate(v.begin(), v.end(), 0.0) / (T) v.size();
+}
+
+template<typename T>
+T calculate_standard_deviation(const std::vector<T> &v) {
+    if (v.empty()) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    T mean = calculate_mean(v);
+    T deviation = 0.0;
+    for (T x: v) {
+        deviation += (x - mean) * (x - mean);
+    }
+    deviation = std::sqrt(deviation / (T) v.size());
+    return deviation;
+}
+
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
 
 #endif

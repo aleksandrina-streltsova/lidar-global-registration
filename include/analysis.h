@@ -51,6 +51,18 @@ public:
         return transformation_;
     }
 
+    inline float getRotationError() const {
+        return r_error_;
+    }
+
+    inline float getTranslationError() const {
+        return t_error_;
+    }
+
+    inline float getOverlapError() const {
+        return overlap_error_;
+    }
+
     friend std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis);
 
 private:

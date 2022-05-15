@@ -69,6 +69,7 @@ struct AlignmentParameters {
     std::shared_ptr<Eigen::Matrix4f> ground_truth{nullptr};
 
     // these parameters cannot be set in config, they are set before alignment steps
+    bool fix_seed = true;
     float match_search_radius = 0;
     std::shared_ptr<Eigen::Matrix4f> guess{nullptr};
 };

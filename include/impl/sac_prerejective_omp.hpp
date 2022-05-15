@@ -303,8 +303,8 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
             std::vector<InlierPair> inlier_pairs;
             float metric, error;
 
-            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1,
-                                                   SEED + omp_get_thread_num());
+            int seed = fix_seed_ ? SEED + omp_get_thread_num() : std::random_device{}();
+            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, seed);
 
 #pragma omp for nowait
             for (int i = 0; i < this->max_iterations_; ++i) {
