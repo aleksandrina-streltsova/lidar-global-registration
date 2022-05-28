@@ -115,6 +115,7 @@ void getIterationsInfo(const std::string &csv_path, const std::string &name,
 
     CSVRow row;
     voxel_sizes.clear();
+    bool success = false;
     while (file >> row) {
         if (row[0] == name) {
             int n = std::stoi(row[1]);
@@ -122,7 +123,13 @@ void getIterationsInfo(const std::string &csv_path, const std::string &name,
                 voxel_sizes.push_back(std::stof(row[2 * i + 2]));
                 matching_ids.push_back(row[2 * i + 3]);
             }
+            success = true;
+            break;
         }
+    }
+    if (!success) {
+        pcl::console::print_error("Failed to get iterations for test %s!\n", name.c_str());
+        exit(1);
     }
 }
 
@@ -313,7 +320,7 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
-        setPointColor(dst.points[i], COLOR_BEIGE);
+        setPointColor(dst.points[i], is_source ? COLOR_BEIGE : COLOR_PURPLE);
     }
     for (const auto &correspondence: correspondences) {
         if (is_source) {
@@ -514,7 +521,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
         std::vector correspondences_sparse(correspondences);
         std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
                      std::mt19937(std::random_device()()));
-        correspondences_sparse.resize((int) (0.01 * correspondences_sparse.size()));
+        correspondences_sparse.resize((int) (0.02 * correspondences_sparse.size()));
         writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
     } else {
         writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
