@@ -70,6 +70,7 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path,
 Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name) {
     std::ifstream file(csv_path);
     Eigen::Matrix4f transformation;
+    bool success = false;
 
     CSVRow row;
     while (file >> row) {
@@ -77,7 +78,13 @@ Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string
             for (int i = 0; i < 16; ++i) {
                 transformation(i / 4, i % 4) = std::stof(row[i + 1]);
             }
+            success = true;
+            break;
         }
+    }
+    if (!success) {
+        pcl::console::print_error("Failed to get transformation %s!\n", transformation_name.c_str());
+        exit(1);
     }
     return transformation;
 }
