@@ -225,10 +225,10 @@ void AlignmentAnalysis::print() {
     pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_pairs_.size(), inlier_pairs_.size());
     pcl::console::print_info("correct correspondences: %i/%i\n",
                              correct_correspondences_.size(), correspondences_.size());
-    pcl::console::print_info("rotation error: %0.7f\n", r_error_);
+    pcl::console::print_info("rotation error (deg): %0.7f\n", 180.0 / M_PI * r_error_);
     pcl::console::print_info("translation error: %0.7f\n", t_error_);
     pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error_);
-    pcl::console::print_info("normal mean difference: %0.7f\n", normal_diff_);
+    pcl::console::print_info("normal mean difference (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
     pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
 }
 
@@ -257,7 +257,7 @@ void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
     out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
-    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse\n";
+    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -282,6 +282,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
     stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << ",";
     stream << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
-    stream << analysis.parameters_.metric_id << "," << analysis.time_ << "," << analysis.overlap_error_ << "\n";
+    stream << analysis.parameters_.metric_id << "," << analysis.time_ << "," << analysis.overlap_error_ << ",";
+    stream << analysis.parameters_.alignment_id << "\n";
     return stream;
 }

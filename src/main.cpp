@@ -73,6 +73,57 @@ AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const Alig
         } else {
             pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
         }
+    } else if (parameters.alignment_id == ALIGNMENT_GROR) {
+        /*======================================================================*/
+        auto t = std::chrono::system_clock::now();
+        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr issS(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr issT(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::CorrespondencesPtr corr(new pcl::Correspondences), corr_global(new pcl::Correspondences);
+        Eigen::Vector3f centerS(0, 0, 0), centerT(0, 0, 0);
+
+        pcl::copyPointCloud(*src, *origin_cloudS);
+        pcl::copyPointCloud(*tgt, *origin_cloudT);
+        GrorPre::grorPreparation(origin_cloudS, origin_cloudT, cloudS, cloudT, issS, issT,
+                                 corr, corr_global, parameters.voxel_size);
+
+        auto t4 = std::chrono::system_clock::now();
+        pcl::registration::GRORInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, float> gror;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pcs(new pcl::PointCloud<pcl::PointXYZ>);
+        gror.setInputSource(issS);
+        gror.setInputTarget(issT);
+        gror.setResolution(parameters.voxel_size);
+        gror.setOptimalSelectionNumber(800);
+        gror.setNumberOfThreads(1);
+        gror.setInputCorrespondences(corr);
+        gror.align(*pcs);
+        auto t5 = std::chrono::system_clock::now();
+        std::cout << "/*Down!: time consumption of gror: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count()) / 1000.0 << std::endl;
+        std::cout << "best count: " << gror.getBestCount() << std::endl;
+        std::cout << "best final TM: \n" << gror.getFinalTransformation() << std::endl;
+        std::cout << "/*=================================================*/" << std::endl;
+
+        auto t_end = std::chrono::system_clock::now();
+        auto time = double(std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t).count()) / 1000.0;
+
+        std::cout << "/*total registration time cost:" << time << std::endl;
+        std::cout << "/*=================================================*/" << std::endl;
+
+        NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
+        PointNCloud::Ptr src_downsize(new PointNCloud);
+        PointNCloud::Ptr tgt_downsize(new PointNCloud);
+        pcl::copyPointCloud(*cloudS, *src_downsize);
+        pcl::copyPointCloud(*cloudT, *tgt_downsize);
+        float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
+        estimateNormals(normal_radius, src_downsize, normals_src, false);
+        estimateNormals(normal_radius, tgt_downsize, normals_tgt, false);
+        pcl::concatenateFields(*src_downsize, *normals_src, *src_downsize);
+        pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt_downsize);
+
+        analysis = AlignmentAnalysis(parameters, src_downsize, tgt_downsize, *corr_global, 0, gror.getFinalTransformation(), time);
     } else {
         pcl::console::print_error("Alignment method %s isn't supported!\n", parameters.alignment_id.c_str());
     }

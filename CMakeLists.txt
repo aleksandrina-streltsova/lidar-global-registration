@@ -20,7 +20,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-add_executable(registration src/main.cpp src/config.cpp src/csv_parser.cpp src/align.cpp src/common.cpp src/filter.cpp src/analysis.cpp src/feature_analysis.cpp src/downsample.cpp src/utils.cpp src/metric.cpp src/weights.cpp)
+add_executable(registration src/main.cpp src/config.cpp src/csv_parser.cpp src/align.cpp src/common.cpp src/filter.cpp src/analysis.cpp src/feature_analysis.cpp src/downsample.cpp src/utils.cpp src/metric.cpp src/weights.cpp src/gror/gror_pre.cpp)
 target_link_libraries(registration ${PCL_LIBRARIES} ${OpenCV_LIBS} yaml-cpp)
 target_include_directories(registration PUBLIC include/)
 
