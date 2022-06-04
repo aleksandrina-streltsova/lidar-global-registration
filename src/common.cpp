@@ -17,7 +17,12 @@ const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
 const std::string VERSION = "08";
-const std::string DEFAULT_DESCRIPTOR = "fpfh";
+const std::string ALIGNMENT_DEFAULT = "default";
+const std::string ALIGNMENT_GROR = "gror";
+const std::string DESCRIPTOR_FPFH = "fpfh";
+const std::string DESCRIPTOR_SHOT = "shot";
+const std::string DESCRIPTOR_ROPS = "rops";
+const std::string DESCRIPTOR_USC = "usc";
 const std::string DEFAULT_LRF = "default";
 const std::string METRIC_CORRESPONDENCES = "correspondences";
 const std::string METRIC_CLOSEST_POINT = "closest_point";
@@ -168,15 +173,15 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
                                                          float min_voxel_size) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
-    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", true);
-    parameters.edge_thr_coef = config.get<float>("edge_thr").value();
-    parameters.distance_thr_coef = config.get<float>("distance_thr_coef").value();
+    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", false);
+    parameters.edge_thr_coef = config.get<float>("edge_thr", 0.95);
+    parameters.distance_thr_coef = config.get<float>("distance_thr_coef", 1.5);
     parameters.max_iterations = config.get<int>("iteration");
-    parameters.confidence = config.get<float>("confidence").value();
-    parameters.inlier_fraction = config.get<float>("inlier_fraction").value();
-    parameters.use_bfmatcher = config.get<bool>("bf", false);
-    parameters.randomness = config.get<int>("randomness").value();
-    parameters.n_samples = config.get<int>("n_samples").value();
+    parameters.confidence = config.get<float>("confidence", 0.999);
+    parameters.inlier_fraction = config.get<float>("inlier_fraction", 0.1);
+    parameters.use_bfmatcher = config.get<bool>("bf", true);
+    parameters.randomness = config.get<int>("randomness", 1);
+    parameters.n_samples = config.get<int>("n_samples", 3);
     parameters.save_features = config.get<bool>("save_features", false);
     parameters.bf_block_size = config.get<int>("block_size", 10000);
 
@@ -190,6 +195,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.use_normals = use_normals && normals_available;
     parameters_container.push_back(parameters);
 
+    auto alignment_ids = config.getVector<std::string>("alignment", ALIGNMENT_DEFAULT);
+    for (const auto &id: alignment_ids) {
+        for (auto ps: parameters_container) {
+            ps.alignment_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     auto voxel_sizes = config.getVector<float>("voxel_size").value();
     for (float vs: voxel_sizes) {
         for (auto ps: parameters_container) {
@@ -200,7 +215,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto normal_radius_coefs = config.getVector<float>("normal_radius_coef").value();
+    auto normal_radius_coefs = config.getVector<float>("normal_radius_coef", 3);
     for (float nrc: normal_radius_coefs) {
         for (auto ps: parameters_container) {
             ps.normal_radius_coef = nrc;
@@ -210,7 +225,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto feature_radius_coefs = config.getVector<float>("feature_radius_coef").value();
+    auto feature_radius_coefs = config.getVector<float>("feature_radius_coef", 15);
     for (float frc: feature_radius_coefs) {
         for (auto ps: parameters_container) {
             ps.feature_radius_coef = frc;
@@ -230,7 +245,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto descriptor_ids = config.getVector<std::string>("descriptor", DEFAULT_DESCRIPTOR);
+    auto descriptor_ids = config.getVector<std::string>("descriptor", DESCRIPTOR_SHOT);
     for (const auto &id: descriptor_ids) {
         for (auto ps: parameters_container) {
             ps.descriptor_id = id;
@@ -250,7 +265,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto metric_ids = config.getVector<std::string>("metric", METRIC_CORRESPONDENCES);
+    auto metric_ids = config.getVector<std::string>("metric", METRIC_COMBINATION);
     for (const auto &id: metric_ids) {
         for (auto ps: parameters_container) {
             ps.metric_id = id;
@@ -260,7 +275,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto matching_ids = config.getVector<std::string>("matching", MATCHING_LEFT_TO_RIGHT);
+    auto matching_ids = config.getVector<std::string>("matching", MATCHING_CLUSTER);
     for (const auto &id: matching_ids) {
         for (auto ps: parameters_container) {
             ps.matching_id = id;

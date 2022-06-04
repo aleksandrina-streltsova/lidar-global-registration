@@ -61,7 +61,7 @@ struct AlignmentParameters {
     bool use_bfmatcher;
     int bf_block_size;
     int randomness, n_samples;
-    std::string func_id, descriptor_id, lrf_id, metric_id, matching_id, weight_id;
+    std::string alignment_id, func_id, descriptor_id, lrf_id, metric_id, matching_id, weight_id;
     std::optional<int> max_iterations;
 
     bool save_features;
@@ -130,7 +130,12 @@ extern const std::string DATA_DEBUG_PATH;
 extern const std::string TRANSFORMATIONS_CSV;
 extern const std::string ITERATIONS_CSV;
 extern const std::string VERSION;
-extern const std::string DEFAULT_DESCRIPTOR;
+extern const std::string ALIGNMENT_DEFAULT;
+extern const std::string ALIGNMENT_GROR;
+extern const std::string DESCRIPTOR_FPFH;
+extern const std::string DESCRIPTOR_SHOT;
+extern const std::string DESCRIPTOR_ROPS;
+extern const std::string DESCRIPTOR_USC;
 extern const std::string DEFAULT_LRF;
 extern const std::string METRIC_CORRESPONDENCES;
 extern const std::string METRIC_CLOSEST_POINT;

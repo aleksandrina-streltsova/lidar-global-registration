@@ -9,6 +9,9 @@
 #include "filter.h"
 #include "downsample.h"
 
+#include "gror/ia_gror.h"
+#include "gror/gror_pre.h"
+
 namespace fs = std::filesystem;
 
 const std::string ALIGNMENT = "alignment";
@@ -26,8 +29,8 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
-    filter_duplicate_points(src);
-    filter_duplicate_points(tgt);
+//    filter_duplicate_points(src);
+//    filter_duplicate_points(tgt);
 
     if (density.has_value()) {
         min_voxel_size = density.value();
@@ -51,6 +54,31 @@ void loadTransformationGt(const std::string &src_path, const std::string &tgt_pa
     transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
 }
 
+AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const AlignmentParameters &parameters) {
+    AlignmentAnalysis analysis;
+    if (parameters.alignment_id == ALIGNMENT_DEFAULT) {
+    auto descriptor_id = parameters.descriptor_id;
+        if (descriptor_id == DESCRIPTOR_FPFH) {
+            auto[alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
+        } else if (descriptor_id == DESCRIPTOR_USC) {
+            auto[alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
+        } else if (descriptor_id == DESCRIPTOR_ROPS) {
+            auto[alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
+        } else if (descriptor_id == DESCRIPTOR_SHOT) {
+            auto[alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
+            analysis = alignment.getAlignmentAnalysis(parameters, time);
+        } else {
+            pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
+        }
+    } else {
+        pcl::console::print_error("Alignment method %s isn't supported!\n", parameters.alignment_id.c_str());
+    }
+    return analysis;
+}
+
 std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
@@ -71,24 +99,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
             saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
         }
         pcl::console::print_highlight("Starting alignment...\n");
-
-        AlignmentAnalysis analysis;
-        auto descriptor_id = parameters.descriptor_id;
-        if (descriptor_id == "fpfh") {
-            auto [alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == "usc") {
-            auto [alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == "rops") {
-            auto [alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == "shot") {
-            auto [alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else {
-            pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
-        }
+        AlignmentAnalysis analysis = align(src, tgt, parameters);
         if (analysis.alignmentHasConverged()) {
             analysis.start(transformation_gt, testname);
         }
@@ -318,23 +329,7 @@ void measureTestResults(const YamlConfig &config) {
         int n_successful_times = 0;
         for (int i = 0; i < n_times; ++i) {
             pcl::console::print_highlight("Starting alignment...\n");
-            AlignmentAnalysis analysis;
-            auto descriptor_id = parameters.descriptor_id;
-            if (descriptor_id == "fpfh") {
-                auto[alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "usc") {
-                auto[alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "rops") {
-                auto[alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "shot") {
-                auto[alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else {
-                pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
-            }
+            AlignmentAnalysis analysis = align(src, tgt, parameters);
             if (analysis.alignmentHasConverged()) {
                 analysis.start(transformation_gt, testname);
                 bool success = analysis.getOverlapError() < parameters.distance_thr_coef * parameters.voxel_size;
@@ -394,23 +389,7 @@ void runLoopTest(const YamlConfig &config) {
             loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
             parameters.testname = testname;
             pcl::console::print_highlight("Starting alignment...\n");
-            AlignmentAnalysis analysis;
-            auto descriptor_id = parameters.descriptor_id;
-            if (descriptor_id == "fpfh") {
-                auto[alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "usc") {
-                auto[alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "rops") {
-                auto[alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else if (descriptor_id == "shot") {
-                auto[alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
-                analysis = alignment.getAlignmentAnalysis(parameters, time);
-            } else {
-                pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
-            }
+            AlignmentAnalysis analysis = align(src, tgt, parameters);
             if (analysis.alignmentHasConverged()) {
                 analysis.start(transformation_gt, testname);
             }
