@@ -31,6 +31,8 @@ class SampleConsensusPrerejectiveOMP : public pcl::SampleConsensusPrerejective<P
 public:
     using Matrix4 = typename pcl::Registration<PointN, PointN>::Matrix4;
     using FeatureCloud = pcl::PointCloud<FeatureT>;
+    using KdTree = pcl::search::KdTree<PointN>;
+    using KdTreePtr = typename KdTree::Ptr;
 
     SampleConsensusPrerejectiveOMP() : point_representation_(new pcl::DefaultPointRepresentation<FeatureT>) {
         this->reg_name_ = "SampleConsensusPrerejectiveOMP";
@@ -56,6 +58,14 @@ public:
 
     inline void setRandomness(bool fix_seed) {
         fix_seed_ = fix_seed;
+    }
+
+    inline void setSourceIndices(const pcl::IndicesConstPtr &source_indices) {
+        source_indices_ = source_indices;
+    }
+
+    inline void setTargetIndices(const pcl::IndicesConstPtr &target_indices) {
+        target_indices_ = target_indices;
     }
 
     inline MetricEstimator::ConstPtr getMetricEstimator() const {
@@ -105,6 +115,8 @@ protected:
 
     void setNumberOfThreads(unsigned int nr_threads = 0);
 
+    unsigned int getNumberOfThreads();
+
     std::vector<InlierPair> inlier_pairs_;
     bool correspondence_ids_from_file_ = false;
     bool guess_available_ = false;
@@ -112,13 +124,11 @@ protected:
     float rmse_ = std::numeric_limits<float>::max();
     float confidence_ = 0.999f;
     unsigned int threads_{};
+    pcl::IndicesConstPtr source_indices_{nullptr}, target_indices_{nullptr};
     typename pcl::PointRepresentation<FeatureT>::Ptr point_representation_;
     MetricEstimator::Ptr metric_estimator_{nullptr};
     typename FeatureMatcher<FeatureT>::Ptr feature_matcher_{nullptr};
     Eigen::Matrix4f guess_;
-
-private:
-    unsigned int getNumberOfThreads();
 };
 
 #include "impl/sac_prerejective_omp.hpp"

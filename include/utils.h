@@ -4,6 +4,11 @@
 #include <iostream>
 #include <random>
 #include <functional>
+#include <stdexcept>
+
+#define rassert(condition, id) if (!(condition)) { throw std::runtime_error("Assertion " + std::to_string(id) + " failed at line " + std::to_string(debugPoint(__LINE__)) + "!"); }
+
+int debugPoint(int line);
 
 class UniformRandIntGenerator {
 public:

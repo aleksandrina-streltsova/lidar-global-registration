@@ -1,5 +1,14 @@
 #include "utils.h"
 
+int debugPoint(int line)
+{
+    if (line < 0)
+        return 0;
+
+    // You can put breakpoint at the following line to catch any rassert failure:
+    return line;
+}
+
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter) {
     tokens.clear();
     std::string s(str);

@@ -31,69 +31,87 @@ void estimateNormals(float radius_search, const PointNCloud::Ptr &pcd, NormalClo
 
 void smoothNormals(float radius_search, float voxel_size, const PointNCloud::Ptr &pcd);
 
+void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstPtr &normals, pcl::IndicesPtr &indices,
+                     const AlignmentParameters &parameters);
+
 void estimateReferenceFrames(const PointNCloud::Ptr &pcd, const NormalCloud::Ptr &normals,
-                             PointRFCloud::Ptr &frames, const AlignmentParameters &parameters, bool is_source);
+                             const pcl::IndicesPtr &indices, PointRFCloud::Ptr &frames_kps,
+                             const AlignmentParameters &parameters, bool is_source);
 
 template<typename FeatureT, typename PointRFT = PointRF>
-void estimateFeatures(float radius_search, const PointNCloud::Ptr &pcd, const PointNCloud::Ptr &surface,
-                      const NormalCloud::Ptr &normals, const typename pcl::PointCloud<PointRFT>::Ptr &frames,
+void estimateFeatures(float radius_search, const PointNCloud::Ptr &pcd,
+                      const NormalCloud::Ptr &normals,
+                      const pcl::IndicesConstPtr &indices,
+                      const typename pcl::PointCloud<PointRFT>::Ptr &frames,
                       typename pcl::PointCloud<FeatureT>::Ptr &features) {
     throw std::runtime_error("Feature with proposed reference frame isn't supported!");
 }
 
 template<>
 inline void estimateFeatures<FPFH>(float radius_search, const PointNCloud::Ptr &pcd,
-                                   const PointNCloud::Ptr &surface,
                                    const NormalCloud::Ptr &normals,
+                                   const pcl::IndicesConstPtr &indices,
                                    const PointRFCloud::Ptr &frames,
                                    pcl::PointCloud<FPFH>::Ptr &features) {
+    int nr_kps = indices ? indices->size() : pcd->size();
     pcl::FPFHEstimationOMP<PointN, pcl::Normal, FPFH> fpfh_estimation;
     fpfh_estimation.setRadiusSearch(radius_search);
     fpfh_estimation.setInputCloud(pcd);
     fpfh_estimation.setInputNormals(normals);
+    if (indices) fpfh_estimation.setIndices(indices);
     fpfh_estimation.compute(*features);
+    rassert(features->size() == nr_kps, 104935923)
 }
 
 template<>
 inline void estimateFeatures<USC>(float radius_search, const PointNCloud::Ptr &pcd,
-                                  const PointNCloud::Ptr &surface,
                                   const NormalCloud::Ptr &normals,
+                                  const pcl::IndicesConstPtr &indices,
                                   const PointRFCloud::Ptr &frames,
                                   pcl::PointCloud<USC>::Ptr &features) {
+    int nr_kps = indices ? indices->size() : pcd->size();
     pcl::UniqueShapeContext<PointN, USC, PointRF> shape_context;
     shape_context.setInputCloud(pcd);
+    if (indices) shape_context.setIndices(indices);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
     shape_context.setPointDensityRadius(radius_search / 5.f);
     shape_context.setLocalRadius(radius_search);
     shape_context.compute(*features);
+    rassert(features->size() == nr_kps, 3489281234)
     std::cout << "output points.size (): " << features->points.size() << std::endl;
+
 }
 
 template<>
 inline void estimateFeatures<pcl::ShapeContext1980>(float radius_search, const PointNCloud::Ptr &pcd,
-                                                    const PointNCloud::Ptr &surface,
                                                     const NormalCloud::Ptr &normals,
+                                                    const pcl::IndicesConstPtr &indices,
                                                     const PointRFCloud::Ptr &frames,
                                                     pcl::PointCloud<pcl::ShapeContext1980>::Ptr &features) {
+    int nr_kps = indices ? indices->size() : pcd->size();
     pcl::ShapeContext3DEstimation<PointN, pcl::Normal, pcl::ShapeContext1980> shape_context;
     shape_context.setInputCloud(pcd);
     shape_context.setInputNormals(normals);
+    if (indices) shape_context.setIndices(indices);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
     shape_context.compute(*features);
+    rassert(features->size() == nr_kps, 1398423940)
     std::cout << "output points.size (): " << features->points.size() << std::endl;
 }
 
 template<>
 inline void estimateFeatures<RoPS135>(float radius_search, const PointNCloud::Ptr &pcd,
-                                      const PointNCloud::Ptr &surface,
                                       const NormalCloud::Ptr &normals,
+                                      const pcl::IndicesConstPtr &indices,
                                       const PointRFCloud::Ptr &frames,
                                       pcl::PointCloud<RoPS135>::Ptr &features) {
+    int nr_kps = indices ? indices->size() : pcd->size();
     // RoPs estimation object.
     ROPSEstimationWithLocalReferenceFrames<PointN, RoPS135> rops;
     rops.setInputCloud(pcd);
+    if (indices) rops.setIndices(indices);
     rops.setRadiusSearch(radius_search);
     // Number of partition bins that is used for distribution matrix calculation.
     rops.setNumberOfPartitionBins(5);
@@ -128,29 +146,30 @@ inline void estimateFeatures<RoPS135>(float radius_search, const PointNCloud::Pt
     }
 
     rops.compute(*features);
+    rassert(features->size() == nr_kps, 2434751037284)
 }
 
 template<>
 inline void estimateFeatures<SHOT>(float radius_search, const PointNCloud::Ptr &pcd,
-                                   const PointNCloud::Ptr &surface,
                                    const NormalCloud::Ptr &normals,
+                                   const pcl::IndicesConstPtr &indices,
                                    const PointRFCloud::Ptr &frames,
                                    pcl::PointCloud<SHOT>::Ptr &features) {
-
+    int nr_kps = indices ? indices->size() : pcd->size();
     // SHOT estimation object.
     pcl::SHOTEstimationOMP<PointN, pcl::Normal, SHOT> shot;
     shot.setInputCloud(pcd);
+    if (indices) shot.setIndices(indices);
 //	shot.setSearchSurface(surface);
     shot.setInputNormals(normals);
     // The radius that defines which of the keypoint's neighbors are described.
     // If too large, there may be clutter, and if too small, not enough points may be found.
     shot.setRadiusSearch(radius_search);
-    if (frames) {
-        shot.setInputReferenceFrames(frames);
-    }
+    if (frames) shot.setInputReferenceFrames(frames);
     PCL_WARN("[estimateFeatures<SHOT>] Points probably have NaN normals in their neighbourhood\n");
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
+    rassert(features->size() == nr_kps, 845637470190)
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }
 
@@ -166,9 +185,10 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
     SampleConsensusPrerejectiveOMP<FeatureT> align;
 
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-    PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
-    typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
-    typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
+    pcl::IndicesPtr indices_src(nullptr), indices_tgt(nullptr);
+    PointRFCloud::Ptr frames_kps_src(nullptr), frames_kps_tgt(nullptr);
+    typename pcl::PointCloud<FeatureT>::Ptr features_kps_src(new pcl::PointCloud<FeatureT>);
+    typename pcl::PointCloud<FeatureT>::Ptr features_kps_tgt(new pcl::PointCloud<FeatureT>);
 
     float voxel_size = parameters.voxel_size;
     float normal_radius = parameters.normal_radius_coef * voxel_size;
@@ -196,29 +216,34 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
 
     align.readCorrespondences(parameters);
     if (!align.correspondencesFromFile()) {
+        // Detect key points
+        pcl::console::print_highlight("Detecting key points...\n");
+        detectKeyPoints(src, normals_src, indices_src, parameters);
+        detectKeyPoints(tgt, normals_tgt, indices_tgt, parameters);
+
         // Estimate reference frames
         pcl::console::print_highlight("Estimating local reference frames...\n");
-        estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
-        estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
+        estimateReferenceFrames(src, normals_src, indices_src, frames_kps_src, parameters, true);
+        estimateReferenceFrames(tgt, normals_tgt, indices_tgt, frames_kps_tgt, parameters, false);
 
         // Estimate features
         pcl::console::print_highlight("Estimating features...\n");
-        estimateFeatures<FeatureT>(feature_radius, src, src_final, normals_src, frames_src, features_src);
-        estimateFeatures<FeatureT>(feature_radius, tgt, tgt_final, normals_tgt, frames_tgt, features_tgt);
+        estimateFeatures<FeatureT>(feature_radius, src, normals_src, indices_src, frames_kps_src, features_kps_src);
+        estimateFeatures<FeatureT>(feature_radius, tgt, normals_tgt, indices_tgt, frames_kps_tgt, features_kps_tgt);
 
         if (parameters.save_features) {
-            saveFeatures<FeatureT>(features_src, parameters, true);
-            saveFeatures<FeatureT>(features_tgt, parameters, false);
+            saveFeatures<FeatureT>(features_kps_src, parameters, true);
+            saveFeatures<FeatureT>(features_kps_tgt, parameters, false);
         }
-    } else {
-        features_src->resize(src->size());
-        features_tgt->resize(tgt->size());
+
+        align.setSourceFeatures(features_kps_src);
+        align.setTargetFeatures(features_kps_tgt);
+
+        align.setSourceIndices(indices_src);
+        align.setTargetIndices(indices_tgt);
     }
     align.setInputSource(src);
-    align.setSourceFeatures(features_src);
-
     align.setInputTarget(tgt);
-    align.setTargetFeatures(features_tgt);
 
     align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters));
     align.setMetricEstimator(getMetricEstimator(parameters, true));

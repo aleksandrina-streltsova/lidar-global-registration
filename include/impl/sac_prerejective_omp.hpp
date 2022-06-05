@@ -161,33 +161,59 @@ template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud &output,
                                                                      const Eigen::Matrix4f &) {
     // Some sanity checks first
-    if (!this->input_features_) {
+    if (!this->input_) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR("No source features were given! Call setSourceFeatures before aligning.\n");
+        PCL_ERROR("No source point were given! Call setInputSource before aligning.\n");
         return;
     }
-    if (!this->target_features_) {
+    if (!this->target_) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR("No target features were given! Call setTargetFeatures before aligning.\n");
+        PCL_ERROR("No target points were given! Call setTargetSource before aligning.\n");
         return;
     }
-
-    if (this->input_->size() != this->input_features_->size()) {
-        PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR("The source points and source feature points need to be in a one-to-one "
-                  "relationship! Current input cloud sizes: %ld vs %ld.\n",
-                  this->input_->size(),
-                  this->input_features_->size());
-        return;
-    }
-
-    if (this->target_->size() != this->target_features_->size()) {
-        PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR("The target points and target feature points need to be in a one-to-one "
-                  "relationship! Current input cloud sizes: %ld vs %ld.\n",
-                  this->target_->size(),
-                  this->target_features_->size());
-        return;
+    if (!correspondence_ids_from_file_) {
+        if (!this->input_features_) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("No source features were given! Call setSourceFeatures before aligning.\n");
+            return;
+        }
+        if (!this->target_features_) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("No target features were given! Call setTargetFeatures before aligning.\n");
+            return;
+        }
+        if (!source_indices_ && this->input_->size() != this->input_features_->size()) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("The source points and source feature points need to be in a one-to-one "
+                      "relationship! Current input cloud sizes: %ld vs %ld.\n",
+                      this->input_->size(),
+                      this->input_features_->size());
+            return;
+        }
+        if (source_indices_ && source_indices_->size() != this->input_features_->size()) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("The source indices and source feature points need to be in a one-to-one "
+                      "relationship! Current input cloud sizes: %ld vs %ld.\n",
+                      source_indices_->size(),
+                      this->input_features_->size());
+            return;
+        }
+        if (!target_indices_ && this->target_->size() != this->target_features_->size()) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("The target points and target feature points need to be in a one-to-one "
+                      "relationship! Current input cloud sizes: %ld vs %ld.\n",
+                      target_indices_->size(),
+                      this->target_features_->size());
+            return;
+        }
+        if (target_indices_ && target_indices_->size() != this->target_features_->size()) {
+            PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
+            PCL_ERROR("The target indices and target feature points need to be in a one-to-one "
+                      "relationship! Current input cloud sizes: %ld vs %ld.\n",
+                      target_indices_->size(),
+                      this->target_features_->size());
+            return;
+        }
     }
 
     if (this->inlier_fraction_ < 0.0f || this->inlier_fraction_ > 1.0f) {
@@ -218,13 +244,15 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     }
 
     // Initialize search trees
-    if (this->target_cloud_updated_ && !this->force_no_recompute_) {
-        this->tree_->setInputCloud(this->target_);
-        this->target_cloud_updated_ = false;
-    }
-    if (this->source_cloud_updated_ && !this->force_no_recompute_) {
-        this->tree_reciprocal_->setInputCloud(this->input_);
-        this->source_cloud_updated_ = false;
+    if (!source_indices_ && !correspondence_ids_from_file_) {
+        if (this->target_cloud_updated_ && !this->force_no_recompute_) {
+            this->tree_->setInputCloud(this->target_);
+            this->target_cloud_updated_ = false;
+        }
+        if (this->source_cloud_updated_ && !this->force_no_recompute_) {
+            this->tree_reciprocal_->setInputCloud(this->input_);
+            this->source_cloud_updated_ = false;
+        }
     }
 
     // Initialize prerejector (similarity threshold already set to default value in
@@ -246,9 +274,27 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
         PCL_DEBUG("[%s::computeTransformation] read correspondences from file\n", this->getClassName().c_str());
     } else {
         pcl::ScopeTime t("Correspondence search");
-        *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
-                                                            this->tree_reciprocal_, this->tree_,
-                                                            point_representation_, getNumberOfThreads());
+        if (!source_indices_) {
+            *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
+                                                                this->tree_reciprocal_, this->tree_,
+                                                                point_representation_, getNumberOfThreads());
+        } else {
+            PointNCloud::Ptr source_kps(new PointNCloud), target_kps(new PointNCloud);
+            KdTreePtr source_kps_tree(new KdTree), target_kps_tree(new KdTree);
+            pcl::copyPointCloud(*this->input_, *source_indices_, *source_kps);
+            pcl::copyPointCloud(*this->target_, *target_indices_, *target_kps);
+            source_kps_tree->setInputCloud(source_kps);
+            target_kps_tree->setInputCloud(target_kps);
+
+            *(this->correspondences_) = feature_matcher_->match(this->input_features_, this->target_features_,
+                                                                source_kps_tree, target_kps_tree,
+                                                                point_representation_, getNumberOfThreads());
+            // converting local indices into global indices
+            for (pcl::Correspondence &corr: *this->correspondences_) {
+                corr.index_match = source_indices_->operator[](corr.index_match);
+                corr.index_query = target_indices_->operator[](corr.index_query);
+            }
+        }
     }
 
     // Initialize metric estimator

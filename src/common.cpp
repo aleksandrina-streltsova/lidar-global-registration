@@ -19,6 +19,8 @@ const std::string ITERATIONS_CSV = "iterations.csv";
 const std::string VERSION = "08";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
+const std::string KEYPOINT_ANY = "any";
+const std::string KEYPOINT_ISS = "iss";
 const std::string DESCRIPTOR_FPFH = "fpfh";
 const std::string DESCRIPTOR_SHOT = "shot";
 const std::string DESCRIPTOR_ROPS = "rops";
@@ -199,6 +201,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     for (const auto &id: alignment_ids) {
         for (auto ps: parameters_container) {
             ps.alignment_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
+    auto keypoint_ids = config.getVector<std::string>("keypoint", KEYPOINT_ANY);
+    for (const auto &id: keypoint_ids) {
+        for (auto ps: parameters_container) {
+            ps.keypoint_id = id;
             new_parameters_container.push_back(ps);
         }
     }
@@ -636,6 +648,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                             "_" + std::to_string((int) parameters.normal_radius_coef) +
                             "_" + std::to_string((int) parameters.feature_radius_coef) +
+                            "_" + parameters.alignment_id + "_" + parameters.keypoint_id +
                             "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
                             "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
                             (parameters.coarse_to_fine ? "_ctf" : "") +
