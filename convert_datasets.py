@@ -183,6 +183,16 @@ def e57_to_common(e57_path, indices):
     df.to_csv(gt_path, index=False)
 
 
+@cli.command('las')
+@click.argument('las-path', type=click.Path(exists=True, file_okay=False))
+def las_to_common(las_path):
+    filenames = [filename for filename in os.listdir(las_path) if filename.endswith('.las')]
+    for filename in tqdm(filenames):
+        pcd: PyntCloud = PyntCloud.from_file(os.path.join(las_path, filename))
+        pcd_name = filename[:-4]
+        pcd.to_file(os.path.join(las_path, f'{pcd_name}.ply'))
+
+
 def transform_and_save(load_from: str, save_to: str, transformation: np.ndarray):
     pynt_cloud = PyntCloud.from_file(load_from)
     with_normals = 'nx' in pynt_cloud.points.columns

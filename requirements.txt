@@ -7,3 +7,4 @@ tqdm
 PyYAML
 pyntcloud
 pye57
+pylas
