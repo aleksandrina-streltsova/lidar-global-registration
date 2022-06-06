@@ -134,7 +134,7 @@ void estimateReferenceFrames(const PointNCloud::Ptr &pcd, const NormalCloud::Ptr
         frames_kps->resize(nr_kps, lrf);
     }  else if (lrf_id == "gravity") {
         frames_kps = std::make_shared<PointRFCloud>(PointRFCloud());
-        frames_kps->resize(indices->size());
+        frames_kps->resize(nr_kps);
 
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         tree->setInputCloud(pcd);
@@ -150,8 +150,8 @@ void estimateReferenceFrames(const PointNCloud::Ptr &pcd, const NormalCloud::Ptr
         rassert(frames_kps->size() == nr_kps, 15946243)
 
         Eigen::Vector3f gravity(0, 0, 1);
-        for (std::size_t i = 0; i < indices->size(); ++i) {
-            int idx = indices->operator[](i);
+        for (std::size_t i = 0; i < nr_kps; ++i) {
+            int idx = indices ? indices->operator[](i) : i;
             PointRF &output_rf = frames_kps->points[i];
             const pcl::Normal &normal = normals->points[idx];
             Eigen::Vector3f x_axis(normal.normal_x, normal.normal_y, normal.normal_z);
