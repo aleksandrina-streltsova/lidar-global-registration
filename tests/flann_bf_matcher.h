@@ -63,13 +63,13 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     tree_tgt->setInputCloud(tgt);
 
     // Estimate reference frames
-    estimateReferenceFrames(src, normals_src, frames_src, parameters, true);
-    estimateReferenceFrames(tgt, normals_tgt, frames_tgt, parameters, false);
+    estimateReferenceFrames(src, normals_src, nullptr, frames_src, parameters, true);
+    estimateReferenceFrames(tgt, normals_tgt, nullptr, frames_tgt, parameters, false);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, src_fullsize, normals_src, frames_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, tgt_fullsize, normals_tgt, frames_tgt, features_tgt);
+    estimateFeatures<FeatureT>(feature_radius, src, normals_src, nullptr, frames_src, features_src);
+    estimateFeatures<FeatureT>(feature_radius, tgt, normals_tgt, nullptr, frames_tgt, features_tgt);
 
     std::vector<MultivaluedCorrespondence> mv_correspondences_bf;
     std::vector<MultivaluedCorrespondence> mv_correspondences_flann;

@@ -31,6 +31,9 @@ void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstP
         iss_detector.compute(key_points);
         indices = std::make_shared<pcl::Indices>(pcl::Indices());
         *indices = iss_detector.getKeypointsIndices()->indices;
+        if (parameters.fix_seed) {
+            std::sort(indices->begin(), indices->end());
+        }
     } else {
         if (parameters.keypoint_id != KEYPOINT_ANY) {
             PCL_WARN("[detectKeyPoints] Detection method %s isn't supported, no detection method will be applied.\n",

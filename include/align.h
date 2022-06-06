@@ -232,8 +232,8 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
         estimateFeatures<FeatureT>(feature_radius, tgt, normals_tgt, indices_tgt, frames_kps_tgt, features_kps_tgt);
 
         if (parameters.save_features) {
-            saveFeatures<FeatureT>(features_kps_src, parameters, true);
-            saveFeatures<FeatureT>(features_kps_tgt, parameters, false);
+            saveFeatures<FeatureT>(features_kps_src, indices_src, parameters, true);
+            saveFeatures<FeatureT>(features_kps_tgt, indices_tgt, parameters, false);
         }
 
         align.setSourceFeatures(features_kps_src);

@@ -402,8 +402,9 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
 
     mv_correspondences.resize(query_features->size(), MultivaluedCorrespondence{});
     int n_query_blocks = (query_features->size() + block_size - 1) / block_size;
+    int n_train_blocks = (train_features->size() + block_size - 1) / block_size;
     for (int i = 0; i < n_query_blocks; ++i) {
-        for (int j = 0; j < (train_features->size() + block_size - 1) / block_size; ++j) {
+        for (int j = 0; j < n_train_blocks; ++j) {
             cv::UMat query_features_batch, train_features_batch;
             pcl2cv<FeatureT>(nr_dims, query_features, query_features_batch, block_size, i * block_size);
             pcl2cv<FeatureT>(nr_dims, train_features, train_features_batch, block_size, j * block_size);
@@ -424,6 +425,7 @@ void matchBF(const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
                 }
             }
             matches.clear();
+            PCL_DEBUG("\t[matchBF] %d / % d blocks processed.\n", j, n_train_blocks);
         }
         PCL_DEBUG("[matchBF] %d / % d blocks processed.\n", i + 1, n_query_blocks);
     }

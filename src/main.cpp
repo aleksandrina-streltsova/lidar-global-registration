@@ -18,35 +18,6 @@ const std::string ALIGNMENT = "alignment";
 const std::string METRIC_ANALYSIS = "metric";
 const std::string DEBUG = "debug";
 
-void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
-                     std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
-                     const std::optional<float> density, float &min_voxel_size) {
-    pcl::console::print_highlight("Loading point clouds...\n");
-
-    if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
-        loadPLYFile<PointN>(tgt_path, *tgt, fields_tgt) < 0) {
-        pcl::console::print_error("Error loading src/tgt file!\n");
-        exit(1);
-    }
-//    filter_duplicate_points(src);
-//    filter_duplicate_points(tgt);
-
-    if (density.has_value()) {
-        min_voxel_size = density.value();
-    } else {
-        float src_density = calculatePointCloudDensity<PointN>(src);
-        float tgt_density = calculatePointCloudDensity<PointN>(tgt);
-        PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
-        min_voxel_size = std::max(src_density, tgt_density);
-    }
-
-    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
-    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
-    testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
-               tgt_filename.substr(0, tgt_filename.find_last_of('.'));
-}
-
 void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
                           const std::string &csv_path, Eigen::Matrix4f &transformation_gt) {
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
@@ -297,6 +268,7 @@ void generateDebugFiles(const YamlConfig &config) {
                 exit(1);
             }
             PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
+            pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
             downsamplePointCloud(src, curr_src, curr_parameters);
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
             transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path("transformations.csv"),
@@ -307,6 +279,10 @@ void generateDebugFiles(const YamlConfig &config) {
             estimateNormals(normal_radius, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
+
+            detectKeyPoints(curr_src, normals_src, indices_src, parameters);
+            detectKeyPoints(curr_tgt, normals_tgt, indices_tgt, parameters);
+
             auto metric_estimator = getMetricEstimator(curr_parameters);
             metric_estimator->setSourceCloud(curr_src);
             metric_estimator->setTargetCloud(curr_tgt);
@@ -317,8 +293,8 @@ void generateDebugFiles(const YamlConfig &config) {
             saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters);
             saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters, true);
             saveCorrespondenceDistances(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters.voxel_size, curr_parameters);
-            saveColorizedPointCloud(curr_src, correspondences, correct_correspondences, inlier_pairs, curr_parameters, transformation_gt, true);
-            saveColorizedPointCloud(curr_tgt, correspondences, correct_correspondences, inlier_pairs, curr_parameters, Eigen::Matrix4f::Identity(), false);
+            saveColorizedPointCloud(curr_src, indices_src, correspondences, correct_correspondences, inlier_pairs, curr_parameters, transformation_gt, true);
+            saveColorizedPointCloud(curr_tgt, indices_tgt, correspondences, correct_correspondences, inlier_pairs, curr_parameters, Eigen::Matrix4f::Identity(), false);
             saveCorrespondencesDebug(correspondences, correct_correspondences, curr_parameters);
 
             if (curr_parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {

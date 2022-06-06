@@ -290,9 +290,10 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
                                                                 source_kps_tree, target_kps_tree,
                                                                 point_representation_, getNumberOfThreads());
             // converting local indices into global indices
-            for (pcl::Correspondence &corr: *this->correspondences_) {
-                corr.index_match = source_indices_->operator[](corr.index_match);
-                corr.index_query = target_indices_->operator[](corr.index_query);
+            for (int i = 0; i < this->correspondences_->size(); ++i) {
+                pcl::Correspondence &corr = this->correspondences_->operator[](i);
+                corr.index_query = source_indices_->operator[](corr.index_query);
+                corr.index_match = target_indices_->operator[](corr.index_match);
             }
         }
     }

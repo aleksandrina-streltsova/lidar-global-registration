@@ -51,6 +51,33 @@ template<>
 class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepresentation<RoPS135> {
 };
 
+extern const std::string DATA_DEBUG_PATH;
+extern const std::string TRANSFORMATIONS_CSV;
+extern const std::string ITERATIONS_CSV;
+extern const std::string VERSION;
+extern const std::string ALIGNMENT_DEFAULT;
+extern const std::string ALIGNMENT_GROR;
+extern const std::string KEYPOINT_ANY;
+extern const std::string KEYPOINT_ISS;
+extern const std::string DESCRIPTOR_FPFH;
+extern const std::string DESCRIPTOR_SHOT;
+extern const std::string DESCRIPTOR_ROPS;
+extern const std::string DESCRIPTOR_USC;
+extern const std::string DEFAULT_LRF;
+extern const std::string METRIC_CORRESPONDENCES;
+extern const std::string METRIC_CLOSEST_POINT;
+extern const std::string METRIC_WEIGHTED_CLOSEST_POINT;
+extern const std::string METRIC_COMBINATION;
+extern const std::string MATCHING_LEFT_TO_RIGHT;
+extern const std::string MATCHING_RATIO;
+extern const std::string MATCHING_CLUSTER;
+extern const std::string METRIC_WEIGHT_CONSTANT;
+extern const std::string METRIC_WEIGHT_EXP_CURVATURE;
+extern const std::string METRIC_WEIGHT_CURVEDNESS;
+extern const std::string METRIC_WEIGHT_HARRIS;
+extern const std::string METRIC_WEIGHT_TOMASI;
+extern const std::string METRIC_WEIGHT_CURVATURE;
+
 struct AlignmentParameters {
     bool coarse_to_fine;
     bool use_normals, normals_available;
@@ -72,12 +99,18 @@ struct AlignmentParameters {
     bool fix_seed = true;
     float match_search_radius = 0;
     std::shared_ptr<Eigen::Matrix4f> guess{nullptr};
+    std::string dir_path{DATA_DEBUG_PATH};
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt,
                                                          float min_voxel_size);
+
+void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
+                     std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
+                     const std::optional<float> &density, float &min_voxel_size);
 
 struct MultivaluedCorrespondence {
     int query_idx = -1;
@@ -125,33 +158,6 @@ public:
             return false;
     }
 };
-
-extern const std::string DATA_DEBUG_PATH;
-extern const std::string TRANSFORMATIONS_CSV;
-extern const std::string ITERATIONS_CSV;
-extern const std::string VERSION;
-extern const std::string ALIGNMENT_DEFAULT;
-extern const std::string ALIGNMENT_GROR;
-extern const std::string KEYPOINT_ANY;
-extern const std::string KEYPOINT_ISS;
-extern const std::string DESCRIPTOR_FPFH;
-extern const std::string DESCRIPTOR_SHOT;
-extern const std::string DESCRIPTOR_ROPS;
-extern const std::string DESCRIPTOR_USC;
-extern const std::string DEFAULT_LRF;
-extern const std::string METRIC_CORRESPONDENCES;
-extern const std::string METRIC_CLOSEST_POINT;
-extern const std::string METRIC_WEIGHTED_CLOSEST_POINT;
-extern const std::string METRIC_COMBINATION;
-extern const std::string MATCHING_LEFT_TO_RIGHT;
-extern const std::string MATCHING_RATIO;
-extern const std::string MATCHING_CLUSTER;
-extern const std::string METRIC_WEIGHT_CONSTANT;
-extern const std::string METRIC_WEIGHT_EXP_CURVATURE;
-extern const std::string METRIC_WEIGHT_CURVEDNESS;
-extern const std::string METRIC_WEIGHT_HARRIS;
-extern const std::string METRIC_WEIGHT_TOMASI;
-extern const std::string METRIC_WEIGHT_CURVATURE;
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -217,6 +223,7 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pc
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
 
 void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
+                             const pcl::IndicesConstPtr &key_point_indices,
                              const pcl::Correspondences &correspondences,
                              const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,

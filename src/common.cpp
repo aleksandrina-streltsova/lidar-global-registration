@@ -10,6 +10,7 @@
 
 #include "common.h"
 #include "csv_parser.h"
+#include "io.h"
 
 namespace fs = std::filesystem;
 
@@ -177,7 +178,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     AlignmentParameters parameters;
     parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", false);
     parameters.edge_thr_coef = config.get<float>("edge_thr", 0.95);
-    parameters.distance_thr_coef = config.get<float>("distance_thr_coef", 1.5);
     parameters.max_iterations = config.get<int>("iteration");
     parameters.confidence = config.get<float>("confidence", 0.999);
     parameters.inlier_fraction = config.get<float>("inlier_fraction", 0.1);
@@ -216,6 +216,22 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     }
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
+
+    auto distance_thr_coefs = config.getVector<float>("distance_thr_coef");
+    if (distance_thr_coefs.has_value()) {
+        for (float coef: distance_thr_coefs.value()) {
+            for (auto ps: parameters_container) {
+                ps.distance_thr_coef = coef;
+                new_parameters_container.push_back(ps);
+            }
+        }
+        std::swap(parameters_container, new_parameters_container);
+        new_parameters_container.clear();
+    } else {
+        for (auto &ps: parameters_container) {
+            ps.distance_thr_coef = (ps.alignment_id == ALIGNMENT_GROR || ps.keypoint_id != KEYPOINT_ANY) ? 2.0 : 1.5;
+        }
+    }
 
     auto voxel_sizes = config.getVector<float>("voxel_size").value();
     for (float vs: voxel_sizes) {
@@ -318,6 +334,35 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     return parameters_container;
 }
 
+void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
+                     std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
+                     const std::optional<float> &density, float &min_voxel_size) {
+    pcl::console::print_highlight("Loading point clouds...\n");
+
+    if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
+        loadPLYFile<PointN>(tgt_path, *tgt, fields_tgt) < 0) {
+        pcl::console::print_error("Error loading src/tgt file!\n");
+        exit(1);
+    }
+//    filter_duplicate_points(src);
+//    filter_duplicate_points(tgt);
+
+    if (density.has_value()) {
+        min_voxel_size = density.value();
+    } else {
+        float src_density = calculatePointCloudDensity<PointN>(src);
+        float tgt_density = calculatePointCloudDensity<PointN>(tgt);
+        PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
+        min_voxel_size = std::max(src_density, tgt_density);
+    }
+
+    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
+    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
+    testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
+               tgt_filename.substr(0, tgt_filename.find_last_of('.'));
+}
+
 void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
                                      int k_matches, int match_idx, float distance) {
     int pos = 0;
@@ -343,6 +388,7 @@ float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
 }
 
 void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
+                             const pcl::IndicesConstPtr &key_point_indices,
                              const pcl::Correspondences &correspondences,
                              const pcl::Correspondences &correct_correspondences,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
@@ -354,7 +400,12 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
     dst.resize(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
-        setPointColor(dst.points[i], is_source ? COLOR_BEIGE : COLOR_PURPLE);
+        setPointColor(dst.points[i], key_point_indices ? COLOR_PARAKEET : COLOR_BEIGE);
+    }
+    if (key_point_indices) {
+        for (int idx: *key_point_indices) {
+            setPointColor(dst.points[idx], COLOR_BEIGE);
+        }
     }
     for (const auto &correspondence: correspondences) {
         if (is_source) {
@@ -636,7 +687,7 @@ std::string constructPath(const AlignmentParameters &parameters, const std::stri
                           const std::string &extension, bool with_version, bool with_metric, bool with_weights) {
     std::string filename = constructName(parameters, name, with_version, with_metric, with_weights);
     filename += "." + extension;
-    return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
+    return fs::path(parameters.dir_path) / fs::path(filename);
 }
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
