@@ -9,6 +9,7 @@
 #include <pcl/io/ply_io.h>
 
 #include "common.h"
+#include "filter.h"
 #include "csv_parser.h"
 #include "io.h"
 
@@ -18,6 +19,7 @@ const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
 const std::string VERSION = "08";
+const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
 const std::string KEYPOINT_ANY = "any";
@@ -345,8 +347,8 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
-//    filter_duplicate_points(src);
-//    filter_duplicate_points(tgt);
+    filter_duplicate_points(src);
+    filter_duplicate_points(tgt);
 
     if (density.has_value()) {
         min_voxel_size = density.value();
@@ -435,7 +437,8 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
             mixPointColor(dst.points[correspondence.index_match], COLOR_WHITE);
         }
     }
-    std::string filepath = constructPath(parameters, std::string("downsampled_") + (is_source ? "src" : "tgt"));
+    std::string filepath = constructPath(parameters, std::string("downsampled_") + (is_source ? "src" : "tgt"),
+                                         "ply", true, true, true, true);
     pcl::io::savePLYFileBinary(filepath, dst);
 }
 
@@ -472,7 +475,7 @@ void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &
         setPointColor(dst.points[i], getColor(weights[i], weights_min, weights_max));
     }
     pcl::transformPointCloud(dst, dst, transformation_gt);
-    std::string filepath = constructPath(parameters, name);
+    std::string filepath = constructPath(parameters, name, "ply", true, true, true, true);
     pcl::io::savePLYFileBinary(filepath, dst);
 }
 
@@ -681,24 +684,27 @@ void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, s
 
 
 std::string constructPath(const std::string &test, const std::string &name,
-                          const std::string &extension, bool with_version) {
+                          const std::string &extension, bool with_version, bool with_subversion) {
     std::string filename = test + "_" + name;
     if (with_version) {
         filename += "_" + VERSION;
+    }
+    if (with_subversion) {
+        filename += SUBVERSION;
     }
     filename += "." + extension;
     return fs::path(DATA_DEBUG_PATH) / fs::path(filename);
 }
 
-std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
-                          const std::string &extension, bool with_version, bool with_metric, bool with_weights) {
-    std::string filename = constructName(parameters, name, with_version, with_metric, with_weights);
+std::string constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
+                          bool with_version, bool with_metric, bool with_weights, bool with_subversion) {
+    std::string filename = constructName(parameters, name, with_version, with_metric, with_weights, with_subversion);
     filename += "." + extension;
     return fs::path(parameters.dir_path) / fs::path(filename);
 }
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
-                          bool with_version, bool with_metric, bool with_weights) {
+                          bool with_version, bool with_metric, bool with_weights, bool with_subversion) {
     with_weights = parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT &&
                    parameters.weight_id != METRIC_WEIGHT_CONSTANT && with_weights;
     std::string full_name = parameters.testname + "_" + name +
@@ -714,6 +720,9 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                             (parameters.use_normals ? "_normals" : "");
     if (with_version) {
         full_name += "_" + VERSION;
+    }
+    if (with_subversion) {
+        full_name += SUBVERSION;
     }
     return full_name;
 }

@@ -55,6 +55,7 @@ extern const std::string DATA_DEBUG_PATH;
 extern const std::string TRANSFORMATIONS_CSV;
 extern const std::string ITERATIONS_CSV;
 extern const std::string VERSION;
+extern const std::string SUBVERSION;
 extern const std::string ALIGNMENT_DEFAULT;
 extern const std::string ALIGNMENT_GROR;
 extern const std::string KEYPOINT_ANY;
@@ -262,14 +263,16 @@ void mixPointColor(PointColoredN &point, int color);
 void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
-                          bool with_version = true, bool with_metric = true, bool with_weights = true);
+                          bool with_version = true, bool with_metric = true,
+                          bool with_weights = true, bool with_subversion = false);
 
 std::string constructPath(const std::string &test, const std::string &name,
-                          const std::string &extension = "ply", bool with_version = true);
+                          const std::string &extension = "ply", bool with_version = true, bool with_subversion = false);
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
                           const std::string &extension = "ply",
-                          bool with_version = true, bool with_metric = true, bool with_weights = true);
+                          bool with_version = true, bool with_metric = true,
+                          bool with_weights = true, bool with_subversion = false);
 
 template<typename PointT>
 bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {

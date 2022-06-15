@@ -26,3 +26,5 @@ target_include_directories(registration PUBLIC include/)
 
 enable_testing()
 add_subdirectory(tests)
+
+add_subdirectory(experiments)
