@@ -20,7 +20,7 @@ void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstP
         double iss_gamma_32_(0.975);
         int iss_min_neighbors_(4);
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
-        pcl::ISSKeypoint3D<PointN, PointN> iss_detector;
+        pcl::ISSKeypoint3D<PointN, PointN, PointN> iss_detector;
         iss_detector.setSearchMethod(tree);
         iss_detector.setSalientRadius(iss_salient_radius_);
         iss_detector.setNonMaxRadius(iss_non_max_radius_);
@@ -28,6 +28,7 @@ void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstP
         iss_detector.setThreshold32(iss_gamma_32_);
         iss_detector.setMinNeighbors(iss_min_neighbors_);
         iss_detector.setInputCloud(pcd);
+        iss_detector.setNormals(pcd);
         iss_detector.compute(key_points);
         indices = std::make_shared<pcl::Indices>(pcl::Indices());
         *indices = iss_detector.getKeypointsIndices()->indices;

@@ -18,13 +18,6 @@ const std::string ALIGNMENT = "alignment";
 const std::string METRIC_ANALYSIS = "metric";
 const std::string DEBUG = "debug";
 
-void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
-                          const std::string &csv_path, Eigen::Matrix4f &transformation_gt) {
-    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
-    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
-    transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
-}
-
 AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const AlignmentParameters &parameters) {
     AlignmentAnalysis analysis;
     if (parameters.alignment_id == ALIGNMENT_DEFAULT) {

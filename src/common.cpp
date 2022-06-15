@@ -357,10 +357,17 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
         min_voxel_size = std::max(src_density, tgt_density);
     }
 
-    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
-    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
+    std::string src_filename = fs::path(src_path).filename();
+    std::string tgt_filename = fs::path(tgt_path).filename();
     testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
                tgt_filename.substr(0, tgt_filename.find_last_of('.'));
+}
+
+void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
+                          const std::string &csv_path, Eigen::Matrix4f &transformation_gt) {
+    std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
+    std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
+    transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
 }
 
 void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,

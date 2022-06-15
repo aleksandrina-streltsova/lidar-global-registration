@@ -112,6 +112,9 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
                      const std::optional<float> &density, float &min_voxel_size);
 
+void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
+                          const std::string &csv_path, Eigen::Matrix4f &transformation_gt);
+
 struct MultivaluedCorrespondence {
     int query_idx = -1;
     pcl::Indices match_indices;
