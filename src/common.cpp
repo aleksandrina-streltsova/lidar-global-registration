@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "08";
+const std::string VERSION = "09";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
@@ -347,8 +347,6 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
-    filter_duplicate_points(src);
-    filter_duplicate_points(tgt);
 
     if (density.has_value()) {
         min_voxel_size = density.value();
