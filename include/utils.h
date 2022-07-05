@@ -86,4 +86,6 @@ T calculate_standard_deviation(const std::vector<T> &v) {
 
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
 
+void saveVector(const std::vector<float> &v, const std::string &filepath);
+
 #endif

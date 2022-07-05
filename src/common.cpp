@@ -6,7 +6,9 @@
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
 #include <pcl/common/copy_point.h>
+#include <pcl/common/io.h>
 #include <pcl/io/ply_io.h>
+#include <pcl/common/time.h>
 
 #include "common.h"
 #include "filter.h"
@@ -441,22 +443,19 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
 }
 
 int getColor(float v, float vmin, float vmax) {
-    float r = 1.0, g = 1.0, b = 1.0;
+    float r = 1.f, g = 1.f, b = 1.f;
     float dv = vmax - vmin;
     v = std::max(vmin, std::min(v, vmax));
 
-    if (v < (vmin + 0.25 * dv)) {
-        r = 0.f;
-        g = 4.f * (v - vmin) / dv;
-    } else if (v < (vmin + 0.5 * dv)) {
-        r = 0.f;
-        b = 1.f + 4.f * (vmin + 0.25 * dv - v) / dv;
-    } else if (v < (vmin + 0.75 * dv)) {
-        r = 4.f * (v - vmin - 0.5 * dv) / dv;
+    if (v < (vmin + dv / 3.f)) {
+        b = 1.f - 3.f * (v - vmin) / dv;
+    } else if (v < (vmin + 2.f * dv / 3.f)) {
         b = 0.f;
+        g = 2.f - 3.f * (v - vmin) / dv;
     } else {
-        g = 1.f + 4.f * (vmin + 0.75 * dv - v) / dv;
         b = 0.f;
+        g = 0.f;
+        r = 3.f - 3.f * (v - vmin) / dv;
     }
     int r8 = (std::uint8_t) (255.f * r), g8 = (std::uint8_t) (255.f * g), b8 = (std::uint8_t) (255.f * b);
     return (r8 << 16) + (g8 << 8) + b8;
@@ -475,6 +474,65 @@ void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &
     pcl::transformPointCloud(dst, dst, transformation_gt);
     std::string filepath = constructPath(parameters, name, "ply", true, true, true, true);
     pcl::io::savePLYFileBinary(filepath, dst);
+}
+
+void saveHistogram(const std::string &values_path, const std::string &hist_path) {
+    std::string command = "python3 plots.py histogram " + values_path + " " + hist_path;
+    system(command.c_str());
+}
+
+void saveTemperatureMaps(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt, const std::string &name,
+                         const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation) {
+    int n_src = src->size(), n_tgt = tgt->size();
+    PointColoredNCloud::Ptr src_colored(new PointColoredNCloud), tgt_colored(new PointColoredNCloud);
+    std::vector<float> distances_src, distances_tgt;
+    distances_src.resize(n_src);
+    distances_tgt.resize(n_tgt);
+    src_colored->resize(n_src);
+    tgt_colored->resize(n_tgt);
+    pcl::copyPointCloud(*src, *src_colored);
+    pcl::copyPointCloud(*tgt, *tgt_colored);
+    pcl::transformPointCloud(*src_colored, *src_colored, transformation);
+    pcl::KdTreeFLANN<PointColoredN> tree_src, tree_tgt;
+    tree_src.setInputCloud(src_colored);
+    tree_tgt.setInputCloud(tgt_colored);
+    float weights_min = 0;
+    float weights_max = parameters.distance_thr_coef * parameters.voxel_size;
+    pcl::Indices indices;
+    std::vector<float> distances;
+    float distance;
+#pragma omp parallel default(none) \
+    firstprivate(indices, distances, distance, n_src, weights_min, weights_max) \
+    shared(tree_tgt, src_colored, distances_src)
+    for (int i = 0; i < n_src; ++i) {
+        tree_tgt.radiusSearch(*src_colored, i, weights_max, indices, distances, 1);
+        distance = !distances.empty() ? std::sqrt(distances[0]) : weights_max;
+        setPointColor(src_colored->points[i], getColor(distance, weights_min, weights_max));
+        distances_src[i] = distance;
+    }
+#pragma omp parallel default(none) \
+    firstprivate(indices, distances, distance, n_src, weights_min, weights_max) \
+    shared(tree_src, tgt_colored, distances_tgt)
+    for (int i = 0; i < tgt_colored->size(); ++i) {
+        tree_src.radiusSearch(*tgt_colored, i, weights_max, indices, distances, 1);
+        distance = !distances.empty() ? std::sqrt(distances[0]) : weights_max;
+        setPointColor(tgt_colored->points[i], getColor(distance, weights_min, weights_max));
+        distances_tgt[i] = distance;
+    }
+    distances_src.erase(std::remove_if(distances_src.begin(), distances_src.end(),
+                                       [&weights_max](float d) { return d >= weights_max; }), distances_src.end());
+    distances_tgt.erase(std::remove_if(distances_tgt.begin(), distances_tgt.end(),
+                                       [&weights_max](float d) { return d >= weights_max; }), distances_tgt.end());
+    std::string distances_path_src = constructPath(parameters, name + "_distances_src", "csv");
+    std::string distances_path_tgt = constructPath(parameters, name + "_distances_tgt", "csv");
+    saveVector(distances_src, distances_path_src);
+    saveVector(distances_tgt, distances_path_tgt);
+
+    saveHistogram(distances_path_src, constructPath(parameters, name + "_histogram_src", "png"));
+    saveHistogram(distances_path_tgt, constructPath(parameters, name + "_histogram_tgt", "png"));
+
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_src"), *src_colored);
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_tgt"), *tgt_colored);
 }
 
 void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t match_offset,
@@ -696,9 +754,12 @@ std::string constructPath(const std::string &test, const std::string &name,
 
 std::string constructPath(const AlignmentParameters &parameters, const std::string &name, const std::string &extension,
                           bool with_version, bool with_metric, bool with_weights, bool with_subversion) {
+    auto test_dir_path = fs::path(parameters.dir_path) / fs::path(parameters.testname);
+    fs::create_directories(test_dir_path);
+
     std::string filename = constructName(parameters, name, with_version, with_metric, with_weights, with_subversion);
     filename += "." + extension;
-    return fs::path(parameters.dir_path) / fs::path(filename);
+    return test_dir_path / fs::path(filename);
 }
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
@@ -734,8 +795,9 @@ void readCorrespondencesFromCSV(const std::string &filepath, pcl::Correspondence
         if (fin.is_open()) {
             std::string line;
             std::vector<std::string> tokens;
+            std::getline(fin, line); // header
             while (std::getline(fin, line)) {
-                // query_idx, match_idx, distance
+                // query_idx, match_idx, distance, x_s, y_s, z_s, x_t, y_t, z_t
                 split(line, tokens, ",");
                 pcl::Correspondence corr{std::stoi(tokens[0]), std::stoi(tokens[1]), std::stof(tokens[2])};
                 correspondences.push_back(corr);
@@ -747,12 +809,20 @@ void readCorrespondencesFromCSV(const std::string &filepath, pcl::Correspondence
     }
 }
 
-void saveCorrespondencesToCSV(const std::string &filepath, const pcl::Correspondences &correspondences) {
+void saveCorrespondencesToCSV(const std::string &filepath,
+                              const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                              const pcl::Correspondences &correspondences) {
     std::ofstream fout(filepath);
     if (fout.is_open()) {
+        fout << "query_idx,match_idx,distance,x_s,y_s,z_s,x_t,y_t,z_t\n";
         for (const auto &corr: correspondences) {
-            // query_idx, match_idx, distance
-            fout << corr.index_query << "," << corr.index_match << "," << corr.distance << "\n";
+            fout << corr.index_query << "," << corr.index_match << "," << corr.distance << ",";
+            fout << src->points[corr.index_query].x << ","
+                 << src->points[corr.index_query].y << ","
+                 << src->points[corr.index_query].z << ",";
+            fout << tgt->points[corr.index_match].x << ","
+                 << tgt->points[corr.index_match].y << ","
+                 << tgt->points[corr.index_match].z << '\n';
         }
     } else {
         perror(("error while opening file " + filepath).c_str());

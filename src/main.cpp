@@ -177,8 +177,7 @@ void estimateTestMetric(const YamlConfig &config) {
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
             float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
             auto tn_name = config.get<std::string>("transformation", constructName(curr_parameters, "transformation"));
-            auto transformation = getTransformation(
-                    fs::path(DATA_DEBUG_PATH) / fs::path("transformations_incorrect.csv"), tn_name);
+            auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
             estimateNormals(normal_radius, curr_src, normals_src, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
@@ -264,7 +263,7 @@ void generateDebugFiles(const YamlConfig &config) {
             pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
             downsamplePointCloud(src, curr_src, curr_parameters);
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
-            transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path("transformations.csv"),
+            transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                                constructName(curr_parameters, "transformation"));
             float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
             float error_thr = curr_parameters.distance_thr_coef * curr_parameters.voxel_size;
@@ -283,12 +282,12 @@ void generateDebugFiles(const YamlConfig &config) {
             metric_estimator->setCorrespondences(correspondences);
             metric_estimator->buildInlierPairs(transformation, inlier_pairs, error);
             buildCorrectCorrespondences(curr_src, curr_tgt, correspondences, correct_correspondences, transformation_gt, error_thr);
-            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters);
-            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters, true);
-            saveCorrespondenceDistances(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters.voxel_size, curr_parameters);
+//            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters);
+//            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters, true);
+//            saveCorrespondenceDistances(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters.voxel_size, curr_parameters);
             saveColorizedPointCloud(curr_src, indices_src, correspondences, correct_correspondences, inlier_pairs, curr_parameters, transformation_gt, true);
             saveColorizedPointCloud(curr_tgt, indices_tgt, correspondences, correct_correspondences, inlier_pairs, curr_parameters, Eigen::Matrix4f::Identity(), false);
-            saveCorrespondencesDebug(correspondences, correct_correspondences, curr_parameters);
+//            saveCorrespondencesDebug(correspondences, correct_correspondences, curr_parameters);
 
             if (curr_parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT) {
                 WeightFunction weight_function = getWeightFunction(curr_parameters.weight_id);
@@ -296,13 +295,11 @@ void generateDebugFiles(const YamlConfig &config) {
                                                curr_src);
                 saveColorizedWeights(curr_src, weights, "weights", curr_parameters, transformation_gt);
             }
-
-//            pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned, transformation);
-//            pcl::transformPointCloud(*src_fullsize, *src_fullsize_aligned_gt, transformation_gt);
-//            pcl::io::savePLYFileBinary(constructPath(curr_parameters, "aligned"), *src_fullsize_aligned);
-//            pcl::io::savePLYFileBinary(constructPath(curr_parameters.testname, "aligned_gt", "ply", false),
-//                                       *src_fullsize_aligned_gt);
+            saveTemperatureMaps(curr_src, curr_tgt, "temperature", curr_parameters, transformation);
+//            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", curr_parameters, transformation_gt);
         }
+        saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_fullsize", parameters, transformation);
+//        saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_gt_fullsize", parameters, transformation_gt);
     }
 }
 

@@ -70,10 +70,10 @@ std::vector<float> computeDistanceNN(const pcl::PointCloud<pcl::FPFHSignature33>
     pcl::KdTreeFLANN<pcl::FPFHSignature33> feature_tree(new pcl::KdTreeFLANN<pcl::FPFHSignature33>);
     feature_tree.setInputCloud(features);
     for (int i = 0; i < features->size(); ++i) {
-        std::vector<int> match_indices(1);
-        std::vector<float> match_distances(1);
+        std::vector<int> match_indices;
+        std::vector<float> match_distances;
         feature_tree.nearestKSearch(*features, i, 2, match_indices, match_distances);
-        distances[i] = match_distances[1];
+        distances[i] = std::sqrt(match_distances[1]);
     }
     return distances;
 }

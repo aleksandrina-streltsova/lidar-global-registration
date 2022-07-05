@@ -57,7 +57,7 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::readCorrespondences(const Alignme
 template<typename FeatureT>
 void SampleConsensusPrerejectiveOMP<FeatureT>::saveCorrespondences(const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences", "csv", true, false, false);
-    saveCorrespondencesToCSV(filepath, *(this->correspondences_));
+    saveCorrespondencesToCSV(filepath, this->input_, this->target_, *(this->correspondences_));
 }
 
 template<typename FeatureT>

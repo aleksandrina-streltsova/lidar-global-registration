@@ -236,6 +236,9 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
 void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
 
+void saveTemperatureMaps(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt, const std::string &name,
+                         const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation);
+
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                          const pcl::Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
@@ -293,6 +296,8 @@ bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
 
 void readCorrespondencesFromCSV(const std::string &filepath, pcl::Correspondences &correspondences, bool &success);
 
-void saveCorrespondencesToCSV(const std::string &filepath, const pcl::Correspondences &correspondences);
+void saveCorrespondencesToCSV(const std::string &filepath,
+                              const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                              const pcl::Correspondences &correspondences);
 
 #endif

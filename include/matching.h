@@ -241,7 +241,7 @@ public:
                 float distance_j = calculateCorrespondenceDistance(j, i, matching_cluster_radius, mv_correspondences_ji,
                                                                    pcd_tree_tgt, pcd_tree_src);
                 if (distance_i < MATCHING_CLUSTER_THRESHOLD && distance_j < MATCHING_CLUSTER_THRESHOLD) {
-                    correspondences_cluster.push_back({i, j, distance_i});
+                    correspondences_cluster.push_back({i, j, std::max(distance_i, distance_j)});
                 }
             }
         }
