@@ -14,8 +14,8 @@ void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstP
                      const AlignmentParameters &parameters) {
     if (parameters.keypoint_id == KEYPOINT_ISS) {
         PointNCloud key_points;
-        double iss_salient_radius_ = 6 * parameters.voxel_size;
-        double iss_non_max_radius_ = 4 * parameters.voxel_size;
+        double iss_salient_radius_ = 4 * parameters.voxel_size;
+        double iss_non_max_radius_ = 2 * parameters.voxel_size;
         double iss_gamma_21_(0.975);
         double iss_gamma_32_(0.975);
         int iss_min_neighbors_(4);
@@ -35,6 +35,7 @@ void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstP
         if (parameters.fix_seed) {
             std::sort(indices->begin(), indices->end());
         }
+        PCL_DEBUG("[detectKeyPoints] %d key points\n", indices->size());
     } else {
         if (parameters.keypoint_id != KEYPOINT_ANY) {
             PCL_WARN("[detectKeyPoints] Detection method %s isn't supported, no detection method will be applied.\n",

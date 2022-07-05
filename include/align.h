@@ -214,7 +214,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }
 
-    align.readCorrespondences(parameters);
+    // align.readCorrespondences(parameters);
     if (!align.correspondencesFromFile()) {
         // Detect key points
         pcl::console::print_highlight("Detecting key points...\n");
