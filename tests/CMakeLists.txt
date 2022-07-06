@@ -13,3 +13,8 @@ add_executable(keypoint_extraction keypoint_extraction.cpp ../src/config.cpp ../
 target_link_libraries(keypoint_extraction ${PCL_LIBRARIES} ${OpenCV_LIBS} yaml-cpp)
 target_include_directories(keypoint_extraction PUBLIC ../include/)
 add_test(NAME test_keypoint_extraction COMMAND keypoint_extraction data/tests/keypoint_extraction.yaml WORKING_DIRECTORY ..)
+
+add_executable(point2plane_distance point2plane_distance.cpp ../src/config.cpp ../src/csv_parser.cpp ../src/align.cpp ../src/common.cpp ../src/filter.cpp ../src/analysis.cpp ../src/feature_analysis.cpp ../src/downsample.cpp ../src/utils.cpp ../src/metric.cpp ../src/weights.cpp ../src/gror/gror_pre.cpp)
+target_link_libraries(point2plane_distance ${PCL_LIBRARIES} ${OpenCV_LIBS} yaml-cpp)
+target_include_directories(point2plane_distance PUBLIC ../include/)
+add_test(NAME test_point2plane_distance COMMAND point2plane_distance WORKING_DIRECTORY ..)
