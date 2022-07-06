@@ -52,8 +52,8 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     float feature_radius = parameters.feature_radius_coef * voxel_size;
 
     if (!parameters.use_normals) {
-        estimateNormals(normal_radius, src_downsize, normals_src, parameters.normals_available);
-        estimateNormals(normal_radius, tgt_downsize, normals_tgt, parameters.normals_available);
+        estimateNormalsRadius(normal_radius, src_downsize, normals_src, parameters.normals_available);
+        estimateNormalsRadius(normal_radius, tgt_downsize, normals_tgt, parameters.normals_available);
     }
 
     pcl::concatenateFields(*src_downsize, *normals_src, *src);

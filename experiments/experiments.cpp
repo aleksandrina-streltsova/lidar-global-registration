@@ -179,8 +179,8 @@ void analyzeKeyPoints(const YamlConfig &config) {
                                                 pointCloudHasNormals<PointN>(fields_tgt);
             float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
             float error_thr = curr_parameters.distance_thr_coef * curr_parameters.voxel_size;
-            estimateNormals(normal_radius, curr_src, normals_src, false);
-            estimateNormals(normal_radius, curr_tgt, normals_tgt, false);
+            estimateNormalsRadius(normal_radius, curr_src, normals_src, false);
+            estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
 

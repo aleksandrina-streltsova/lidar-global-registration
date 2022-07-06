@@ -9,6 +9,7 @@
 #include <pcl/common/io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/common/time.h>
+#include <pcl/features/normal_3d_omp.h>
 
 #include "common.h"
 #include "filter.h"
@@ -20,7 +21,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "09";
+const std::string VERSION = "10";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
@@ -32,8 +33,8 @@ const std::string DESCRIPTOR_ROPS = "rops";
 const std::string DESCRIPTOR_USC = "usc";
 const std::string DEFAULT_LRF = "default";
 const std::string METRIC_CORRESPONDENCES = "correspondences";
-const std::string METRIC_CLOSEST_POINT = "closest_point";
-const std::string METRIC_WEIGHTED_CLOSEST_POINT = "weighted_closest_point";
+const std::string METRIC_CLOSEST_PLANE = "closest_plane";
+const std::string METRIC_WEIGHTED_CLOSEST_PLANE = "weighted_closest_plane";
 const std::string METRIC_COMBINATION = "combination";
 const std::string MATCHING_LEFT_TO_RIGHT = "lr";
 const std::string MATCHING_RATIO = "ratio";
@@ -180,18 +181,18 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
                                                          float min_voxel_size) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
-    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", false);
-    parameters.edge_thr_coef = config.get<float>("edge_thr", 0.95);
+    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", ALIGNMENT_COARSE_TO_FINE);
+    parameters.edge_thr_coef = config.get<float>("edge_thr", ALIGNMENT_EDGE_THR);
     parameters.max_iterations = config.get<int>("iteration");
-    parameters.confidence = config.get<float>("confidence", 0.999);
-    parameters.inlier_fraction = config.get<float>("inlier_fraction", 0.1);
-    parameters.use_bfmatcher = config.get<bool>("bf", true);
-    parameters.randomness = config.get<int>("randomness", 1);
-    parameters.n_samples = config.get<int>("n_samples", 3);
-    parameters.save_features = config.get<bool>("save_features", false);
-    parameters.bf_block_size = config.get<int>("block_size", 10000);
+    parameters.confidence = config.get<float>("confidence", ALIGNMENT_CONFIDENCE);
+    parameters.inlier_fraction = config.get<float>("inlier_fraction", ALIGNMENT_INLIER_FRACTION);
+    parameters.use_bfmatcher = config.get<bool>("bf", ALIGNMENT_USE_BFMATCHER);
+    parameters.randomness = config.get<int>("randomness", ALIGNMENT_RANDOMNESS);
+    parameters.n_samples = config.get<int>("n_samples", ALIGNMENT_N_SAMPLES);
+    parameters.save_features = config.get<bool>("save_features", ALIGNMENT_SAVE_FEATURES);
+    parameters.bf_block_size = config.get<int>("block_size", ALIGNMENT_BLOCK_SIZE);
 
-    bool use_normals = config.get<bool>("use_normals", false);
+    bool use_normals = config.get<bool>("use_normals", ALIGNMENT_USE_NORMALS);
     // TODO: use normals even with one point cloud missing normals
     bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
     if (use_normals && !normals_available) {
@@ -211,7 +212,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto keypoint_ids = config.getVector<std::string>("keypoint", KEYPOINT_ANY);
+    auto keypoint_ids = config.getVector<std::string>("keypoint", KEYPOINT_ISS);
     for (const auto &id: keypoint_ids) {
         for (auto ps: parameters_container) {
             ps.keypoint_id = id;
@@ -247,7 +248,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto normal_radius_coefs = config.getVector<float>("normal_radius_coef", 3);
+    auto normal_radius_coefs = config.getVector<float>("normal_radius_coef", ALIGNMENT_NORMAL_RADIUS_COEF);
     for (float nrc: normal_radius_coefs) {
         for (auto ps: parameters_container) {
             ps.normal_radius_coef = nrc;
@@ -257,7 +258,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto feature_radius_coefs = config.getVector<float>("feature_radius_coef", 15);
+    auto feature_radius_coefs = config.getVector<float>("feature_radius_coef", ALIGNMENT_FEATURE_RADIUS_COEF);
     for (float frc: feature_radius_coefs) {
         for (auto ps: parameters_container) {
             ps.feature_radius_coef = frc;
@@ -396,6 +397,67 @@ float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
     return (max_point - min_point).norm();
 }
 
+void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, bool normals_available) {
+    // use normals from point cloud to orient estimated normals and replace NaN normals
+    if (normals_available) {
+        for (int i = 0; i < pcd->size(); ++i) {
+            auto &normal = normals->points[i];
+            const auto &point = pcd->points[i];
+            if (!std::isfinite(normal.normal_x) || !std::isfinite(normal.normal_y) || !std::isfinite(normal.normal_z)) {
+                normal.normal_x = point.normal_x;
+                normal.normal_y = point.normal_y;
+                normal.normal_z = point.normal_z;
+                normal.curvature = 0.f;
+            } else if (normal.normal_x * point.normal_x + normal.normal_y * point.normal_y +
+                       normal.normal_z * point.normal_z < 0) {
+                normal.normal_x *= -1.f;
+                normal.normal_y *= -1.f;
+                normal.normal_z *= -1.f;
+            }
+        }
+    }
+    int nan_counter = 0;
+    for (auto &normal: normals->points) {
+        const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
+        if (!std::isfinite(normal_vec[0]) ||
+            !std::isfinite(normal_vec[1]) ||
+            !std::isfinite(normal_vec[2])) {
+            nan_counter++;
+        } else {
+            float norm = std::sqrt(normal.normal_x * normal.normal_x + normal.normal_y * normal.normal_y +
+                                   normal.normal_z * normal.normal_z);
+            normal.normal_x /= norm;
+            normal.normal_y /= norm;
+            normal.normal_z /= norm;
+        }
+    }
+    PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
+}
+
+void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+                           bool normals_available) {
+    pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
+    normal_est.setRadiusSearch(radius_search);
+
+    normal_est.setInputCloud(pcd);
+    pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
+    normal_est.setSearchMethod(tree);
+    normal_est.compute(*normals);
+    postprocessNormals(pcd, normals, normals_available);
+}
+
+void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+                           bool normals_available) {
+    pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
+    normal_est.setKSearch(k_points);
+
+    normal_est.setInputCloud(pcd);
+    pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
+    normal_est.setSearchMethod(tree);
+    normal_est.compute(*normals);
+    postprocessNormals(pcd, normals, normals_available);
+}
+
 void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const pcl::IndicesConstPtr &key_point_indices,
                              const pcl::Correspondences &correspondences,
@@ -481,8 +543,47 @@ void saveHistogram(const std::string &values_path, const std::string &hist_path)
     system(command.c_str());
 }
 
-void saveTemperatureMaps(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt, const std::string &name,
-                         const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation) {
+void calculateTemperatureMapDistances(PointColoredNCloud::Ptr &compared,
+                                      PointColoredNCloud::Ptr &reference,
+                                      std::vector<float> &distances,
+                                      float distance_min, float distance_max) {
+    pcl::KdTreeFLANN<PointColoredN> tree_reference;
+    tree_reference.setInputCloud(reference);
+
+    int n = compared->size();
+    pcl::Indices nn_indices;
+    std::vector<float> nn_dists;
+    float dist_to_plane;
+    PointColoredN nearest_point;
+
+#pragma omp parallel default(none) \
+    firstprivate(nn_indices, nn_dists, dist_to_plane, n, distance_min, distance_max, nearest_point) \
+    shared(tree_reference, compared, reference, distances)
+    for (int i = 0; i < n; ++i) {
+        tree_reference.radiusSearch(*compared, i, distance_max, nn_indices, nn_dists, 1);
+        if (nn_dists.empty()) {
+            dist_to_plane = distance_max;
+        } else {
+            nearest_point = reference->points[nn_indices[0]];
+            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                      (nearest_point.getVector3fMap() - compared->points[i].getVector3fMap()));
+        }
+        setPointColor(compared->points[i], getColor(dist_to_plane, distance_min, distance_max));
+        distances[i] = dist_to_plane;
+    }
+}
+
+void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+                         const std::string &name, const AlignmentParameters &parameters,
+                         const Eigen::Matrix4f &transformation, bool normals_available) {
+    if (!normals_available) {
+        NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
+        int k_points = 6;
+        estimateNormalsPoints(k_points, src, normals_src, false);
+        estimateNormalsPoints(k_points, tgt, normals_tgt, false);
+        pcl::concatenateFields(*src, *normals_src, *src);
+        pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
+    }
     int n_src = src->size(), n_tgt = tgt->size();
     PointColoredNCloud::Ptr src_colored(new PointColoredNCloud), tgt_colored(new PointColoredNCloud);
     std::vector<float> distances_src, distances_tgt;
@@ -493,36 +594,15 @@ void saveTemperatureMaps(const PointNCloud::ConstPtr &src, const PointNCloud::Co
     pcl::copyPointCloud(*src, *src_colored);
     pcl::copyPointCloud(*tgt, *tgt_colored);
     pcl::transformPointCloud(*src_colored, *src_colored, transformation);
-    pcl::KdTreeFLANN<PointColoredN> tree_src, tree_tgt;
-    tree_src.setInputCloud(src_colored);
-    tree_tgt.setInputCloud(tgt_colored);
-    float weights_min = 0;
-    float weights_max = parameters.distance_thr_coef * parameters.voxel_size;
-    pcl::Indices indices;
-    std::vector<float> distances;
-    float distance;
-#pragma omp parallel default(none) \
-    firstprivate(indices, distances, distance, n_src, weights_min, weights_max) \
-    shared(tree_tgt, src_colored, distances_src)
-    for (int i = 0; i < n_src; ++i) {
-        tree_tgt.radiusSearch(*src_colored, i, weights_max, indices, distances, 1);
-        distance = !distances.empty() ? std::sqrt(distances[0]) : weights_max;
-        setPointColor(src_colored->points[i], getColor(distance, weights_min, weights_max));
-        distances_src[i] = distance;
-    }
-#pragma omp parallel default(none) \
-    firstprivate(indices, distances, distance, n_src, weights_min, weights_max) \
-    shared(tree_src, tgt_colored, distances_tgt)
-    for (int i = 0; i < tgt_colored->size(); ++i) {
-        tree_src.radiusSearch(*tgt_colored, i, weights_max, indices, distances, 1);
-        distance = !distances.empty() ? std::sqrt(distances[0]) : weights_max;
-        setPointColor(tgt_colored->points[i], getColor(distance, weights_min, weights_max));
-        distances_tgt[i] = distance;
-    }
+    float distance_min = 0;
+    float distance_max = parameters.voxel_size;
+    calculateTemperatureMapDistances(src_colored, tgt_colored, distances_src, distance_min, distance_max);
+    calculateTemperatureMapDistances(tgt_colored, src_colored, distances_tgt, distance_min, distance_max);
+
     distances_src.erase(std::remove_if(distances_src.begin(), distances_src.end(),
-                                       [&weights_max](float d) { return d >= weights_max; }), distances_src.end());
+                                       [&distance_max](float d) { return d >= distance_max; }), distances_src.end());
     distances_tgt.erase(std::remove_if(distances_tgt.begin(), distances_tgt.end(),
-                                       [&weights_max](float d) { return d >= weights_max; }), distances_tgt.end());
+                                       [&distance_max](float d) { return d >= distance_max; }), distances_tgt.end());
     std::string distances_path_src = constructPath(parameters, name + "_distances_src", "csv");
     std::string distances_path_tgt = constructPath(parameters, name + "_distances_tgt", "csv");
     saveVector(distances_src, distances_path_src);
@@ -764,7 +844,7 @@ std::string constructPath(const AlignmentParameters &parameters, const std::stri
 
 std::string constructName(const AlignmentParameters &parameters, const std::string &name,
                           bool with_version, bool with_metric, bool with_weights, bool with_subversion) {
-    with_weights = parameters.metric_id == METRIC_WEIGHTED_CLOSEST_POINT &&
+    with_weights = parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE &&
                    parameters.weight_id != METRIC_WEIGHT_CONSTANT && with_weights;
     std::string full_name = parameters.testname + "_" + name +
                             "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +

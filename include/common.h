@@ -28,6 +28,19 @@
 #define DEBUG_N_EDGES 100ul
 #define ROPS_DIM 135
 
+#define ALIGNMENT_COARSE_TO_FINE false
+#define ALIGNMENT_EDGE_THR 0.95
+#define ALIGNMENT_CONFIDENCE 0.999
+#define ALIGNMENT_INLIER_FRACTION 0.1
+#define ALIGNMENT_USE_BFMATCHER true
+#define ALIGNMENT_USE_NORMALS false
+#define ALIGNMENT_RANDOMNESS 1
+#define ALIGNMENT_N_SAMPLES 3
+#define ALIGNMENT_SAVE_FEATURES false
+#define ALIGNMENT_BLOCK_SIZE 10000
+#define ALIGNMENT_NORMAL_RADIUS_COEF 3
+#define ALIGNMENT_FEATURE_RADIUS_COEF 15
+
 // Types
 typedef pcl::PointXYZ Point;
 typedef pcl::PointNormal PointN;
@@ -66,8 +79,8 @@ extern const std::string DESCRIPTOR_ROPS;
 extern const std::string DESCRIPTOR_USC;
 extern const std::string DEFAULT_LRF;
 extern const std::string METRIC_CORRESPONDENCES;
-extern const std::string METRIC_CLOSEST_POINT;
-extern const std::string METRIC_WEIGHTED_CLOSEST_POINT;
+extern const std::string METRIC_CLOSEST_PLANE;
+extern const std::string METRIC_WEIGHTED_CLOSEST_PLANE;
 extern const std::string METRIC_COMBINATION;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
@@ -80,16 +93,18 @@ extern const std::string METRIC_WEIGHT_TOMASI;
 extern const std::string METRIC_WEIGHT_CURVATURE;
 
 struct AlignmentParameters {
-    bool coarse_to_fine;
-    bool use_normals, normals_available;
+    bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
+    bool use_normals{ALIGNMENT_USE_NORMALS}, normals_available;
     float voxel_size;
-    float edge_thr_coef, distance_thr_coef;
-    float normal_radius_coef, feature_radius_coef;
-    float confidence, inlier_fraction;
-    bool use_bfmatcher;
-    int bf_block_size;
-    int randomness, n_samples;
-    std::string alignment_id, func_id, descriptor_id, lrf_id, metric_id, matching_id, weight_id, keypoint_id;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef;
+    float normal_radius_coef{ALIGNMENT_NORMAL_RADIUS_COEF}, feature_radius_coef{ALIGNMENT_FEATURE_RADIUS_COEF};
+    float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
+    bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
+    int bf_block_size{ALIGNMENT_BLOCK_SIZE};
+    int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
+    std::string alignment_id{ALIGNMENT_DEFAULT}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
+    std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
+    std::string weight_id{METRIC_WEIGHT_CONSTANT}, func_id;
     std::optional<int> max_iterations;
 
     bool save_features;
@@ -226,6 +241,12 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pc
 
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
 
+void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+                           bool normals_available);
+
+void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+                           bool normals_available);
+
 void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const pcl::IndicesConstPtr &key_point_indices,
                              const pcl::Correspondences &correspondences,
@@ -236,8 +257,9 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
 void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
 
-void saveTemperatureMaps(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt, const std::string &name,
-                         const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation);
+void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+                         const std::string &name, const AlignmentParameters &parameters,
+                         const Eigen::Matrix4f &transformation, bool normals_available = true);
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                          const pcl::Correspondences &correspondences,

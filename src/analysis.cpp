@@ -56,13 +56,17 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
     tree_tgt.setInputCloud(tgt);
 
     int overlap_size = 0;
-    float rmse = 0.f;
+    float rmse = 0.f, dist_to_plane;
+    PointN nearest_point;
     pcl::Indices nn_indices;
     std::vector<float> nn_dists;
     for (int i = 0; i < src->size(); ++i) {
         tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_dists);
         if (nn_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
-            rmse += dist2(src_aligned.points[i], src_aligned_gt.points[i]);
+            nearest_point = tgt->points[nn_indices[0]];
+            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                      (nearest_point.getVector3fMap() - src_aligned[i].getVector3fMap()));
+            rmse += dist_to_plane * dist_to_plane;
             overlap_size++;
         }
     }
@@ -189,7 +193,7 @@ AlignmentAnalysis::AlignmentAnalysis(const AlignmentParameters &parameters,
     transformation_ = transformation;
     time_ = time;
     has_converged_ = true;
-    metric_estimator_ = getMetricEstimator(parameters);
+    metric_estimator_ = getMetricEstimatorFromParameters(parameters);
     metric_estimator_->setSourceCloud(src);
     metric_estimator_->setTargetCloud(tgt);
     metric_estimator_->setCorrespondences(correspondences);
@@ -227,7 +231,7 @@ void AlignmentAnalysis::print() {
                              correct_correspondences_.size(), correspondences_.size());
     pcl::console::print_info("rotation error (deg): %0.7f\n", 180.0 / M_PI * r_error_);
     pcl::console::print_info("translation error: %0.7f\n", t_error_);
-    pcl::console::print_info("point cloud mean error: %0.7f\n", pcd_error_);
+    pcl::console::print_info("point cloud error: %0.7f\n", pcd_error_);
     pcl::console::print_info("normal mean difference (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
     pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
 }

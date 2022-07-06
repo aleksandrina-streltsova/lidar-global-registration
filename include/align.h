@@ -26,9 +26,6 @@
 
 namespace fs = std::filesystem;
 
-void estimateNormals(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
-                     bool normals_available);
-
 void smoothNormals(float radius_search, float voxel_size, const PointNCloud::Ptr &pcd);
 
 void detectKeyPoints(const PointNCloud::ConstPtr &pcd, const NormalCloud::ConstPtr &normals, pcl::IndicesPtr &indices,
@@ -208,8 +205,8 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
         pcl::copyPointCloud(*tgt, *normals_tgt);
     } else {
         pcl::console::print_highlight("Estimating normals...\n");
-        estimateNormals(normal_radius, src, normals_src, parameters.normals_available);
-        estimateNormals(normal_radius, tgt, normals_tgt, parameters.normals_available);
+        estimateNormalsRadius(normal_radius, src, normals_src, parameters.normals_available);
+        estimateNormalsRadius(normal_radius, tgt, normals_tgt, parameters.normals_available);
         pcl::concatenateFields(*src, *normals_src, *src);
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }
@@ -246,7 +243,7 @@ SampleConsensusPrerejectiveOMP<FeatureT> executeAlignmentStep(const PointNCloud:
     align.setInputTarget(tgt);
 
     align.setFeatureMatcher(getFeatureMatcher<FeatureT>(parameters));
-    align.setMetricEstimator(getMetricEstimator(parameters, true));
+    align.setMetricEstimator(getMetricEstimatorFromParameters(parameters, true));
 
     int n_samples = parameters.n_samples;
     int iteration_brute_force = calculate_combination_or_max<int>((int) std::min(src->size(), tgt->size()), n_samples);

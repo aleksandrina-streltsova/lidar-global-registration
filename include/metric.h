@@ -84,9 +84,9 @@ public:
     }
 };
 
-class ClosestPointMetricEstimator : public MetricEstimator {
+class ClosestPlaneMetricEstimator : public MetricEstimator {
 public:
-    explicit ClosestPointMetricEstimator(bool sparse = false) : sparse_(sparse) {};
+    explicit ClosestPlaneMetricEstimator(bool sparse = false) : sparse_(sparse) {};
 
     inline float getInitialMetric() const override {
         return 0.0;
@@ -106,7 +106,7 @@ public:
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
     inline std::string getClassName() override {
-        return "ClosestPointMetricEstimator";
+        return "ClosestPlaneMetricEstimator";
     }
 
 protected:
@@ -115,11 +115,11 @@ protected:
     bool sparse_;
 };
 
-class WeightedClosestPointMetricEstimator : public MetricEstimator {
+class WeightedClosestPlaneMetricEstimator : public MetricEstimator {
 public:
-    WeightedClosestPointMetricEstimator() = delete;
+    WeightedClosestPlaneMetricEstimator() = delete;
 
-    WeightedClosestPointMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false)
+    WeightedClosestPlaneMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false)
             : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius), sparse_(sparse) {}
 
 
@@ -143,7 +143,7 @@ public:
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
     inline std::string getClassName() override {
-        return "WeightedClosestPointMetricEstimator";
+        return "WeightedClosestPlaneMetricEstimator";
     }
 
 protected:
@@ -158,7 +158,7 @@ protected:
 
 class CombinationMetricEstimator : public MetricEstimator {
 public:
-    explicit CombinationMetricEstimator(bool sparse = false) : closest_point_estimator(sparse) {}
+    explicit CombinationMetricEstimator(bool sparse = false) : closest_plane_estimator(sparse) {}
 
     float getInitialMetric() const override {
         return 0.0;
@@ -189,9 +189,9 @@ public:
 
 protected:
     CorrespondencesMetricEstimator correspondences_estimator;
-    ClosestPointMetricEstimator closest_point_estimator;
+    ClosestPlaneMetricEstimator closest_plane_estimator;
 };
 
-MetricEstimator::Ptr getMetricEstimator(const AlignmentParameters &parameters, bool sparse = false);
+MetricEstimator::Ptr getMetricEstimatorFromParameters(const AlignmentParameters &parameters, bool sparse = false);
 
 #endif

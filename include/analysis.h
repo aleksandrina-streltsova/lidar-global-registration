@@ -63,6 +63,14 @@ public:
         return overlap_error_;
     }
 
+    inline float getPointCloudError() const {
+        return pcd_error_;
+    }
+
+    inline MetricEstimator::Ptr getMetricEstimator() {
+        return metric_estimator_;
+    }
+
     friend std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis);
 
 private:
