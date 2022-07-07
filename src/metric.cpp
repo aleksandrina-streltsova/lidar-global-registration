@@ -13,33 +13,30 @@ void buildClosestPlaneInliers(const PointNCloud &src,
     inlier_pairs.clear();
     inlier_pairs.reserve(src.size());
     rmse = 0.0f;
-
     const PointNCloud &tgt = *tree_tgt.getInputCloud();
-    PointNCloud src_transformed;
-    src_transformed.resize(src.size());
-    pcl::transformPointCloud(src, src_transformed, transformation);
-
     int n = (int) ((sparse ? SPARSE_POINTS_FRACTION : 1.f) * (float) src.size());
+    float search_radius = 2.f * inlier_threshold;
     float dist_to_plane;
-    PointN nearest_point;
+    Eigen::Vector3f point_transformed, nearest_point;
 
     // For point in the source dataset
     for (int i = 0; i < n; ++i) {
         int idx = sparse ? rand() % (int) src.size() : i;
-
+        point_transformed = (transformation * src[idx].getVector4fMap()).block<3, 1>(0, 0);
         // Find its nearest neighbor in the target
         pcl::Indices nn_indices(1);
         std::vector<float> nn_dists(1);
-        tree_tgt.nearestKSearch(src_transformed[idx], 1, nn_indices, nn_dists);
-
-        // Check if point is an inlier
-        if (nn_dists[0] < inlier_threshold * inlier_threshold) {
-            // Update inliers and rmse
-            inlier_pairs.push_back({(int) idx, nn_indices[0]});
-            nearest_point = tgt[nn_indices[0]];
-            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
-                                      (nearest_point.getVector3fMap() - src_transformed[idx].getVector3fMap()));
-            rmse += dist_to_plane * dist_to_plane;
+        tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
+                              search_radius, nn_indices, nn_dists);
+        if (!nn_dists.empty()) {
+            nearest_point = tgt[nn_indices[0]].getNormalVector3fMap();
+            dist_to_plane = std::fabs(nearest_point.transpose() * (nearest_point - point_transformed));
+            // Check if point is an inlier
+            if (dist_to_plane < inlier_threshold) {
+                // Update inliers and rmse
+                inlier_pairs.push_back({(int) idx, nn_indices[0]});
+                rmse += dist_to_plane * dist_to_plane;
+            }
         }
     }
 
