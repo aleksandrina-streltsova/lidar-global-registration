@@ -412,8 +412,23 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
     this->ransac_iterations_ = ransac_iterations;
 
     // Apply the final transformation
-    if (this->converged_)
+    if (this->converged_) {
+        Matrix4 transformation;
+        std::vector<InlierPair> inlier_pairs;
+        float metric, error;
+        estimateOptimalRigidTransformation(this->input_, this->target_, inlier_pairs_, transformation);
+        metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+        if (metric_estimator_->isBetter(metric, best_metric)) {
+            rmse_ = error;
+            this->inlier_pairs_ = inlier_pairs;
+            this->final_transformation_ = transformation;
+        } else {
+            PCL_WARN("[%s::computeTransformation] number of inliers decreased "
+                     "after estimating optimal rigid transformation.\n",
+                     this->getClassName().c_str());
+        }
         transformPointCloud(*(this->input_), output, this->final_transformation_);
+    }
 
     // Debug output
     PCL_DEBUG("[%s::computeTransformation] RANSAC exits at %i-th iteration: "

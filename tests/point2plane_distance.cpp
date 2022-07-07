@@ -15,6 +15,13 @@ void assertClose(const std::string &name, float expected, float actual, float ep
     }
 }
 
+void assertLess(const std::string &name, float value, float threshold) {
+    if (value > threshold) {
+        std::cerr << "[" << name << "] value " << value << " is greater than threshold " << threshold << std::endl;
+        abort();
+    }
+}
+
 int main() {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     for (int i = 0; i < CORNER_SIZE; ++i) {
@@ -22,13 +29,18 @@ int main() {
             src->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i, 0 * SHIFT + 2.f * (float) j, 0.f});
             src->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j});
             src->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i, 2 * SHIFT + 2.f * (float) j});
-            tgt->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i + 1.f, 0 * SHIFT + 2.f * (float) j + 1.f, 0.f});
-            tgt->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i + 1.f, 0.f, 1 * SHIFT + 2.f * (float) j + 1.f});
-            tgt->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i + 1.f, 2 * SHIFT + 2.f * (float) j + 1.f});
+            tgt->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i + 1.f, 0 * SHIFT + 2.f * (float) j, 0.f});
+            tgt->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j + 1.f});
+            tgt->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i + 1.f, 2 * SHIFT + 2.f * (float) j});
         }
     }
-    pcl::io::savePLYFileBinary("corner1.ply", *src);
-    pcl::io::savePLYFileBinary("corner2.ply", *tgt);
+    src->width = src->points.size();
+    src->height = 1;
+    tgt->width = tgt->points.size();
+    tgt->height = 1;
+
+//    pcl::io::savePLYFileBinary("corner1.ply", *src);
+//    pcl::io::savePLYFileBinary("corner2.ply", *tgt);
 
     Eigen::Matrix4f transformation_gt;
     transformation_gt << 0.0803703, -0.996763, -0.00201846, 1.2143,
@@ -40,6 +52,7 @@ int main() {
             .normals_available = false,
             .voxel_size = 1.98f,
             .distance_thr_coef = 1.f,
+            .bf_block_size = 200000,
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
             .max_iterations = 1000,
@@ -53,10 +66,9 @@ int main() {
     float metric, error;
     auto[alignment_result, time] = align_point_clouds<SHOT>(src, tgt, parameters);
 
-    // TODO: remove after fixing transformation estimation
-    PointNCloud src_aligned;
-    alignment_result.setTransformationGuess(transformation_gt);
-    alignment_result.align(src_aligned);
+//    PointNCloud src_aligned;
+//    pcl::transformPointCloud(*src, src_aligned, alignment_result.getFinalTransformation());
+//    pcl::io::savePLYFileBinary("corner1_aligned.ply",  src_aligned);
 
     auto transformation = alignment_result.getFinalTransformation();
     auto alignment_analysis = alignment_result.getAlignmentAnalysis(parameters, time);
@@ -65,11 +77,11 @@ int main() {
     alignment_analysis.start(transformation_gt, "corners");
 
     assertClose("inlier ratio", 1.f, (float) inlier_pairs.size() / (float) src->size());
-    assertClose("metric error", 0.f, error);
-    // TODO: uncomment after fixing transformation estimation
+    assertLess("metric error", error, 2.f / 3.f);
+    assertLess("overlap rmse", alignment_analysis.getOverlapError(), 2.f / 3.f);
 //    assertClose("rotation error", 0.f, alignment_analysis.getRotationError());
 //    assertClose("translation error", 0.f, alignment_analysis.getTranslationError());
-    assertClose("point cloud error", 0.f, alignment_analysis.getPointCloudError());
-    assertClose("overlap rmse", 0.f, alignment_analysis.getOverlapError());
+//    assertClose("point cloud error", 0.f, alignment_analysis.getPointCloudError());
+
     fs::remove_all(TMP_DIR);
 }

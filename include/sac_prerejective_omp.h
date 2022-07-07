@@ -13,6 +13,7 @@
 #include "analysis.h"
 #include "matching.h"
 #include "metric.h"
+#include "transformation.h"
 
 #ifdef _OPENMP
 
