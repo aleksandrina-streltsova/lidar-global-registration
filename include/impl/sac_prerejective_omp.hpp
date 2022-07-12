@@ -418,11 +418,10 @@ void SampleConsensusPrerejectiveOMP<FeatureT>::computeTransformation(PointNCloud
         float metric, error;
         estimateOptimalRigidTransformation(this->input_, this->target_, inlier_pairs_, transformation);
         metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+        rmse_ = error;
+        this->inlier_pairs_ = inlier_pairs;
+        this->final_transformation_ = transformation;
         if (metric_estimator_->isBetter(metric, best_metric)) {
-            rmse_ = error;
-            this->inlier_pairs_ = inlier_pairs;
-            this->final_transformation_ = transformation;
-        } else {
             PCL_WARN("[%s::computeTransformation] number of inliers decreased "
                      "after estimating optimal rigid transformation.\n",
                      this->getClassName().c_str());
