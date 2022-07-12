@@ -17,20 +17,21 @@ void buildClosestPlaneInliers(const PointNCloud &src,
     int n = (int) ((sparse ? SPARSE_POINTS_FRACTION : 1.f) * (float) src.size());
     float search_radius = 2.f * inlier_threshold;
     float dist_to_plane;
-    Eigen::Vector3f point_transformed, nearest_point;
+    Eigen::Vector3f point_transformed, nearest_point, normal;
 
     // For point in the source dataset
     for (int i = 0; i < n; ++i) {
         int idx = sparse ? rand() % (int) src.size() : i;
         point_transformed = (transformation * src[idx].getVector4fMap()).block<3, 1>(0, 0);
-        // Find its nearest neighbor in the target
+        // Find its nearest neighbor in the targetFEATURE: make it possible to choose parameters in GROR
         pcl::Indices nn_indices(1);
         std::vector<float> nn_dists(1);
         tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
                               search_radius, nn_indices, nn_dists);
         if (!nn_dists.empty()) {
-            nearest_point = tgt[nn_indices[0]].getNormalVector3fMap();
-            dist_to_plane = std::fabs(nearest_point.transpose() * (nearest_point - point_transformed));
+            nearest_point = tgt[nn_indices[0]].getVector3fMap();
+            normal = tgt[nn_indices[0]].getNormalVector3fMap();
+            dist_to_plane = std::fabs(normal.transpose() * (nearest_point - point_transformed));
             // Check if point is an inlier
             if (dist_to_plane < inlier_threshold) {
                 // Update inliers and rmse
