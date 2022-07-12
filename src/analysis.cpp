@@ -66,6 +66,7 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
             nearest_point = tgt->points[nn_indices[0]];
             dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
                                       (nearest_point.getVector3fMap() - src_aligned[i].getVector3fMap()));
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_dists[0];
             rmse += dist_to_plane * dist_to_plane;
             overlap_size++;
         }
@@ -76,7 +77,6 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
         rmse = std::numeric_limits<float>::quiet_NaN();
     }
     return rmse;
-
 }
 
 float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,

@@ -567,6 +567,8 @@ void calculateTemperatureMapDistances(PointColoredNCloud::Ptr &compared,
             nearest_point = reference->points[nn_indices[0]];
             dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
                                       (nearest_point.getVector3fMap() - compared->points[i].getVector3fMap()));
+            // normal can be invalid
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_dists[0];
         }
         setPointColor(compared->points[i], getColor(dist_to_plane, distance_min, distance_max));
         distances[i] = dist_to_plane;
