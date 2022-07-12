@@ -67,6 +67,10 @@ public:
         return pcd_error_;
     }
 
+    inline float getRunningTime() const {
+        return time_;
+    }
+
     inline MetricEstimator::Ptr getMetricEstimator() {
         return metric_estimator_;
     }

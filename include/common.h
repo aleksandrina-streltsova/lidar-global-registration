@@ -41,6 +41,8 @@
 #define ALIGNMENT_NORMAL_RADIUS_COEF 3
 #define ALIGNMENT_FEATURE_RADIUS_COEF 15
 
+#define GROR_ISS_COEF 4.0
+
 // Types
 typedef pcl::PointXYZ Point;
 typedef pcl::PointNormal PointN;
@@ -96,7 +98,7 @@ struct AlignmentParameters {
     bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
     bool use_normals{ALIGNMENT_USE_NORMALS}, normals_available;
     float voxel_size;
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef, gror_iss_coef{GROR_ISS_COEF};
     float normal_radius_coef{ALIGNMENT_NORMAL_RADIUS_COEF}, feature_radius_coef{ALIGNMENT_FEATURE_RADIUS_COEF};
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};

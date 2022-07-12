@@ -52,7 +52,7 @@ AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const Alig
         pcl::copyPointCloud(*src, *origin_cloudS);
         pcl::copyPointCloud(*tgt, *origin_cloudT);
         GrorPre::grorPreparation(origin_cloudS, origin_cloudT, cloudS, cloudT, issS, issT,
-                                 corr, corr_global, parameters.voxel_size);
+                                 corr, corr_global, parameters.voxel_size, parameters.gror_iss_coef);
 
         auto t4 = std::chrono::system_clock::now();
         pcl::registration::GRORInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, float> gror;
@@ -315,7 +315,7 @@ void measureTestResults(const YamlConfig &config) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout << "testname,success_rate,mae,sae,mte,ste,mrmse,srmse\n";
+            fout << "testname,success_rate,mae,sae,mte,ste,mrmse,srmse,mtime,stime\n";
         }
     } else {
         perror(("error while opening file " + filepath).c_str());
@@ -343,7 +343,9 @@ void measureTestResults(const YamlConfig &config) {
         std::vector<float> rotation_errors;
         std::vector<float> translation_errors;
         std::vector<float> overlap_errors;
+        std::vector<float> runtimes;
         int n_successful_times = 0;
+        if (parameters.alignment_id == ALIGNMENT_GROR) n_times = 1;
         for (int i = 0; i < n_times; ++i) {
             pcl::console::print_highlight("Starting alignment...\n");
             AlignmentAnalysis analysis = align(src, tgt, parameters);
@@ -357,6 +359,7 @@ void measureTestResults(const YamlConfig &config) {
                     n_successful_times++;
                 }
             }
+            runtimes.push_back(analysis.getRunningTime());
         }
         float success_rate = (float) n_successful_times / (float) n_times;
         auto mean_rotation_error = calculate_mean<float>(rotation_errors);
@@ -365,10 +368,14 @@ void measureTestResults(const YamlConfig &config) {
         auto std_translation_error = calculate_standard_deviation<float>(translation_errors);
         auto mean_overlap_error = calculate_mean<float>(overlap_errors);
         auto std_overlap_error = calculate_standard_deviation<float>(overlap_errors);
+        auto mean_running_time = calculate_mean<float>(runtimes);
+        auto std_running_time = calculate_standard_deviation<float>(runtimes);
+
         fout << constructName(parameters, "measure") << "," << success_rate << ","
              << mean_rotation_error << "," << std_rotation_error << ","
              << mean_translation_error << "," << std_translation_error << ","
-             << mean_overlap_error << "," << std_overlap_error << "\n";
+             << mean_overlap_error << "," << std_overlap_error << ","
+             << mean_running_time << "," << std_running_time << "\n";
     }
 }
 

@@ -238,6 +238,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
         }
     }
 
+    auto gror_iss_coefs = config.getVector<float>("gror_iss_coef", GROR_ISS_COEF);
+    for (float gic: gror_iss_coefs) {
+        for (auto ps: parameters_container) {
+            ps.gror_iss_coef = gic;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     auto voxel_sizes = config.getVector<float>("voxel_size").value();
     for (float vs: voxel_sizes) {
         for (auto ps: parameters_container) {

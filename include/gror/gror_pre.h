@@ -41,7 +41,7 @@ namespace GrorPre {
 		double inlTh);
 	//ISS keypoint extraction
 	void issKeyPointExtration(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr iss,
-		pcl::PointIndicesPtr iss_Idx, double resolution);
+		pcl::PointIndicesPtr iss_Idx, double resolution, double non_max_radius_coef);
 	//FPFH computation
 	void fpfhComputation(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, double resolution, pcl::PointIndicesPtr iss_Idx, pcl::PointCloud<pcl::FPFHSignature33>::Ptr fpfh_out);
 	//correspondence computation
@@ -53,9 +53,10 @@ namespace GrorPre {
                          pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT,
                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT,
                          pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT,
-                         pcl::CorrespondencesPtr corr, pcl::CorrespondencesPtr corr_global, double resolution);
+                         pcl::CorrespondencesPtr corr, pcl::CorrespondencesPtr corr_global,
+                         double resolution, double iss_coef);
 
-	void grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT, Eigen::Vector3f &centerS, Eigen::Vector3f &centerT, pcl::CorrespondencesPtr corr, double resolution);
+	void grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT, Eigen::Vector3f &centerS, Eigen::Vector3f &centerT, pcl::CorrespondencesPtr corr, double resolution, double iss_coef);
 	void centroidTransMatCompute(Eigen::Matrix4f &T, const Eigen::Vector3f &vS, const Eigen::Vector3f &vT);
 }
 #endif

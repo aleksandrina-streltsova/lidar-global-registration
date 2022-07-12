@@ -16,10 +16,10 @@ void GrorPre::voxelGridFilter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::Po
 
 }
 
-void GrorPre::issKeyPointExtration(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr ISS, pcl::PointIndicesPtr ISS_Idx, double resolution)
+void GrorPre::issKeyPointExtration(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr ISS, pcl::PointIndicesPtr ISS_Idx, double resolution, double non_max_radius_coef)
 {
 	double iss_salient_radius_ = 6 * resolution;
-	double iss_non_max_radius_ = 4 * resolution;
+	double iss_non_max_radius_ = non_max_radius_coef * resolution;
 	//double iss_non_max_radius_ = 2 * resolution;//for office
 	//double iss_non_max_radius_ = 9 * resolution;//for railway
 	double iss_gamma_21_(0.975);
@@ -111,7 +111,8 @@ void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS,
                               pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT,
                               pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT,
                               pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT,
-                              pcl::CorrespondencesPtr corr, pcl::CorrespondencesPtr corr_global, double resolution)
+                              pcl::CorrespondencesPtr corr, pcl::CorrespondencesPtr corr_global,
+                              double resolution, double iss_coef)
 {
 	int max_corr = 5;// neighbor number in descriptor searching
 	auto t = std::chrono::system_clock::now();
@@ -128,8 +129,8 @@ void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS,
 	std::cout << "/*extracting ISS keypoints......" << std::endl;
 	pcl::PointIndicesPtr iss_IdxS(new pcl::PointIndices);
 	pcl::PointIndicesPtr iss_IdxT(new pcl::PointIndices);
-	GrorPre::issKeyPointExtration(cloudS, issS, iss_IdxS, resolution);
-	GrorPre::issKeyPointExtration(cloudT, issT, iss_IdxT, resolution);
+	GrorPre::issKeyPointExtration(cloudS, issS, iss_IdxS, resolution, iss_coef);
+	GrorPre::issKeyPointExtration(cloudT, issT, iss_IdxT, resolution, iss_coef);
 	auto t2 = std::chrono::system_clock::now();
 	std::cout << "/*Down!: time consumption of iss key point extraction: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000.0 << std::endl;
 	std::cout << "/*=================================================*/" << std::endl;
@@ -162,7 +163,7 @@ void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS,
 	std::cout << "/*=================================================*/" << std::endl;
 }
 
-void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT, Eigen::Vector3f &centerS, Eigen::Vector3f &centerT, pcl::CorrespondencesPtr corr, double resolution)
+void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS, pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT, pcl::PointCloud<pcl::PointXYZ>::Ptr issS, pcl::PointCloud<pcl::PointXYZ>::Ptr issT, Eigen::Vector3f &centerS, Eigen::Vector3f &centerT, pcl::CorrespondencesPtr corr, double resolution, double iss_coef)
 {
 	int max_corr = 5;// neighbor number in descriptor searching
 	auto t = std::chrono::system_clock::now();
@@ -179,8 +180,8 @@ void GrorPre::grorPreparation(pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS,
 	std::cout << "/*extracting ISS keypoints......" << std::endl;
 	pcl::PointIndicesPtr iss_IdxS(new pcl::PointIndices);
 	pcl::PointIndicesPtr iss_IdxT(new pcl::PointIndices);
-	GrorPre::issKeyPointExtration(cloudS, issS, iss_IdxS, resolution);
-	GrorPre::issKeyPointExtration(cloudT, issT, iss_IdxT, resolution);
+	GrorPre::issKeyPointExtration(cloudS, issS, iss_IdxS, resolution, iss_coef);
+	GrorPre::issKeyPointExtration(cloudT, issT, iss_IdxT, resolution, iss_coef);
 	auto t2 = std::chrono::system_clock::now();
 	std::cout << "/*Down!: time consumption of iss key point extraction: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000.0 << std::endl;
 	std::cout << "/*=================================================*/" << std::endl;
