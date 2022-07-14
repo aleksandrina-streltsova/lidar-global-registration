@@ -1,12 +1,16 @@
+#include <filesystem>
 #include <Eigen/Core>
+#include <pcl/common/transforms.h>
 
-#include <pcl/io/ply_io.h>
 #include "common.h"
-#include "align.h"
+#include "alignment.h"
+#include "analysis.h"
 
 #define TMP_DIR "tmp"
 #define CORNER_SIZE 100
 #define SHIFT 5
+
+namespace fs = std::filesystem;
 
 void assertClose(const std::string &name, float expected, float actual, float eps = 1e-5) {
     if (std::fabs(actual - expected) > eps) {
@@ -64,14 +68,14 @@ int main() {
 
     std::vector<InlierPair> inlier_pairs;
     float metric, error;
-    auto[alignment_result, time] = align_point_clouds<SHOT>(src, tgt, parameters);
+    auto alignment_result= alignPointClouds(src, tgt, parameters);
+    auto alignment_analysis = AlignmentAnalysis(alignment_result, parameters);
 
 //    PointNCloud src_aligned;
 //    pcl::transformPointCloud(*src, src_aligned, alignment_result.getFinalTransformation());
 //    pcl::io::savePLYFileBinary("corner1_aligned.ply",  src_aligned);
 
-    auto transformation = alignment_result.getFinalTransformation();
-    auto alignment_analysis = alignment_result.getAlignmentAnalysis(parameters, time);
+    auto transformation = alignment_result.transformation;
     auto metric_estimator = alignment_analysis.getMetricEstimator();
     metric_estimator->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
     alignment_analysis.start(transformation_gt, "corners");

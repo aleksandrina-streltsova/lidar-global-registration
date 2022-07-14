@@ -1,6 +1,6 @@
 #include <filesystem>
 
-#include "align.h"
+#include "alignment.h"
 
 #define TMP_DIR "tmp"
 #define NR_DIMS_SHOT 352
@@ -68,12 +68,12 @@ int main(int argc, char **argv) {
     Features features_src, features_tgt, key_point_features_src, key_point_features_tgt;
 
     parameters.keypoint_id = KEYPOINT_ANY;
-    align_point_clouds<SHOT>(src, tgt, parameters);
+    alignPointClouds(src, tgt, parameters);
     readFeatures(features_src, key_point_indices_src, parameters, true);
     readFeatures(features_tgt, key_point_indices_tgt, parameters, false);
 
     parameters.keypoint_id = KEYPOINT_ISS;
-    align_point_clouds<SHOT>(src, tgt, parameters);
+    alignPointClouds(src, tgt, parameters);
     readFeatures(key_point_features_src, key_point_indices_src, parameters, true);
     readFeatures(key_point_features_tgt, key_point_indices_tgt, parameters, false);
 

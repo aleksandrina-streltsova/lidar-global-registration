@@ -36,7 +36,7 @@ public:
                                          std::vector<InlierPair> &correct_inlier_pairs,
                                          const Eigen::Matrix4f &transformation_gt) const;
 
-    virtual inline void setCorrespondences(const pcl::Correspondences &correspondences) {
+    virtual inline void setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) {
         correspondences_ = correspondences;
     }
 
@@ -55,7 +55,7 @@ public:
     virtual std::string getClassName() = 0;
 
 protected:
-    pcl::Correspondences correspondences_;
+    pcl::CorrespondencesConstPtr correspondences_;
     PointNCloud::ConstPtr src_, tgt_;
     float inlier_threshold_;
 };
@@ -175,7 +175,7 @@ public:
                                            std::vector<InlierPair> &inlier_pairs,
                                            float &rmse, float &metric) override;
 
-    void setCorrespondences(const pcl::Correspondences &correspondences) override;
+    void setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 

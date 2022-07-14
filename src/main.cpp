@@ -3,11 +3,11 @@
 #include <filesystem>
 #include <array>
 
-#include "io.h"
-#include "config.h"
-#include "align.h"
-#include "filter.h"
+#include "analysis.h"
+#include "feature_analysis.h"
+#include "alignment.h"
 #include "downsample.h"
+#include "weights.h"
 
 #include "gror/ia_gror.h"
 #include "gror/gror_pre.h"
@@ -18,81 +18,82 @@ const std::string ALIGNMENT = "alignment";
 const std::string METRIC_ANALYSIS = "metric";
 const std::string DEBUG = "debug";
 
-AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const AlignmentParameters &parameters) {
-    AlignmentAnalysis analysis;
-    if (parameters.alignment_id == ALIGNMENT_DEFAULT) {
-    auto descriptor_id = parameters.descriptor_id;
-        if (descriptor_id == DESCRIPTOR_FPFH) {
-            auto[alignment, time] = align_point_clouds<FPFH>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == DESCRIPTOR_USC) {
-            auto[alignment, time] = align_point_clouds<USC>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == DESCRIPTOR_ROPS) {
-            auto[alignment, time] = align_point_clouds<RoPS135>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else if (descriptor_id == DESCRIPTOR_SHOT) {
-            auto[alignment, time] = align_point_clouds<SHOT>(src, tgt, parameters);
-            analysis = alignment.getAlignmentAnalysis(parameters, time);
-        } else {
-            pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
-        }
-    } else if (parameters.alignment_id == ALIGNMENT_GROR) {
-        /*======================================================================*/
-        auto t = std::chrono::system_clock::now();
-        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr issS(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr issT(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::CorrespondencesPtr corr(new pcl::Correspondences), corr_global(new pcl::Correspondences);
-        Eigen::Vector3f centerS(0, 0, 0), centerT(0, 0, 0);
-
-        pcl::copyPointCloud(*src, *origin_cloudS);
-        pcl::copyPointCloud(*tgt, *origin_cloudT);
-        GrorPre::grorPreparation(origin_cloudS, origin_cloudT, cloudS, cloudT, issS, issT,
-                                 corr, corr_global, parameters.voxel_size, parameters.gror_iss_coef);
-
-        auto t4 = std::chrono::system_clock::now();
-        pcl::registration::GRORInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, float> gror;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr pcs(new pcl::PointCloud<pcl::PointXYZ>);
-        gror.setInputSource(issS);
-        gror.setInputTarget(issT);
-        gror.setResolution(parameters.voxel_size);
-        gror.setOptimalSelectionNumber(800);
-        gror.setNumberOfThreads(1);
-        gror.setInputCorrespondences(corr);
-        gror.align(*pcs);
-        auto t5 = std::chrono::system_clock::now();
-        std::cout << "/*Down!: time consumption of gror: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count()) / 1000.0 << std::endl;
-        std::cout << "best count: " << gror.getBestCount() << std::endl;
-        std::cout << "best final TM: \n" << gror.getFinalTransformation() << std::endl;
-        std::cout << "/*=================================================*/" << std::endl;
-
-        auto t_end = std::chrono::system_clock::now();
-        auto time = double(std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t).count()) / 1000.0;
-
-        std::cout << "/*total registration time cost:" << time << std::endl;
-        std::cout << "/*=================================================*/" << std::endl;
-
-        NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-        PointNCloud::Ptr src_downsize(new PointNCloud);
-        PointNCloud::Ptr tgt_downsize(new PointNCloud);
-        pcl::copyPointCloud(*cloudS, *src_downsize);
-        pcl::copyPointCloud(*cloudT, *tgt_downsize);
-        float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
-        estimateNormalsRadius(normal_radius, src_downsize, normals_src, false);
-        estimateNormalsRadius(normal_radius, tgt_downsize, normals_tgt, false);
-        pcl::concatenateFields(*src_downsize, *normals_src, *src_downsize);
-        pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt_downsize);
-
-        analysis = AlignmentAnalysis(parameters, src_downsize, tgt_downsize, *corr_global, 0, gror.getFinalTransformation(), time);
-    } else {
-        pcl::console::print_error("Alignment method %s isn't supported!\n", parameters.alignment_id.c_str());
-    }
-    return analysis;
-}
+//AlignmentAnalysis align(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt, const AlignmentParameters &parameters) {
+//    auto[alignment, time] = alignPointClouds(src, tgt, parameters);
+//    return alignment.getAlignmentAnalysis(parameters, time);
+//    if (parameters.alignment_id == ALIGNMENT_DEFAULT) {
+//    auto descriptor_id = parameters.descriptor_id;
+//        if (descriptor_id == DESCRIPTOR_FPFH) {
+//            auto[alignment, time] = alignPointClouds<FPFH>(src, tgt, parameters);
+//            analysis = alignment.getAlignmentAnalysis(parameters, time);
+//        } else if (descriptor_id == DESCRIPTOR_USC) {
+//            auto[alignment, time] = alignPointClouds<USC>(src, tgt, parameters);
+//            analysis = alignment.getAlignmentAnalysis(parameters, time);
+//        } else if (descriptor_id == DESCRIPTOR_ROPS) {
+//            auto[alignment, time] = alignPointClouds<RoPS135>(src, tgt, parameters);
+//            analysis = alignment.getAlignmentAnalysis(parameters, time);
+//        } else if (descriptor_id == DESCRIPTOR_SHOT) {
+//            auto[alignment, time] = alignPointClouds<SHOT>(src, tgt, parameters);
+//            analysis = alignment.getAlignmentAnalysis(parameters, time);
+//        } else {
+//            pcl::console::print_error("Descriptor %s isn't supported!\n", descriptor_id.c_str());
+//        }
+//    } else if (parameters.alignment_id == ALIGNMENT_GROR) {
+//        /*======================================================================*/
+//        auto t = std::chrono::system_clock::now();
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudS(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr origin_cloudT(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudS(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudT(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr issS(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr issT(new pcl::PointCloud<pcl::PointXYZ>);
+//        pcl::CorrespondencesPtr corr(new pcl::Correspondences), corr_global(new pcl::Correspondences);
+//        Eigen::Vector3f centerS(0, 0, 0), centerT(0, 0, 0);
+//
+//        pcl::copyPointCloud(*src, *origin_cloudS);
+//        pcl::copyPointCloud(*tgt, *origin_cloudT);
+//        GrorPre::grorPreparation(origin_cloudS, origin_cloudT, cloudS, cloudT, issS, issT,
+//                                 corr, corr_global, parameters.voxel_size, parameters.gror_iss_coef);
+//
+//        auto t4 = std::chrono::system_clock::now();
+//        pcl::registration::GRORInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, float> gror;
+//        pcl::PointCloud<pcl::PointXYZ>::Ptr pcs(new pcl::PointCloud<pcl::PointXYZ>);
+//        gror.setInputSource(issS);
+//        gror.setInputTarget(issT);
+//        gror.setResolution(parameters.voxel_size);
+//        gror.setOptimalSelectionNumber(800);
+//        gror.setNumberOfThreads(1);
+//        gror.setInputCorrespondences(corr);
+//        gror.align(*pcs);
+//        auto t5 = std::chrono::system_clock::now();
+//        std::cout << "/*Down!: time consumption of gror: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count()) / 1000.0 << std::endl;
+//        std::cout << "best count: " << gror.getBestCount() << std::endl;
+//        std::cout << "best final TM: \n" << gror.getFinalTransformation() << std::endl;
+//        std::cout << "/*=================================================*/" << std::endl;
+//
+//        auto t_end = std::chrono::system_clock::now();
+//        auto time = double(std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t).count()) / 1000.0;
+//
+//        std::cout << "/*total registration time cost:" << time << std::endl;
+//        std::cout << "/*=================================================*/" << std::endl;
+//
+//        NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
+//        PointNCloud::Ptr src_downsize(new PointNCloud);
+//        PointNCloud::Ptr tgt_downsize(new PointNCloud);
+//        pcl::copyPointCloud(*cloudS, *src_downsize);
+//        pcl::copyPointCloud(*cloudT, *tgt_downsize);
+//        float normal_radius = parameters.normal_radius_coef * parameters.voxel_size;
+//        estimateNormalsRadius(normal_radius, src_downsize, normals_src, false);
+//        estimateNormalsRadius(normal_radius, tgt_downsize, normals_tgt, false);
+//        pcl::concatenateFields(*src_downsize, *normals_src, *src_downsize);
+//        pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt_downsize);
+//
+//        analysis = AlignmentAnalysis(parameters, src_downsize, tgt_downsize, *corr_global, 0, gror.getFinalTransformation(), time);
+//    } else {
+//        pcl::console::print_error("Alignment method %s isn't supported!\n", parameters.alignment_id.c_str());
+//    }
+//    return analysis;
+//}
 
 std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
@@ -114,7 +115,8 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
             saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
         }
         pcl::console::print_highlight("Starting alignment...\n");
-        AlignmentAnalysis analysis = align(src, tgt, parameters);
+        AlignmentResult result = alignPointClouds(src, tgt, parameters);
+        AlignmentAnalysis analysis(result, parameters);
         if (analysis.alignmentHasConverged()) {
             analysis.start(transformation_gt, testname);
         }
@@ -183,12 +185,12 @@ void estimateTestMetric(const YamlConfig &config) {
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             CorrespondencesMetricEstimator estimator_corr;
             ClosestPlaneMetricEstimator estimator_icp;
-            pcl::Correspondences correspondences;
+            pcl::CorrespondencesPtr correspondences;
             std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
             float error, metric_icp, metric_corr;
             bool success = false;
-            readCorrespondencesFromCSV(constructPath(curr_parameters, "correspondences", "csv", true, false, false),
-                                       correspondences, success);
+            std::string corrs_path = constructPath(curr_parameters, "correspondences", "csv", true, false, false);
+            correspondences = readCorrespondencesFromCSV(corrs_path, success);
             if (!success) {
                 pcl::console::print_error("Failed to read correspondences for %s!\n", curr_parameters.testname.c_str());
                 exit(1);
@@ -222,7 +224,7 @@ void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-    pcl::Correspondences correspondences, correct_correspondences;
+    pcl::CorrespondencesPtr correspondences, correct_correspondences;
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation, transformation_gt;
@@ -253,8 +255,8 @@ void generateDebugFiles(const YamlConfig &config) {
             curr_parameters.voxel_size = voxel_sizes[i];
             curr_parameters.matching_id = matching_ids[i];
             bool success = false;
-            readCorrespondencesFromCSV(constructPath(curr_parameters, "correspondences", "csv", true, false, false),
-                                       correspondences, success);
+            std::string corrs_path = constructPath(curr_parameters, "correspondences", "csv", true, false, false);
+            correspondences = readCorrespondencesFromCSV(corrs_path, success);
             if (!success) {
                 pcl::console::print_error("Failed to read correspondences for %s!\n", curr_parameters.testname.c_str());
                 exit(1);
@@ -272,8 +274,8 @@ void generateDebugFiles(const YamlConfig &config) {
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
 
-            detectKeyPoints(curr_src, normals_src, indices_src, parameters);
-            detectKeyPoints(curr_tgt, normals_tgt, indices_tgt, parameters);
+            indices_src = detectKeyPoints(curr_src, parameters);
+            indices_tgt = detectKeyPoints(curr_tgt, parameters);
 
             auto metric_estimator = getMetricEstimatorFromParameters(curr_parameters);
             metric_estimator->setSourceCloud(curr_src);
@@ -281,13 +283,16 @@ void generateDebugFiles(const YamlConfig &config) {
             metric_estimator->setInlierThreshold(curr_parameters.voxel_size * curr_parameters.distance_thr_coef);
             metric_estimator->setCorrespondences(correspondences);
             metric_estimator->buildInlierPairs(transformation, inlier_pairs, error);
-            buildCorrectCorrespondences(curr_src, curr_tgt, correspondences, correct_correspondences, transformation_gt, error_thr);
-//            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters);
-//            saveCorrespondences(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters, true);
-//            saveCorrespondenceDistances(curr_src, curr_tgt, correspondences, transformation_gt, curr_parameters.voxel_size, curr_parameters);
-            saveColorizedPointCloud(curr_src, indices_src, correspondences, correct_correspondences, inlier_pairs, curr_parameters, transformation_gt, true);
-            saveColorizedPointCloud(curr_tgt, indices_tgt, correspondences, correct_correspondences, inlier_pairs, curr_parameters, Eigen::Matrix4f::Identity(), false);
-//            saveCorrespondencesDebug(correspondences, correct_correspondences, curr_parameters);
+            buildCorrectCorrespondences(curr_src, curr_tgt, *correspondences, *correct_correspondences, transformation_gt,
+                                        error_thr);
+            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt, curr_parameters);
+            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt, curr_parameters, true);
+            saveCorrespondenceDistances(curr_src, curr_tgt, *correspondences, transformation_gt, curr_parameters.voxel_size, curr_parameters);
+            saveColorizedPointCloud(curr_src, indices_src, *correspondences, *correct_correspondences, inlier_pairs,
+                                    curr_parameters, transformation_gt, true);
+            saveColorizedPointCloud(curr_tgt, indices_tgt, *correspondences, *correct_correspondences, inlier_pairs,
+                                    curr_parameters, Eigen::Matrix4f::Identity(), false);
+            saveCorrespondencesDebug(*correspondences, *correct_correspondences, curr_parameters);
 
             if (curr_parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
                 WeightFunction weight_function = getWeightFunction(curr_parameters.weight_id);
@@ -298,7 +303,8 @@ void generateDebugFiles(const YamlConfig &config) {
             saveTemperatureMaps(curr_src, curr_tgt, "temperature", curr_parameters, transformation);
 //            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", curr_parameters, transformation_gt);
         }
-        saveTemperatureMaps(src_fullsize, tgt_fullsize,"temperature_fullsize", parameters, transformation, parameters.normals_available);
+        saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_fullsize", parameters, transformation,
+                            parameters.normals_available);
 //        saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_gt_fullsize", parameters, transformation_gt);
     }
 }
@@ -348,7 +354,8 @@ void measureTestResults(const YamlConfig &config) {
         if (parameters.alignment_id == ALIGNMENT_GROR) n_times = 1;
         for (int i = 0; i < n_times; ++i) {
             pcl::console::print_highlight("Starting alignment...\n");
-            AlignmentAnalysis analysis = align(src, tgt, parameters);
+            AlignmentResult result = alignPointClouds(src, tgt, parameters);
+            AlignmentAnalysis analysis(result, parameters);
             if (analysis.alignmentHasConverged()) {
                 analysis.start(transformation_gt, testname);
                 bool success = analysis.getOverlapError() < parameters.distance_thr_coef * parameters.voxel_size;
@@ -410,16 +417,19 @@ void runLoopTest(const YamlConfig &config) {
             float min_voxel_size;
             loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt,
                             config.get<float>("density"), min_voxel_size);
-            loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
+            loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(),
+                                 transformation_gt);
             parameters.testname = testname;
             pcl::console::print_highlight("Starting alignment...\n");
-            AlignmentAnalysis analysis = align(src, tgt, parameters);
+            AlignmentResult result = alignPointClouds(src, tgt, parameters);
+            AlignmentAnalysis analysis(result, parameters);
             if (analysis.alignmentHasConverged()) {
                 analysis.start(transformation_gt, testname);
             }
             transformation_diff = analysis.getTransformation() * transformation_diff;
         }
-        auto [r_err, t_err] = calculate_rotation_and_translation_errors(transformation_diff, Eigen::Matrix4f::Identity());
+        auto[r_err, t_err] = calculate_rotation_and_translation_errors(transformation_diff,
+                                                                       Eigen::Matrix4f::Identity());
         float pcd_err = calculate_point_cloud_rmse(tgt, transformation_diff, Eigen::Matrix4f::Identity());
         fout << constructName(parameters, testname) << "," << r_err << "," << t_err << "," << pcd_err << "\n";
     }

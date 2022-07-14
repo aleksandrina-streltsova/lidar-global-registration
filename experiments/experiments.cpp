@@ -2,6 +2,7 @@
 #include <vector>
 #include <fstream>
 #include <filesystem>
+#include <unordered_set>
 
 #include <pcl/console/print.h>
 #include <pcl/io/ply_io.h>
@@ -9,7 +10,7 @@
 #include "config.h"
 #include "common.h"
 #include "downsample.h"
-#include "align.h"
+#include "analysis.h"
 #include "keypoints.h"
 #include "io.h"
 
@@ -151,8 +152,8 @@ void analyzeKeyPoints(const YamlConfig &config) {
             curr_parameters.voxel_size = voxel_sizes[i];
             curr_parameters.matching_id = matching_ids[i];
             bool success = false;
-            readCorrespondencesFromCSV(constructPath(curr_parameters, "correspondences", "csv", true, false, false),
-                                       correspondences, success);
+            std::string corrs_path = constructPath(curr_parameters, "correspondences", "csv", true, false, false);
+            correspondences = *readCorrespondencesFromCSV(corrs_path, success);
             curr_parameters.keypoint_id = KEYPOINT_ISS;
             if (!success) {
                 pcl::console::print_error("Failed to read correspondences for %s!\n", curr_parameters.testname.c_str());

@@ -1,10 +1,11 @@
-#include <pcl/io/ply_io.h>
+#include <filesystem>
 
 #include "flann_bf_matcher.h"
 #include "io.h"
 
 int main(int argc, char **argv) {
     YamlConfig config;
+    std::cout << std::filesystem::current_path() << std::endl;
     config.init(argv[1]);
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);

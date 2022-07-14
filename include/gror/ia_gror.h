@@ -17,6 +17,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/registration/registration.h>
 #include <pcl/registration/matching_candidate.h>
+#include <boost/shared_ptr.hpp>
 
 #define DUMMY_PRECISION 1e-12
 

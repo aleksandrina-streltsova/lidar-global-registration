@@ -72,7 +72,7 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
         }
     }
     if (overlap_size != 0) {
-        rmse = std::sqrt(rmse / (float)overlap_size);
+        rmse = std::sqrt(rmse / (float) overlap_size);
     } else {
         rmse = std::numeric_limits<float>::quiet_NaN();
     }
@@ -181,23 +181,15 @@ void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNC
     }
 }
 
-AlignmentAnalysis::AlignmentAnalysis(const AlignmentParameters &parameters,
-                                     const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                     const pcl::Correspondences &correspondences,
-                                     int iterations, const Eigen::Matrix4f &transformation, double time) {
-    parameters_ = parameters;
-    src_ = src;
-    tgt_ = tgt;
-    correspondences_ = correspondences;
-    iterations_ = iterations;
-    transformation_ = transformation;
-    time_ = time;
-    has_converged_ = true;
-    metric_estimator_ = getMetricEstimatorFromParameters(parameters);
-    metric_estimator_->setSourceCloud(src);
-    metric_estimator_->setTargetCloud(tgt);
-    metric_estimator_->setCorrespondences(correspondences);
-    metric_estimator_->setInlierThreshold(parameters.distance_thr_coef * parameters.voxel_size);
+AlignmentAnalysis::AlignmentAnalysis(AlignmentResult result, AlignmentParameters parameters)
+        : src_(result.src), tgt_(result.tgt), parameters_(std::move(parameters)), result_(std::move(result)) {
+    transformation_ = result_.transformation;
+    metric_estimator_ = getMetricEstimatorFromParameters(parameters_);
+    metric_estimator_->setSourceCloud(src_);
+    metric_estimator_->setTargetCloud(tgt_);
+    metric_estimator_->setCorrespondences(result_.correspondences);
+    metric_estimator_->setInlierThreshold(parameters_.distance_thr_coef * parameters_.voxel_size);
+    correspondences_ = *result_.correspondences;
 }
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
@@ -274,7 +266,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.parameters_.feature_radius_coef << ",";
     stream << analysis.parameters_.distance_thr_coef << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
-    stream << analysis.iterations_ << ",";
+    stream << analysis.result_.iterations << ",";
     stream << analysis.parameters_.matching_id << ",";
     stream << analysis.parameters_.randomness << ",";
     auto func = getUniquenessFunction(analysis.parameters_.func_id);
@@ -286,7 +278,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
     stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << ",";
     stream << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
-    stream << analysis.parameters_.metric_id << "," << analysis.time_ << "," << analysis.overlap_error_ << ",";
+    stream << analysis.parameters_.metric_id << "," << analysis.result_.time << "," << analysis.overlap_error_ << ",";
     stream << analysis.parameters_.alignment_id << "," << analysis.parameters_.keypoint_id << "\n";
     return stream;
 }

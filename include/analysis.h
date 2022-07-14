@@ -36,15 +36,12 @@ class AlignmentAnalysis {
 public:
     AlignmentAnalysis() {}
 
-    AlignmentAnalysis(const AlignmentParameters &parameters,
-                      const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                      const pcl::Correspondences &correspondences,
-                      int iterations, const Eigen::Matrix4f &transformation, double time);
+    AlignmentAnalysis(AlignmentResult result, AlignmentParameters parameters);
 
     void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
 
     inline bool alignmentHasConverged() const {
-        return has_converged_;
+        return result_.converged;
     }
 
     inline Eigen::Matrix4f getTransformation() const {
@@ -68,7 +65,7 @@ public:
     }
 
     inline float getRunningTime() const {
-        return time_;
+        return result_.time;
     }
 
     inline MetricEstimator::Ptr getMetricEstimator() {
@@ -78,10 +75,10 @@ public:
     friend std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis);
 
 private:
-    AlignmentParameters parameters_;
-    MetricEstimator::Ptr metric_estimator_;
-    int iterations_;
     PointNCloud::ConstPtr src_, tgt_;
+    AlignmentParameters parameters_;
+    AlignmentResult result_;
+    MetricEstimator::Ptr metric_estimator_;
     Eigen::Matrix4f transformation_, transformation_gt_;
     pcl::Correspondences correspondences_, correct_correspondences_;
     std::vector<InlierPair> inlier_pairs_, correct_inlier_pairs_;
@@ -89,9 +86,7 @@ private:
     float pcd_error_, overlap_error_, r_error_, t_error_;
     float normal_diff_;
     float corr_uniformity_;
-    double time_;
     std::string testname_;
-    bool has_converged_ = false;
 
     void print();
 

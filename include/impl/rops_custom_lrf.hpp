@@ -115,7 +115,7 @@ ROPSEstimationWithLocalReferenceFrames <PointInT, PointOutT, PointRFT>::computeF
         pcl::Indices local_points;
         Eigen::Matrix3f lrf_matrix;
         if (use_custom_frames) {
-            const PointRF &frame = this->frames_->points[idx];
+            const PointRFT &frame = this->frames_->points[idx];
             for (int d = 0; d < 3; ++d) {
                 lrf_matrix.row(0)[d] = frame.x_axis[d];
                 lrf_matrix.row(1)[d] = frame.y_axis[d];

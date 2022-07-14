@@ -1,6 +1,8 @@
 #ifndef REGISTRATION_FEATURE_ANALYSIS_H
 #define REGISTRATION_FEATURE_ANALYSIS_H
 
+#include <fstream>
+
 #include <Eigen/Core>
 #include <pcl/point_cloud.h>
 

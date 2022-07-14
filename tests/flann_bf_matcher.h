@@ -2,10 +2,12 @@
 #define REGISTRATION_FLANN_BF_MATCHER_H
 
 #include <vector>
+#include <pcl/common/io.h>
 
 #include "common.h"
 #include "downsample.h"
-#include "align.h"
+#include "alignment.h"
+#include "matching.h"
 
 inline bool isclose(float a, float b, float rtol=1e-5, float atol=1e-8) {
     return std::fabs(a - b) <= (atol + rtol * std::fabs(b));
@@ -49,7 +51,6 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
 
     float voxel_size = parameters.voxel_size;
     float normal_radius = parameters.normal_radius_coef * voxel_size;
-    float feature_radius = parameters.feature_radius_coef * voxel_size;
 
     if (!parameters.use_normals) {
         estimateNormalsRadius(normal_radius, src_downsize, normals_src, parameters.normals_available);
@@ -62,14 +63,14 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     tree_src->setInputCloud(src);
     tree_tgt->setInputCloud(tgt);
 
-    // Estimate reference frames
-    estimateReferenceFrames(src, normals_src, nullptr, frames_src, parameters, true);
-    estimateReferenceFrames(tgt, normals_tgt, nullptr, frames_tgt, parameters, false);
+    // Detect key points
+    auto indices_src = detectKeyPoints(src, parameters);
+    auto indices_tgt = detectKeyPoints(tgt, parameters);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(feature_radius, src, normals_src, nullptr, frames_src, features_src);
-    estimateFeatures<FeatureT>(feature_radius, tgt, normals_tgt, nullptr, frames_tgt, features_tgt);
+    estimateFeatures<FeatureT>(src, indices_src, features_src, parameters);
+    estimateFeatures<FeatureT>(tgt, indices_tgt, features_tgt, parameters);
 
     std::vector<MultivaluedCorrespondence> mv_correspondences_bf;
     std::vector<MultivaluedCorrespondence> mv_correspondences_flann;
@@ -82,10 +83,13 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     threads = omp_get_num_procs();
 #endif
     int k_matches = parameters.randomness;
-    matchBF<FeatureT>(features_src, features_tgt, mv_correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
-    matchFLANN<FeatureT>(features_src, features_tgt, mv_correspondences_flann, point_representation, k_matches, threads);
-    matchLocal<FeatureT>(src, tree_tgt, features_src, features_tgt, mv_correspondences_local, point_representation,
-                         Eigen::Matrix4f::Identity(), std::numeric_limits<float>::max(), k_matches, threads);
+    AlignmentParameters parameters_local(parameters);
+    parameters_local.guess = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
+    parameters_local.match_search_radius = std::numeric_limits<float>::max();
+
+    mv_correspondences_bf = matchBF<FeatureT>(features_src, features_tgt, parameters);
+    mv_correspondences_flann = matchFLANN<FeatureT>(features_src, features_tgt, parameters);
+    mv_correspondences_local = matchLocal<FeatureT>(src, tree_tgt, features_src, features_tgt, parameters_local);
     for (int i = 0; i < features_src->size(); ++i) {
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);
@@ -95,10 +99,9 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     mv_correspondences_flann.clear();
     mv_correspondences_local.clear();
 
-    matchBF<FeatureT>(features_tgt, features_src, mv_correspondences_bf, point_representation, k_matches, nr_dims, parameters.bf_block_size);
-    matchFLANN<FeatureT>(features_tgt, features_src, mv_correspondences_flann, point_representation, k_matches, threads);
-    matchLocal<FeatureT>(tgt, tree_src, features_tgt, features_src, mv_correspondences_local, point_representation,
-                         Eigen::Matrix4f::Identity(), std::numeric_limits<float>::max(), k_matches, threads);
+    mv_correspondences_bf = matchBF<FeatureT>(features_tgt, features_src, parameters);
+    mv_correspondences_flann = matchFLANN<FeatureT>(features_tgt, features_src, parameters);
+    mv_correspondences_local = matchLocal<FeatureT>(tgt, tree_src, features_tgt, features_src, parameters_local);
     for (int i = 0; i < features_tgt->size(); ++i) {
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);

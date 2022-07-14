@@ -71,7 +71,7 @@ void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inl
 int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation,
                                            float confidence, int nr_samples) const {
     int count_supporting_corrs = 0;
-    for (const auto &corr: correspondences_) {
+    for (const auto &corr: *correspondences_) {
         Eigen::Vector4f source_point(0, 0, 0, 1);
         source_point.block(0, 0, 3, 1) = src_->points[corr.index_query].getArray3fMap();
         Eigen::Vector4f target_point(0, 0, 0, 1);
@@ -81,7 +81,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
             count_supporting_corrs++;
         }
     }
-    float supporting_corr_fraction = (float) count_supporting_corrs / (float) correspondences_.size();
+    float supporting_corr_fraction = (float) count_supporting_corrs / (float) correspondences_->size();
     if (supporting_corr_fraction <= 0.0 || std::log(1.0 - std::pow(supporting_corr_fraction, nr_samples)) >= 0.0) {
         return std::numeric_limits<int>::max();
     }
@@ -93,14 +93,14 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
                                                       std::vector<InlierPair> &inlier_pairs,
                                                       float &rmse) {
     inlier_pairs.clear();
-    inlier_pairs.reserve(correspondences_.size());
+    inlier_pairs.reserve(correspondences_->size());
     rmse = 0.0f;
 
     // For each point from correspondences in the source dataset
     Eigen::Vector4f source_point, target_point;
-    for (int i = 0; i < correspondences_.size(); ++i) {
-        int query_idx = correspondences_[i].index_query;
-        int match_idx = correspondences_[i].index_match;
+    for (int i = 0; i < correspondences_->size(); ++i) {
+        int query_idx = correspondences_->operator[](i).index_query;
+        int match_idx = correspondences_->operator[](i).index_match;
         source_point = transformation * src_->points[query_idx].getVector4fMap();
         target_point = tgt_->points[match_idx].getVector4fMap();
 
@@ -126,7 +126,7 @@ void CorrespondencesMetricEstimator::buildInlierPairsAndEstimateMetric(const Eig
                                                                        std::vector<InlierPair> &inlier_pairs,
                                                                        float &rmse, float &metric) {
     buildInlierPairs(transformation, inlier_pairs, rmse);
-    metric = (float) inlier_pairs.size() / (float) correspondences_.size();
+    metric = (float) inlier_pairs.size() / (float) correspondences_->size();
 }
 
 void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
@@ -195,7 +195,7 @@ void CombinationMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::
     metric = metric_cs * metric_cp;
 }
 
-void CombinationMetricEstimator::setCorrespondences(const pcl::Correspondences &correspondences) {
+void CombinationMetricEstimator::setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) {
     correspondences_ = correspondences;
     correspondences_estimator.setCorrespondences(correspondences);
     closest_plane_estimator.setCorrespondences(correspondences);
