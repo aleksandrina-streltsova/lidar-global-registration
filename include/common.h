@@ -136,9 +136,10 @@ struct AlignmentResult {
     Eigen::Matrix4f transformation;
     pcl::CorrespondencesConstPtr correspondences;
     int iterations;
-    bool converged{false};
+    bool converged;
 
-    int time;
+    // transformation estimation time, downsampling and normal estimation time, correspondence search time
+    double time_te, time_ds_ne{0.0}, time_cs{0.0};
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,

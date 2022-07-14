@@ -65,7 +65,7 @@ public:
     }
 
     inline float getRunningTime() const {
-        return result_.time;
+        return result_.time_cs + result_.time_te + result_.time_ds_ne;
     }
 
     inline MetricEstimator::Ptr getMetricEstimator() {

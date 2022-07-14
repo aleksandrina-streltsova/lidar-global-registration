@@ -109,6 +109,7 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
 }
 
 AlignmentResult SampleConsensusPrerejectiveOMP::align() {
+    pcl::ScopeTime t("RANSAC");
     int num_rejections = 0; // For debugging
     int ransac_iterations = 0;
 
@@ -242,5 +243,6 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
               this->getClassName().c_str(), ransac_iterations, num_rejections, ransac_iterations);
     PCL_DEBUG("[%s::computeTransformation] Minimum of estimated iterations: %i\n",
               this->getClassName().c_str(), estimated_iters);
-    return AlignmentResult{src_, tgt_, final_transformation, correspondences_,ransac_iterations, converged};
+    return AlignmentResult{src_, tgt_, final_transformation, correspondences_, ransac_iterations, converged,
+                           t.getTimeSeconds()};
 }
