@@ -387,7 +387,7 @@ inline void pcl::registration::GRORInitialAlignment<PointSource, PointTarget, Sc
 	auto t = std::chrono::system_clock::now();
 	optimalSelectionBasedOnNodeReliability(*input_correspondences_, *output_correspondences_, K_optimal_);
 	auto t1 = std::chrono::system_clock::now();
-	std::cout << "/*Down!: time consumption of optimalbSelectionBasedOnNodeReliability: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t).count()) / 1000.0 << std::endl;
+//	std::cout << "/*Down!: time consumption of optimalbSelectionBasedOnNodeReliability: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t).count()) / 1000.0 << std::endl;
 
 	enumeratePairOfCorrespondence(corr_graph_);
 	auto t2 = std::chrono::system_clock::now();
@@ -399,7 +399,7 @@ inline void pcl::registration::GRORInitialAlignment<PointSource, PointTarget, Sc
 
 	obtainMaximumConsistentSetBasedOnEdgeReliability(*output_correspondences_, corr_graph_, two_point_tran_mat, two_point_rot_ele, best_angle);
 	auto t3 = std::chrono::system_clock::now();
-	std::cout << "/*Down!: time consumption of obtainMaximumConsistentSet: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count()) / 1000.0 << std::endl;
+//	std::cout << "/*Down!: time consumption of obtainMaximumConsistentSet: " << double(std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count()) / 1000.0 << std::endl;
 
 
 	Eigen::Matrix4f IdM_1 = Eigen::Matrix4f::Identity();
@@ -657,7 +657,7 @@ inline std::tuple<float, int> pcl::registration::GRORInitialAlignment<PointSourc
 
 	for (int idx = 0; idx < msize_total; ++idx)
 	{
-		pcl::PointXYZ s_p = (*source_local)[idx];
+		PointSource s_p = (*source_local)[idx];
 
 		float p_x = s_p.x;
 		float p_y = s_p.y;
@@ -669,7 +669,7 @@ inline std::tuple<float, int> pcl::registration::GRORInitialAlignment<PointSourc
 
 	for (int idx = 0; idx < bsize_total; ++idx)
 	{
-		pcl::PointXYZ t_p = (*target_local)[idx];
+		PointTarget t_p = (*target_local)[idx];
 
 		float p_x = t_p.x;
 		float p_y = t_p.y;

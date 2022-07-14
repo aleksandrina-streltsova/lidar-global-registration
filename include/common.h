@@ -133,9 +133,7 @@ struct AlignmentParameters {
 struct AlignmentResult {
     PointNCloud::ConstPtr src, tgt;
     Eigen::Matrix4f transformation;
-    std::shared_ptr<const std::vector<InlierPair>> inlier_pairs;
     pcl::CorrespondencesConstPtr correspondences;
-    float metric, rmse;
     int iterations;
     bool converged{false};
 

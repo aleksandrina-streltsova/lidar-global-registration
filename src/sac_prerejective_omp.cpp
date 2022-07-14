@@ -137,9 +137,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
     }
 
     // Start
-    {
-        pcl::ScopeTime t("RANSAC");
-        int threads = getNumberOfThreads();
+    int threads = getNumberOfThreads();
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
 #pragma omp parallel \
     num_threads(threads) \
@@ -148,75 +146,74 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
     shared(final_transformation, final_inlier_pairs, final_rmse, final_metric, converged, estimated_iters) \
     reduction(+:num_rejections, ransac_iterations)
 #endif
-        {
-            int omp_num_threads = omp_get_num_threads();
+    {
+        int omp_num_threads = omp_get_num_threads();
 
-            // Local best results
-            std::vector<InlierPair> best_inlier_pairs_local;
-            float min_error_local = std::numeric_limits<float>::max();
-            float best_metric_local = metric_estimator_->getInitialMetric();
-            int iters_local = max_iterations;
-            Eigen::Matrix4f best_transformation_local;
+        // Local best results
+        std::vector<InlierPair> best_inlier_pairs_local;
+        float min_error_local = std::numeric_limits<float>::max();
+        float best_metric_local = metric_estimator_->getInitialMetric();
+        int iters_local = max_iterations;
+        Eigen::Matrix4f best_transformation_local;
 
-            // Temporaries
-            std::vector<InlierPair> inlier_pairs;
-            float metric, error;
-            Eigen::Matrix4f transformation;
+        // Temporaries
+        std::vector<InlierPair> inlier_pairs;
+        float metric, error;
+        Eigen::Matrix4f transformation;
 
-            int seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
-            UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, seed);
+        int seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
+        UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, seed);
 
 #pragma omp for nowait
-            for (int i = 0; i < max_iterations; ++i) {
-                if (ransac_iterations * omp_num_threads >= iters_local) {
-                    continue;
-                }
-                ++ransac_iterations;
+        for (int i = 0; i < max_iterations; ++i) {
+            if (ransac_iterations * omp_num_threads >= iters_local) {
+                continue;
+            }
+            ++ransac_iterations;
 
-                // Temporary containers
-                pcl::Indices sample_indices;
-                pcl::Indices source_indices;
-                pcl::Indices target_indices;
+            // Temporary containers
+            pcl::Indices sample_indices;
+            pcl::Indices source_indices;
+            pcl::Indices target_indices;
 
-                // Draw nr_samples_ random samples
-                selectCorrespondences(correspondences_->size(), parameters_.n_samples, sample_indices, rand_generator);
+            // Draw nr_samples_ random samples
+            selectCorrespondences(correspondences_->size(), parameters_.n_samples, sample_indices, rand_generator);
 
-                // Find corresponding features in the target cloud
-                buildIndices(sample_indices, source_indices, target_indices);
+            // Find corresponding features in the target cloud
+            buildIndices(sample_indices, source_indices, target_indices);
 
-                // Apply prerejection
-                if (!correspondence_rejector_poly_.thresholdPolygon(source_indices, target_indices)) {
-                    ++num_rejections;
-                    continue;
-                }
+            // Apply prerejection
+            if (!correspondence_rejector_poly_.thresholdPolygon(source_indices, target_indices)) {
+                ++num_rejections;
+                continue;
+            }
 
 
-                // Estimate the transform from the correspondences, write to transformation_
-                transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices,
-                                                                       transformation);
-                // If the new fit is better, update results
-                metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
-                if (metric_estimator_->isBetter(metric, best_metric_local)) {
-                    min_error_local = error;
-                    best_metric_local = metric;
-                    best_inlier_pairs_local = inlier_pairs;
-                    best_transformation_local = transformation;
-                    iters_local = std::min(metric_estimator_->estimateMaxIterations(
-                            transformation, parameters_.confidence, parameters_.n_samples), iters_local);
-                }
-            } // for
+            // Estimate the transform from the correspondences, write to transformation_
+            transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices,
+                                                                   transformation);
+            // If the new fit is better, update results
+            metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+            if (metric_estimator_->isBetter(metric, best_metric_local)) {
+                min_error_local = error;
+                best_metric_local = metric;
+                best_inlier_pairs_local = inlier_pairs;
+                best_transformation_local = transformation;
+                iters_local = std::min(metric_estimator_->estimateMaxIterations(
+                        transformation, parameters_.confidence, parameters_.n_samples), iters_local);
+            }
+        } // for
 #pragma omp critical(registration_result)
-            {
-                if (metric_estimator_->isBetter(best_metric_local, final_metric)) {
-                    *final_inlier_pairs = best_inlier_pairs_local;
-                    final_rmse = min_error_local;
-                    final_metric = best_metric_local;
-                    converged = true;
-                    final_transformation = best_transformation_local;
-                }
-                if (iters_local < estimated_iters) {
-                    estimated_iters = iters_local;
-                }
+        {
+            if (metric_estimator_->isBetter(best_metric_local, final_metric)) {
+                *final_inlier_pairs = best_inlier_pairs_local;
+                final_rmse = min_error_local;
+                final_metric = best_metric_local;
+                converged = true;
+                final_transformation = best_transformation_local;
+            }
+            if (iters_local < estimated_iters) {
+                estimated_iters = iters_local;
             }
         }
     }
@@ -245,6 +242,5 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
               this->getClassName().c_str(), ransac_iterations, num_rejections, ransac_iterations);
     PCL_DEBUG("[%s::computeTransformation] Minimum of estimated iterations: %i\n",
               this->getClassName().c_str(), estimated_iters);
-    return AlignmentResult{src_, tgt_, final_transformation, final_inlier_pairs, correspondences_,
-                           final_metric, final_rmse, ransac_iterations, converged};
+    return AlignmentResult{src_, tgt_, final_transformation, correspondences_,ransac_iterations, converged};
 }

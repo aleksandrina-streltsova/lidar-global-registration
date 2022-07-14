@@ -6,11 +6,37 @@
 #include "correspondence_search.h"
 #include "downsample.h"
 
+#include "gror/ia_gror.h"
+
 #define INITIAL_STEP_VOXEL_SIZE_COEF 8
 #define FINAL_STEP_EDG_THR_COEF 0.99
 #define MATCH_SEARCH_RADIUS_COEF 4
 
 namespace fs = std::filesystem;
+
+AlignmentResult alignRansac(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
+                            const pcl::CorrespondencesPtr &correspondences,
+                            const AlignmentParameters &parameters) {
+    pcl::ScopeTime t("RANSAC");
+    SampleConsensusPrerejectiveOMP ransac(src, tgt, correspondences, parameters);
+    return ransac.align();
+}
+
+AlignmentResult alignGror(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
+                          const pcl::CorrespondencesPtr &correspondences,
+                          const AlignmentParameters &parameters) {
+    pcl::ScopeTime t("GROR");
+    pcl::registration::GRORInitialAlignment<PointN, PointN, float> gror;
+    pcl::PointCloud<PointN>::Ptr pcs(new pcl::PointCloud<PointN>);
+    gror.setInputSource(src);
+    gror.setInputTarget(tgt);
+    gror.setResolution(parameters.voxel_size);
+    gror.setOptimalSelectionNumber(800);
+    gror.setNumberOfThreads(omp_get_num_procs());
+    gror.setInputCorrespondences(correspondences);
+    gror.align(*pcs);
+    return AlignmentResult{src, tgt, gror.getFinalTransformation(), correspondences, 1, true};
+}
 
 AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
                                      const PointNCloud::Ptr &tgt_final,
@@ -57,11 +83,18 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
         correspondences = corr_search.calculateCorrespondences();
         saveCorrespondencesToCSV(filepath, src, tgt, correspondences);
     }
-    SampleConsensusPrerejectiveOMP ransac(src, tgt, correspondences, parameters);
     AlignmentResult alignment_result;
     {
         pcl::ScopeTime t(is_initial ? "Initial alignment step" : "Alignment step");
-        alignment_result = ransac.align();
+        if (parameters.alignment_id == ALIGNMENT_GROR) {
+            alignment_result = alignGror(src, tgt, correspondences, parameters);
+        } else {
+            if (parameters.alignment_id != ALIGNMENT_DEFAULT) {
+                PCL_WARN("[executeAlignmentStep] Transformation estimation method %s isn't supported,"
+                         " default LRF will be used.\n", parameters.alignment_id.c_str());
+            }
+            alignment_result = alignRansac(src, tgt, correspondences, parameters);
+        }
     }
     saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                        constructName(parameters, "transformation"), alignment_result.transformation);
