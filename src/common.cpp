@@ -27,6 +27,7 @@ const std::string VERSION = "10";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
+const std::string ALIGNMENT_TEASER = "teaser";
 const std::string KEYPOINT_ANY = "any";
 const std::string KEYPOINT_ISS = "iss";
 const std::string DESCRIPTOR_FPFH = "fpfh";

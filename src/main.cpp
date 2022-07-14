@@ -272,7 +272,7 @@ void measureTestResults(const YamlConfig &config) {
         std::vector<float> overlap_errors;
         std::vector<float> runtimes;
         int n_successful_times = 0;
-        if (parameters.alignment_id == ALIGNMENT_GROR) n_times = 1;
+        if (parameters.alignment_id != ALIGNMENT_DEFAULT) n_times = 1;
         for (int i = 0; i < n_times; ++i) {
             pcl::console::print_highlight("Starting alignment...\n");
             AlignmentResult result = alignPointClouds(src, tgt, parameters);

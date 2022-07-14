@@ -79,6 +79,7 @@ extern const std::string VERSION;
 extern const std::string SUBVERSION;
 extern const std::string ALIGNMENT_DEFAULT;
 extern const std::string ALIGNMENT_GROR;
+extern const std::string ALIGNMENT_TEASER;
 extern const std::string KEYPOINT_ANY;
 extern const std::string KEYPOINT_ISS;
 extern const std::string DESCRIPTOR_FPFH;
