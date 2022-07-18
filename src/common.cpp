@@ -561,25 +561,13 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
         frames_kps = std::make_shared<PointRFCloud>(PointRFCloud());
         frames_kps->resize(nr_kps, lrf);
     } else if (lrf_id == "gravity") {
+        pcl::IndicesPtr indices_failing(new pcl::Indices), indices_kps_failing(new pcl::Indices);
+        PointRFCloud::Ptr frames_kps_failing(new PointRFCloud);
         frames_kps = std::make_shared<PointRFCloud>(PointRFCloud());
         frames_kps->resize(nr_kps);
 
-        pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
-        tree->setInputCloud(pcd);
-        tree->setSortedResults(true);
-
-        pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>::Ptr lrf_estimator(
-                new pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>());
-        float lrf_radius = parameters.voxel_size * parameters.feature_radius_coef;
-        lrf_estimator->setRadiusSearch(lrf_radius);
-        lrf_estimator->setInputCloud(pcd);
-        if (indices) lrf_estimator->setIndices(indices);
-        lrf_estimator->setSearchMethod(tree);
-        lrf_estimator->compute(*frames_kps);
-        rassert(frames_kps->size() == nr_kps, 15946243)
-
         Eigen::Vector3f gravity(0, 0, 1);
-        for (std::size_t i = 0; i < nr_kps; ++i) {
+        for (int i = 0; i < nr_kps; ++i) {
             int idx = indices ? indices->operator[](i) : i;
             PointRF &output_rf = frames_kps->points[i];
             const PointN &normal = pcd->points[idx];
@@ -592,7 +580,25 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
                     output_rf.y_axis[d] = y_axis[d];
                     output_rf.z_axis[d] = z_axis[d];
                 }
+            } else {
+                indices_failing->push_back(idx);
+                indices_kps_failing->push_back(i);
             }
+        }
+        pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
+        tree->setInputCloud(pcd);
+        tree->setSortedResults(true);
+
+        pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>::Ptr lrf_estimator(
+                new pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>());
+        float lrf_radius = parameters.voxel_size * parameters.feature_radius_coef;
+        lrf_estimator->setRadiusSearch(lrf_radius);
+        lrf_estimator->setInputCloud(pcd);
+        lrf_estimator->setIndices(indices_failing);
+        lrf_estimator->setSearchMethod(tree);
+        lrf_estimator->compute(*frames_kps_failing);
+        for (int i = 0; i < indices_kps_failing->size(); ++i) {
+            frames_kps->points[indices_kps_failing->operator[](i)] = frames_kps_failing->points[i];
         }
     } else if (lrf_id != DEFAULT_LRF) {
         PCL_WARN("[estimateReferenceFrames] LRF %s isn't supported, default LRF will be used.\n", lrf_id.c_str());
