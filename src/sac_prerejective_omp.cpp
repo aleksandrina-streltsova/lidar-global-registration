@@ -5,7 +5,7 @@
 
 void SampleConsensusPrerejectiveOMP::buildIndices(const pcl::Indices &sample_indices,
                                                   pcl::Indices &source_indices,
-                                                  pcl::Indices &target_indices) {
+                                                  pcl::Indices &target_indices) const {
     // Allocate results
     source_indices.resize(sample_indices.size());
     target_indices.resize(sample_indices.size());
@@ -21,7 +21,7 @@ void SampleConsensusPrerejectiveOMP::buildIndices(const pcl::Indices &sample_ind
 
 void SampleConsensusPrerejectiveOMP::selectCorrespondences(int nr_correspondences, int nr_samples,
                                                            pcl::Indices &sample_indices,
-                                                           UniformRandIntGenerator &rand_generator) {
+                                                           UniformRandIntGenerator &rand_generator) const {
     if (nr_samples > nr_correspondences) {
         PCL_ERROR("[%s::selectCorrespondences] ", this->getClassName().c_str());
         PCL_ERROR("The number of samples (%d) must not be greater than the number of correspondences (%zu)!\n",
@@ -65,7 +65,7 @@ void SampleConsensusPrerejectiveOMP::selectCorrespondences(int nr_correspondence
     }
 }
 
-unsigned int SampleConsensusPrerejectiveOMP::getNumberOfThreads() {
+unsigned int SampleConsensusPrerejectiveOMP::getNumberOfThreads() const {
     unsigned int threads;
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
     threads = omp_get_num_procs();
@@ -127,7 +127,9 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
     if (parameters_.guess.has_value()) {
         std::vector<InlierPair> inlier_pairs;
         float metric, error;
-        metric_estimator_->buildInlierPairsAndEstimateMetric(parameters_.guess.value(), inlier_pairs, error, metric);
+        UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
+        Eigen::Matrix4f guess = parameters_.guess.value();
+        metric_estimator_->buildInlierPairsAndEstimateMetric(guess, inlier_pairs, error, metric, rand);
         if (metric_estimator_->isBetter(metric, final_metric)) {
             *final_inlier_pairs = inlier_pairs;
             final_rmse = error;
@@ -163,7 +165,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
         Eigen::Matrix4f transformation;
 
         int seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
-        UniformRandIntGenerator rand_generator(0, (int) this->correspondences_->size() - 1, seed);
+        UniformRandIntGenerator rand(0, (int) this->correspondences_->size() - 1, seed);
 
 #pragma omp for nowait
         for (int i = 0; i < max_iterations; ++i) {
@@ -178,7 +180,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
             pcl::Indices target_indices;
 
             // Draw nr_samples_ random samples
-            selectCorrespondences(correspondences_->size(), parameters_.n_samples, sample_indices, rand_generator);
+            selectCorrespondences(correspondences_->size(), parameters_.n_samples, sample_indices, rand);
 
             // Find corresponding features in the target cloud
             buildIndices(sample_indices, source_indices, target_indices);
@@ -194,7 +196,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
             transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices,
                                                                    transformation);
             // If the new fit is better, update results
-            metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+            metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric, rand);
             if (metric_estimator_->isBetter(metric, best_metric_local)) {
                 min_error_local = error;
                 best_metric_local = metric;
@@ -224,8 +226,9 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
         Eigen::Matrix4f transformation;
         std::vector<InlierPair> inlier_pairs;
         float metric, error;
+        UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
         estimateOptimalRigidTransformation(src_, tgt_, *final_inlier_pairs, transformation);
-        metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+        metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric, rand);
         if (metric_estimator_->isBetter(metric, final_metric)) {
             PCL_WARN("[%s::computeTransformation] number of inliers decreased "
                      "after estimating optimal rigid transformation.\n",

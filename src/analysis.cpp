@@ -194,11 +194,12 @@ AlignmentAnalysis::AlignmentAnalysis(AlignmentResult result, AlignmentParameters
 
 void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
     testname_ = testname;
+    UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
     float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
     transformation_gt_ = transformation_gt;
 
     buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_, error_thr);
-    metric_estimator_->buildInlierPairsAndEstimateMetric(transformation_, inlier_pairs_, rmse_, fitness_);
+    metric_estimator_->buildInlierPairsAndEstimateMetric(transformation_, inlier_pairs_, rmse_, fitness_, rand);
     metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
     pcd_error_ = calculate_point_cloud_rmse(src_, transformation_, transformation_gt_);
     overlap_error_ = calculate_overlap_rmse(src_, tgt_, transformation_, transformation_gt_, error_thr);

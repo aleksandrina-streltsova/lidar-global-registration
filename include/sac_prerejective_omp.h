@@ -30,7 +30,7 @@ public:
 
     AlignmentResult align();
 
-    inline std::string getClassName() {
+    inline std::string getClassName() const {
         return "SampleConsensusPrerejectiveOMP";
     }
 
@@ -45,14 +45,14 @@ protected:
 
     void buildIndices(const pcl::Indices &sample_indices,
                       pcl::Indices &source_indices,
-                      pcl::Indices &target_indices);
+                      pcl::Indices &target_indices) const;
 
     void selectCorrespondences(int nr_correspondences,
                                int nr_samples,
                                pcl::Indices &sample_indices,
-                               UniformRandIntGenerator &rand_generator);
+                               UniformRandIntGenerator &rand_generator) const;
 
-    unsigned int getNumberOfThreads();
+    unsigned int getNumberOfThreads() const;
 };
 
 #endif

@@ -91,7 +91,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
 
 void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
                                                       std::vector<InlierPair> &inlier_pairs,
-                                                      float &rmse) {
+                                                      float &rmse, UniformRandIntGenerator &) const {
     inlier_pairs.clear();
     inlier_pairs.reserve(correspondences_->size());
     rmse = 0.0f;
@@ -124,8 +124,9 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
 
 void CorrespondencesMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                                                        std::vector<InlierPair> &inlier_pairs,
-                                                                       float &rmse, float &metric) {
-    buildInlierPairs(transformation, inlier_pairs, rmse);
+                                                                       float &rmse, float &metric,
+                                                                       UniformRandIntGenerator &rand) const {
+    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
     metric = (float) inlier_pairs.size() / (float) correspondences_->size();
 }
 
@@ -136,27 +137,29 @@ void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tg
 
 void ClosestPlaneMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
                                                    std::vector<InlierPair> &inlier_pairs,
-                                                   float &rmse) {
-    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
+                                                   float &rmse, UniformRandIntGenerator &rand) const {
+    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand);
 }
 
 void ClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                                                     std::vector<InlierPair> &inlier_pairs,
-                                                                    float &rmse, float &metric) {
-    buildInlierPairs(transformation, inlier_pairs, rmse);
+                                                                    float &rmse, float &metric,
+                                                                    UniformRandIntGenerator &rand) const {
+    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
     metric = (float) inlier_pairs.size() / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
 }
 
 void WeightedClosestPlaneMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
                                                            std::vector<InlierPair> &inlier_pairs,
-                                                           float &rmse) {
-    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand_);
+                                                           float &rmse, UniformRandIntGenerator &rand) const {
+    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand);
 }
 
 void WeightedClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                                                             std::vector<InlierPair> &inlier_pairs,
-                                                                            float &rmse, float &metric) {
-    buildInlierPairs(transformation, inlier_pairs, rmse);
+                                                                            float &rmse, float &metric,
+                                                                            UniformRandIntGenerator &rand) const {
+    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
     float sum = 0.0;
     for (auto &inlier_pair: inlier_pairs) {
         sum += weights_[inlier_pair.idx_src];
@@ -180,18 +183,20 @@ void WeightedClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::Cons
 }
 
 void CombinationMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
-                                                  std::vector<InlierPair> &inlier_pairs, float &rmse) {
-    correspondences_estimator.buildInlierPairs(transformation, inlier_pairs, rmse);
+                                                  std::vector<InlierPair> &inlier_pairs, float &rmse,
+                                                  UniformRandIntGenerator &rand) const {
+    correspondences_estimator.buildInlierPairs(transformation, inlier_pairs, rmse, rand);
 }
 
 void CombinationMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                                                    std::vector<InlierPair> &inlier_pairs,
-                                                                   float &rmse, float &metric) {
+                                                                   float &rmse, float &metric,
+                                                                   UniformRandIntGenerator &rand) const {
     float metric_cs, metric_cp;
     float rmse_cp;
     std::vector<InlierPair> inlier_pairs_cp;
-    correspondences_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, rmse, metric_cs);
-    closest_plane_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp);
+    correspondences_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, rmse, metric_cs, rand);
+    closest_plane_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp, rand);
     metric = metric_cs * metric_cp;
 }
 

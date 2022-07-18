@@ -129,9 +129,10 @@ void estimateTestMetric(const YamlConfig &config) {
 
             fout << constructName(curr_parameters, "metric", true, false, false);
             std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt};
+            UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
             for (auto &tn: transformations) {
-                estimator_corr.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_corr, error, metric_corr);
-                estimator_icp.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_icp, error, metric_icp);
+                estimator_corr.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_corr, error, metric_corr, rand);
+                estimator_icp.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_icp, error, metric_icp, rand);
                 fout << "," << metric_corr << "," << metric_icp;
                 fout << "," << inlier_pairs_corr.size() << "," << inlier_pairs_icp.size();
             }
@@ -145,7 +146,7 @@ void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-    pcl::CorrespondencesPtr correspondences, correct_correspondences;
+    pcl::CorrespondencesPtr correspondences, correct_correspondences(new pcl::Correspondences);
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation, transformation_gt;
@@ -198,12 +199,13 @@ void generateDebugFiles(const YamlConfig &config) {
             indices_src = detectKeyPoints(curr_src, parameters);
             indices_tgt = detectKeyPoints(curr_tgt, parameters);
 
+            UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
             auto metric_estimator = getMetricEstimatorFromParameters(curr_parameters);
             metric_estimator->setSourceCloud(curr_src);
             metric_estimator->setTargetCloud(curr_tgt);
             metric_estimator->setInlierThreshold(curr_parameters.voxel_size * curr_parameters.distance_thr_coef);
             metric_estimator->setCorrespondences(correspondences);
-            metric_estimator->buildInlierPairs(transformation, inlier_pairs, error);
+            metric_estimator->buildInlierPairs(transformation, inlier_pairs, error, rand);
             buildCorrectCorrespondences(curr_src, curr_tgt, *correspondences, *correct_correspondences, transformation_gt,
                                         error_thr);
             saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt, curr_parameters);

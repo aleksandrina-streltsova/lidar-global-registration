@@ -24,11 +24,11 @@ public:
     virtual bool isBetter(float new_value, float old_value) const = 0;
 
     virtual void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                                  float &rmse) = 0;
+                                  float &rmse, UniformRandIntGenerator &rand) const = 0;
 
     virtual void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                                    std::vector<InlierPair> &inlier_pairs,
-                                                   float &rmse, float &metric) = 0;
+                                                   float &rmse, float &metric, UniformRandIntGenerator &rand) const = 0;
 
     virtual int estimateMaxIterations(const Eigen::Matrix4f &transformation, float confidence, int nr_samples) const;
 
@@ -52,7 +52,7 @@ public:
         inlier_threshold_ = inlier_threshold;
     }
 
-    virtual std::string getClassName() = 0;
+    virtual std::string getClassName() const = 0;
 
 protected:
     pcl::CorrespondencesConstPtr correspondences_;
@@ -73,13 +73,13 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) override;
+                          float &rmse, UniformRandIntGenerator &rand) const override;
 
     void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                            std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric) override;
+                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
-    inline std::string getClassName() override {
+    inline std::string getClassName() const override {
         return "CorrespondencesMetricEstimator";
     }
 };
@@ -97,21 +97,20 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) override;
+                          float &rmse, UniformRandIntGenerator &rand) const override;
 
     void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                            std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric) override;
+                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
-    inline std::string getClassName() override {
+    inline std::string getClassName() const override {
         return "ClosestPlaneMetricEstimator";
     }
 
 protected:
     pcl::KdTreeFLANN<PointN> tree_tgt_;
-    UniformRandIntGenerator rand_{0, std::numeric_limits<int>::max(), SEED};
     bool sparse_;
 };
 
@@ -132,17 +131,17 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) override;
+                          float &rmse, UniformRandIntGenerator &rand) const override;
 
     void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                            std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric) override;
+                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
-    inline std::string getClassName() override {
+    inline std::string getClassName() const override {
         return "WeightedClosestPlaneMetricEstimator";
     }
 
@@ -152,7 +151,6 @@ protected:
     std::vector<float> weights_;
     float curvature_radius_;
     float weights_sum_ = 0.f;
-    UniformRandIntGenerator rand_{0, std::numeric_limits<int>::max(), SEED};
     bool sparse_;
 };
 
@@ -169,11 +167,11 @@ public:
     }
 
     void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse) override;
+                          float &rmse, UniformRandIntGenerator &rand) const override;
 
     void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                            std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric) override;
+                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     void setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) override;
 
@@ -183,7 +181,7 @@ public:
 
     void setInlierThreshold(float inlier_threshold) override;
 
-    inline std::string getClassName() override {
+    inline std::string getClassName() const override {
         return "CombinationMetricEstimator";
     }
 
