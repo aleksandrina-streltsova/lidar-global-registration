@@ -547,10 +547,10 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
     std::transform(lrf_id.begin(), lrf_id.end(), lrf_id.begin(), [](unsigned char c) { return std::tolower(c); });
     if (lrf_id == "gt") {
         Eigen::Matrix3f lrf_eigen = Eigen::Matrix3f::Identity();
-        if (!parameters.ground_truth) {
+        if (!parameters.ground_truth.has_value()) {
             PCL_ERROR("[estimateReferenceFrames] ground truth wasn't provided!");
         } else {
-            lrf_eigen = parameters.ground_truth->block<3, 3>(0, 0).inverse() * lrf_eigen;
+            lrf_eigen = parameters.ground_truth.value().block<3, 3>(0, 0).inverse() * lrf_eigen;
         }
         PointRF lrf;
         for (int d = 0; d < 3; ++d) {

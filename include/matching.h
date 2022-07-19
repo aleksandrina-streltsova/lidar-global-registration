@@ -138,7 +138,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize() {
         AlignmentParameters parameters(parameters_);
         estimateFeatures<FeatureT>(src_, kps_indices_src_, kps_features_src_, parameters);
         // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
-        parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
         estimateFeatures<FeatureT>(tgt_, kps_indices_tgt_, kps_features_tgt_, parameters);
     }
     pcl::copyPointCloud(*src_, *kps_indices_src_, *kps_src_);
@@ -187,7 +187,6 @@ public:
                                                                                            indices_tgt, parameters) {}
 
     pcl::CorrespondencesPtr match_impl() override {
-        this->initialize();
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (this->parameters_.guess.has_value()) {
             mv_correspondences_ij = matchLocal<FeatureT>(this->kps_src_, this->kps_tree_tgt_,
@@ -251,7 +250,7 @@ public:
             PCL_WARN("[%s::match] k_corrs different from 1 cannot be used with ratio filtering, using k_corrs = 1.\n",
                      getClassName().c_str());
         }
-        this->initialize();
+        this->parameters_.randomness = 2;
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (this->parameters_.guess.has_value()) {
             mv_correspondences_ij = matchLocal<FeatureT>(this->kps_src_, this->kps_tree_tgt_,

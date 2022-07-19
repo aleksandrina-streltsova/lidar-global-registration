@@ -18,12 +18,16 @@ void buildClosestPlaneInliers(const PointNCloud &src,
     float search_radius = 2.f * inlier_threshold;
     float dist_to_plane;
     Eigen::Vector3f point_transformed, nearest_point, normal;
+    std::vector<bool> visited(src.size(), false);
 
     // For point in the source dataset
     for (int i = 0; i < n; ++i) {
         int idx = sparse ? rand() % (int) src.size() : i;
+        while(visited[idx]) idx = (idx + 1) % (int) src.size();
+        visited[idx] = true;
+
         point_transformed = (transformation * src[idx].getVector4fMap()).block<3, 1>(0, 0);
-        // Find its nearest neighbor in the targetFEATURE: make it possible to choose parameters in GROR
+        // Find its nearest neighbor in the target
         pcl::Indices nn_indices(1);
         std::vector<float> nn_dists(1);
         tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
@@ -82,6 +86,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
         }
     }
     float supporting_corr_fraction = (float) count_supporting_corrs / (float) correspondences_->size();
+    supporting_corr_fraction /= 4.f;    // estimate number of iterations pessimistically
     if (supporting_corr_fraction <= 0.0 || std::log(1.0 - std::pow(supporting_corr_fraction, nr_samples)) >= 0.0) {
         return std::numeric_limits<int>::max();
     }

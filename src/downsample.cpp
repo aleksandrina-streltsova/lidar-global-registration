@@ -20,7 +20,9 @@ void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr
     std::unordered_map<Eigen::Vector3i, AccumulatedPoint, HashEigen<Eigen::Vector3i>> voxelindex_to_accpoint;
     Eigen::Vector3f ref_coord;
     Eigen::Vector3i voxel_index;
+    auto point_representation = pcl::DefaultPointRepresentation<PointN>();
     for (int i = 0; i < (int) pcd_fullsize->size(); i++) {
+        if (!point_representation.isValid(pcd_fullsize->points[i])) continue;
         ref_coord = Eigen::Vector3f(pcd_fullsize->points[i].x, pcd_fullsize->points[i].y, pcd_fullsize->points[i].z);
         ref_coord = (ref_coord - voxel_min_bound) / voxel_size;
         voxel_index << int(floor(ref_coord(0))), int(floor(ref_coord(1))), int(floor(ref_coord(2)));
@@ -34,6 +36,7 @@ void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr
     std::copy(points.begin(), points.end(), std::back_inserter(pcd_down->points));
     pcd_down->width = points.size();
     pcd_down->height = 1;
+    pcd_down->is_dense = true;
     pcl::console::print_highlight("to %zu\n", pcd_down->size());
 }
 

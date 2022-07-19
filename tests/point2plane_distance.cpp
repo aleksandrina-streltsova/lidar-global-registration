@@ -60,7 +60,7 @@ int main() {
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
             .max_iterations = 1000,
-            .ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt),
+            .ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt),
             .fix_seed = true,
             .dir_path = TMP_DIR
     };

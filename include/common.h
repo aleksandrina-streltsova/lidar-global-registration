@@ -122,7 +122,7 @@ struct AlignmentParameters {
 
     bool save_features;
     std::string testname;
-    std::shared_ptr<Eigen::Matrix4f> ground_truth{nullptr};
+    std::optional<Eigen::Matrix4f> ground_truth{std::nullopt};
 
     // these parameters cannot be set in config, they are set before alignment steps
     bool fix_seed = true;

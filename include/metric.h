@@ -12,7 +12,7 @@
 
 #include "common.h"
 
-#define SPARSE_POINTS_FRACTION 0.05f
+#define SPARSE_POINTS_FRACTION 0.01f
 
 class MetricEstimator {
 public:

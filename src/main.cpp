@@ -31,7 +31,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     std::vector<AlignmentAnalysis> analyses;
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.testname = testname;
-        parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt);
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt);
         if (parameters.save_features) {
             saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
         }
@@ -66,7 +66,7 @@ void estimateTestMetric(const YamlConfig &config) {
 
     PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud);
+    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation_gt;
     std::string testname;
@@ -103,7 +103,9 @@ void estimateTestMetric(const YamlConfig &config) {
             auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
             estimateNormalsRadius(normal_radius, curr_src, normals_src, false);
+            estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
+            pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
             CorrespondencesMetricEstimator estimator_corr;
             ClosestPlaneMetricEstimator estimator_icp;
             pcl::CorrespondencesPtr correspondences;
@@ -265,7 +267,7 @@ void measureTestResults(const YamlConfig &config) {
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
         parameters.fix_seed = false;
         parameters.testname = testname;
-        parameters.ground_truth = std::make_shared<Eigen::Matrix4f>(transformation_gt);
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt);
         if (parameters.save_features) {
             saveExtractedPointIds(src, tgt, transformation_gt, parameters, tgt);
         }

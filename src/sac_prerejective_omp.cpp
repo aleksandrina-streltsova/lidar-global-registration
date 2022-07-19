@@ -36,7 +36,7 @@ void SampleConsensusPrerejectiveOMP::selectCorrespondences(int nr_correspondence
     // Draw random samples until n samples is reached
     for (int i = 0; i < nr_samples; i++) {
         // Select a random number
-        sample_indices[i] = rand_generator();
+        sample_indices[i] = rand_generator() % nr_correspondences;
 
         // Run trough list of numbers, starting at the lowest, to avoid duplicates
         for (int j = 0; j < i; j++) {
@@ -86,15 +86,15 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
           correspondences_(std::move(correspondences)),
           parameters_(std::move(parameters)) {
     // Some sanity checks first
-    if (parameters_.inlier_fraction < 0.0f || parameters.inlier_fraction > 1.0f) {
+    if (parameters_.inlier_fraction < 0.0f || parameters_.inlier_fraction > 1.0f) {
         PCL_ERROR("[%s::%s] ", this->getClassName().c_str(), this->getClassName().c_str());
-        PCL_ERROR("Illegal inlier fraction %f, must be in [0,1]!\n", parameters.inlier_fraction);
+        PCL_ERROR("Illegal inlier fraction %f, must be in [0,1]!\n", parameters_.inlier_fraction);
         return;
     }
 
-    if (parameters.randomness <= 0) {
+    if (parameters_.randomness <= 0) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
-        PCL_ERROR("Illegal correspondence randomness %d, must be > 0!\n", parameters.randomness);
+        PCL_ERROR("Illegal correspondence randomness %d, must be > 0!\n", parameters_.randomness);
         return;
     }
     correspondence_rejector_poly_.setSimilarityThreshold(parameters_.edge_thr_coef);
@@ -105,7 +105,7 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
     metric_estimator_->setSourceCloud(src_);
     metric_estimator_->setTargetCloud(tgt_);
     metric_estimator_->setCorrespondences(correspondences_);
-    metric_estimator_->setInlierThreshold(parameters_.distance_thr_coef * parameters.voxel_size);
+    metric_estimator_->setInlierThreshold(parameters_.distance_thr_coef * parameters_.voxel_size);
 }
 
 AlignmentResult SampleConsensusPrerejectiveOMP::align() {
@@ -165,7 +165,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
         Eigen::Matrix4f transformation;
 
         int seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
-        UniformRandIntGenerator rand(0, (int) this->correspondences_->size() - 1, seed);
+        UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), seed);
 
 #pragma omp for nowait
         for (int i = 0; i < max_iterations; ++i) {
