@@ -106,8 +106,18 @@ void estimateTestMetric(const YamlConfig &config) {
             estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
-            CorrespondencesMetricEstimator estimator_corr;
-            ClosestPlaneMetricEstimator estimator_icp;
+            ScoreFunction score_function;
+            if (parameters.score_id == METRIC_SCORE_MAE) {
+                score_function = ScoreFunction::MAE;
+            } else if (parameters.score_id == METRIC_SCORE_MSE) {
+                score_function = ScoreFunction::MSE;
+            } else if (parameters.score_id == METRIC_SCORE_EXP) {
+                score_function = ScoreFunction::EXP;
+            } else {
+                score_function = ScoreFunction::Constant;
+            }
+            CorrespondencesMetricEstimator estimator_corr(score_function);
+            ClosestPlaneMetricEstimator estimator_icp(false, score_function);
             pcl::CorrespondencesPtr correspondences;
             std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
             float error, metric_icp, metric_corr;
@@ -129,7 +139,7 @@ void estimateTestMetric(const YamlConfig &config) {
             estimator_icp.setInlierThreshold(curr_parameters.voxel_size * curr_parameters.distance_thr_coef);
             estimator_icp.setCorrespondences(correspondences);
 
-            fout << constructName(curr_parameters, "metric", true, false, false);
+            fout << constructName(curr_parameters, "metric", true, true, false);
             std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt};
             UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
             for (auto &tn: transformations) {

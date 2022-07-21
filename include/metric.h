@@ -12,12 +12,17 @@
 
 #include "common.h"
 
-#define SPARSE_POINTS_FRACTION 0.01f
+enum ScoreFunction {
+    Constant, MAE, MSE, EXP
+};
 
 class MetricEstimator {
 public:
     using Ptr = std::shared_ptr<MetricEstimator>;
     using ConstPtr = std::shared_ptr<const MetricEstimator>;
+
+    explicit MetricEstimator(ScoreFunction score_function = ScoreFunction::Constant)
+            : score_function_(score_function) {};
 
     virtual float getInitialMetric() const = 0;
 
@@ -58,11 +63,13 @@ protected:
     pcl::CorrespondencesConstPtr correspondences_;
     PointNCloud::ConstPtr src_, tgt_;
     float inlier_threshold_;
+    ScoreFunction score_function_;
 };
 
 class CorrespondencesMetricEstimator : public MetricEstimator {
 public:
-    CorrespondencesMetricEstimator() = default;
+    explicit CorrespondencesMetricEstimator(ScoreFunction score_function = ScoreFunction::Constant)
+            : MetricEstimator(score_function) {};
 
     inline float getInitialMetric() const override {
         return 0.0;
@@ -86,7 +93,8 @@ public:
 
 class ClosestPlaneMetricEstimator : public MetricEstimator {
 public:
-    explicit ClosestPlaneMetricEstimator(bool sparse = false) : sparse_(sparse) {};
+    explicit ClosestPlaneMetricEstimator(bool sparse = false, ScoreFunction score_function = ScoreFunction::Constant)
+            : sparse_(sparse), MetricEstimator(score_function) {};
 
     inline float getInitialMetric() const override {
         return 0.0;
@@ -118,8 +126,10 @@ class WeightedClosestPlaneMetricEstimator : public MetricEstimator {
 public:
     WeightedClosestPlaneMetricEstimator() = delete;
 
-    WeightedClosestPlaneMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false)
-            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius), sparse_(sparse) {}
+    WeightedClosestPlaneMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false,
+                                        ScoreFunction score_function = ScoreFunction::Constant)
+            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius), sparse_(sparse),
+              MetricEstimator(score_function) {}
 
 
     inline float getInitialMetric() const override {
@@ -156,7 +166,8 @@ protected:
 
 class CombinationMetricEstimator : public MetricEstimator {
 public:
-    explicit CombinationMetricEstimator(bool sparse = false) : closest_plane_estimator(sparse) {}
+    explicit CombinationMetricEstimator(bool sparse = false, ScoreFunction score_function = ScoreFunction::Constant)
+            : closest_plane_estimator(sparse, score_function) {}
 
     float getInitialMetric() const override {
         return 0.0;

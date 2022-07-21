@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "10";
+const std::string VERSION = "11";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
@@ -48,6 +48,11 @@ const std::string METRIC_WEIGHT_CURVEDNESS = "curvedness";
 const std::string METRIC_WEIGHT_HARRIS = "harris";
 const std::string METRIC_WEIGHT_TOMASI = "tomasi";
 const std::string METRIC_WEIGHT_CURVATURE = "curvature";
+const std::string METRIC_WEIGHT_NSS = "nss";
+const std::string METRIC_SCORE_CONSTANT = "constant";
+const std::string METRIC_SCORE_MAE = "mae";
+const std::string METRIC_SCORE_MSE = "mse";
+const std::string METRIC_SCORE_EXP = "exp";
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -335,6 +340,16 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     for (const auto &id: weight_ids) {
         for (auto ps: parameters_container) {
             ps.weight_id = id;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
+    auto score_ids = config.getVector<std::string>("score", METRIC_SCORE_MSE);
+    for (const auto &id: score_ids) {
+        for (auto ps: parameters_container) {
+            ps.score_id = id;
             new_parameters_container.push_back(ps);
         }
     }
@@ -1000,8 +1015,8 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                             "_" + std::to_string((int) parameters.normal_radius_coef) +
                             "_" + std::to_string((int) parameters.feature_radius_coef) +
-                            "_" + parameters.alignment_id + "_" + parameters.keypoint_id +
-                            "_" + parameters.lrf_id + (with_metric ? "_" + parameters.metric_id : "") +
+                            "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
+                            (with_metric ? "_" + parameters.metric_id + "_" + parameters.score_id : "") +
                             "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
                             (parameters.coarse_to_fine ? "_ctf" : "") +
                             (with_weights ? "_" + parameters.weight_id : "") +

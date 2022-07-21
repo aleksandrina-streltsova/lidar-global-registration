@@ -254,7 +254,7 @@ void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
     out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
     out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
-    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te\n";
+    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -283,6 +283,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.result_.time_te + analysis.result_.time_cs + analysis.result_.time_ds_ne << ",";
     stream << analysis.overlap_error_ << ",";
     stream << analysis.parameters_.alignment_id << "," << analysis.parameters_.keypoint_id << ",";
-    stream << analysis.result_.time_cs << "," << analysis.result_.time_te << "\n";
+    stream << analysis.result_.time_cs << "," << analysis.result_.time_te << ",";
+    stream << analysis.parameters_.score_id << "\n";
     return stream;
 }

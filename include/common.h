@@ -100,9 +100,15 @@ extern const std::string METRIC_WEIGHT_CURVEDNESS;
 extern const std::string METRIC_WEIGHT_HARRIS;
 extern const std::string METRIC_WEIGHT_TOMASI;
 extern const std::string METRIC_WEIGHT_CURVATURE;
+extern const std::string METRIC_WEIGHT_NSS;
+extern const std::string METRIC_SCORE_CONSTANT;
+extern const std::string METRIC_SCORE_MAE;
+extern const std::string METRIC_SCORE_MSE;
+extern const std::string METRIC_SCORE_EXP;
 
 struct InlierPair {
     int idx_src, idx_tgt;
+    float dist;
 };
 
 struct AlignmentParameters {
@@ -117,7 +123,7 @@ struct AlignmentParameters {
     int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
     std::string alignment_id{ALIGNMENT_DEFAULT}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
     std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
-    std::string weight_id{METRIC_WEIGHT_CONSTANT}, func_id;
+    std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE}, func_id;
     int max_iterations;
 
     bool save_features;

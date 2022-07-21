@@ -23,7 +23,7 @@ void buildClosestPlaneInliers(const PointNCloud &src,
     // For point in the source dataset
     for (int i = 0; i < n; ++i) {
         int idx = sparse ? rand() % (int) src.size() : i;
-        while(visited[idx]) idx = (idx + 1) % (int) src.size();
+        while (visited[idx]) idx = (idx + 1) % (int) src.size();
         visited[idx] = true;
 
         point_transformed = (transformation * src[idx].getVector4fMap()).block<3, 1>(0, 0);
@@ -39,7 +39,7 @@ void buildClosestPlaneInliers(const PointNCloud &src,
             // Check if point is an inlier
             if (dist_to_plane < inlier_threshold) {
                 // Update inliers and rmse
-                inlier_pairs.push_back({(int) idx, nn_indices[0]});
+                inlier_pairs.push_back({(int) idx, nn_indices[0], dist_to_plane});
                 rmse += dist_to_plane * dist_to_plane;
             }
         }
@@ -50,6 +50,33 @@ void buildClosestPlaneInliers(const PointNCloud &src,
         rmse = std::sqrt(rmse / static_cast<float>(inlier_pairs.size()));
     else
         rmse = std::numeric_limits<float>::max();
+}
+
+float calculateScore(const std::vector<InlierPair> &inlier_pairs, float threshold, ScoreFunction score_function,
+                     const std::vector<float> &weights = {}) {
+    bool with_weights = !weights.empty();
+    float score = 0.f, value;
+    for (const auto &ip: inlier_pairs) {
+        switch (score_function) {
+            case Constant:
+                value = 1.f;
+                break;
+            case MAE:
+                value = std::fabs(ip.dist - threshold) / threshold;
+                break;
+            case MSE:
+                value = (ip.dist - threshold) * (ip.dist - threshold) / (threshold * threshold);
+                break;
+            case EXP:
+                value = (std::exp(-ip.dist * ip.dist / (2 * threshold * threshold)));
+                break;
+        }
+        if (with_weights) {
+            value *= weights[ip.idx_src];
+        }
+        score += value;
+    }
+    return score;
 }
 
 void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
@@ -115,7 +142,7 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
         // Check if correspondence is an inlier
         if (dist < inlier_threshold_) {
             // Update inliers and rmse
-            inlier_pairs.push_back({query_idx, match_idx});
+            inlier_pairs.push_back({query_idx, match_idx, dist});
             rmse += dist * dist;
         }
     }
@@ -132,7 +159,8 @@ void CorrespondencesMetricEstimator::buildInlierPairsAndEstimateMetric(const Eig
                                                                        float &rmse, float &metric,
                                                                        UniformRandIntGenerator &rand) const {
     buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    metric = (float) inlier_pairs.size() / (float) correspondences_->size();
+    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_);
+    metric = score / (float) correspondences_->size();
 }
 
 void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
@@ -151,7 +179,8 @@ void ClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen:
                                                                     float &rmse, float &metric,
                                                                     UniformRandIntGenerator &rand) const {
     buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    metric = (float) inlier_pairs.size() / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
+    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_);
+    metric = score / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
 }
 
 void WeightedClosestPlaneMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
@@ -165,11 +194,8 @@ void WeightedClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(cons
                                                                             float &rmse, float &metric,
                                                                             UniformRandIntGenerator &rand) const {
     buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    float sum = 0.0;
-    for (auto &inlier_pair: inlier_pairs) {
-        sum += weights_[inlier_pair.idx_src];
-    }
-    metric = sum / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * weights_sum_);
+    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_, weights_);
+    metric = score / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * weights_sum_);
 }
 
 void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
@@ -201,7 +227,8 @@ void CombinationMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::
     float rmse_cp;
     std::vector<InlierPair> inlier_pairs_cp;
     correspondences_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, rmse, metric_cs, rand);
-    closest_plane_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp, rand);
+    closest_plane_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp,
+                                                              rand);
     metric = metric_cs * metric_cp;
 }
 
@@ -232,16 +259,31 @@ void CombinationMetricEstimator::setInlierThreshold(float inlier_threshold) {
 // if sparse is true then only fixed percentage of points from source point cloud will be used
 // to estimate metrics based on closest plane
 MetricEstimator::Ptr getMetricEstimatorFromParameters(const AlignmentParameters &parameters, bool sparse) {
+    ScoreFunction score_function;
+    if (parameters.score_id == METRIC_SCORE_MAE) {
+        score_function = ScoreFunction::MAE;
+    } else if (parameters.score_id == METRIC_SCORE_MSE) {
+        score_function = ScoreFunction::MSE;
+    } else if (parameters.score_id == METRIC_SCORE_EXP) {
+        score_function = ScoreFunction::EXP;
+    } else {
+        if (parameters.score_id != METRIC_SCORE_CONSTANT) {
+            PCL_WARN("[getMetricEstimator] score function %s isn't supported, constant will be used\n",
+                     parameters.score_id.c_str());
+        }
+        score_function = ScoreFunction::Constant;
+    }
     if (parameters.metric_id == METRIC_CLOSEST_PLANE) {
-        return std::make_shared<ClosestPlaneMetricEstimator>(sparse);
+        return std::make_shared<ClosestPlaneMetricEstimator>(sparse, score_function);
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
         float curvature_radius = 2.f * parameters.normal_radius_coef * parameters.voxel_size;
-        return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, curvature_radius, sparse);
+        return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, curvature_radius, sparse,
+                                                                     score_function);
     } else if (parameters.metric_id == METRIC_COMBINATION) {
-        return std::make_shared<CombinationMetricEstimator>(sparse);
+        return std::make_shared<CombinationMetricEstimator>(sparse, score_function);
     } else if (parameters.metric_id != METRIC_CORRESPONDENCES) {
         PCL_WARN("[getMetricEstimator] metric estimator %s isn't supported, correspondences will be used\n",
                  parameters.metric_id.c_str());
     }
-    return std::make_shared<CorrespondencesMetricEstimator>();
+    return std::make_shared<CorrespondencesMetricEstimator>(score_function);
 }
