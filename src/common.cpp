@@ -586,10 +586,10 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
             int idx = indices ? indices->operator[](i) : i;
             PointRF &output_rf = frames_kps->points[i];
             const PointN &normal = pcd->points[idx];
-            Eigen::Vector3f x_axis(normal.normal_x, normal.normal_y, normal.normal_z);
-            if (std::acos(std::abs(std::clamp(x_axis.dot(gravity), -1.0f, 1.0f))) > RF_MIN_ANGLE_RAD) {
-                Eigen::Vector3f y_axis = gravity.cross(x_axis);
-                Eigen::Vector3f z_axis = x_axis.cross(y_axis);
+            Eigen::Vector3f z_axis(normal.normal_x, normal.normal_y, normal.normal_z);
+            if (std::acos(std::abs(std::clamp(z_axis.dot(gravity), -1.0f, 1.0f))) > RF_MIN_ANGLE_RAD) {
+                Eigen::Vector3f y_axis = gravity.cross(z_axis);
+                Eigen::Vector3f x_axis = y_axis.cross(z_axis);
                 for (int d = 0; d < 3; ++d) {
                     output_rf.x_axis[d] = x_axis[d];
                     output_rf.y_axis[d] = y_axis[d];

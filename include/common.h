@@ -48,6 +48,7 @@
 #define ALIGNMENT_FEATURE_RADIUS_COEF 15
 
 #define GROR_ISS_COEF 4.0
+#define SPARSE_POINTS_FRACTION 0.01
 
 // Types
 typedef pcl::PointXYZ Point;
