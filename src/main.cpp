@@ -158,7 +158,7 @@ void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-    pcl::CorrespondencesPtr correspondences, correct_correspondences(new pcl::Correspondences);
+    pcl::CorrespondencesPtr correspondences(new pcl::Correspondences), correct_correspondences(new pcl::Correspondences);
     std::vector<InlierPair> inlier_pairs;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation, transformation_gt;

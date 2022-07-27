@@ -514,4 +514,10 @@ std::vector<MultivaluedCorrespondence> matchLocal(const PointNCloud::ConstPtr &q
     return mv_correspondences;
 }
 
+FeatureBasedMatcher::Ptr getFeatureBasedMatcherFromParameters(const PointNCloud::ConstPtr &src,
+                                                              const PointNCloud::ConstPtr &tgt,
+                                                              const pcl::IndicesConstPtr &indices_src,
+                                                              const pcl::IndicesConstPtr &indices_tgt,
+                                                              const AlignmentParameters &parameters);
+
 #endif

@@ -2,8 +2,7 @@
 
 #include "utils.h"
 
-int debugPoint(int line)
-{
+int debugPoint(int line) {
     if (line < 0)
         return 0;
 
@@ -22,16 +21,4 @@ void split(const std::string &str, std::vector<std::string> &tokens, const std::
     if (!s.empty()) {
         tokens.push_back(s);
     }
-}
-
-void saveVector(const std::vector<float> &vs, const std::string &filepath) {
-    std::fstream fout(filepath, std::ios_base::out);
-    if (!fout.is_open())
-        perror(("error while opening file " + filepath).c_str());
-
-    fout << "value\n";
-    for (float v: vs) {
-        fout << v << "\n";
-    }
-    fout.close();
 }

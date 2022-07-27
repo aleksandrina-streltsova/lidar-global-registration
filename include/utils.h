@@ -86,6 +86,17 @@ T calculate_standard_deviation(const std::vector<T> &v) {
 
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
 
-void saveVector(const std::vector<float> &v, const std::string &filepath);
+template <typename T>
+void saveVector(const std::vector<T> &vs, const std::string &filepath) {
+    std::fstream fout(filepath, std::ios_base::out);
+    if (!fout.is_open())
+        perror(("error while opening file " + filepath).c_str());
+
+    fout << "value\n";
+    for (float v: vs) {
+        fout << v << "\n";
+    }
+    fout.close();
+}
 
 #endif

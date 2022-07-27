@@ -22,8 +22,6 @@ public:
     pcl::CorrespondencesPtr calculateCorrespondences() override;
 
 protected:
-    FeatureBasedMatcher::Ptr getFeatureBasedMatcher() const;
-
     PointNCloud::ConstPtr src_, tgt_;
     pcl::IndicesConstPtr indices_src_, indices_tgt_;
     AlignmentParameters parameters_;
