@@ -435,7 +435,6 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
                 normal.normal_x = point.normal_x;
                 normal.normal_y = point.normal_y;
                 normal.normal_z = point.normal_z;
-                normal.curvature = 0.f;
             } else if (normal.normal_x * point.normal_x + normal.normal_y * point.normal_y +
                        normal.normal_z * point.normal_z < 0) {
                 normal.normal_x *= -1.f;
@@ -447,9 +446,8 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
     int nan_counter = 0;
     for (auto &normal: normals->points) {
         const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
-        if (!std::isfinite(normal_vec[0]) ||
-            !std::isfinite(normal_vec[1]) ||
-            !std::isfinite(normal_vec[2])) {
+        if (!std::isfinite(normal_vec[0]) || !std::isfinite(normal_vec[1]) ||
+            !std::isfinite(normal_vec[2]) || !std::isfinite(normal_vec[3])) {
             nan_counter++;
         } else {
             float norm = std::sqrt(normal.normal_x * normal.normal_x + normal.normal_y * normal.normal_y +
@@ -464,6 +462,7 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
 
 void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
                            bool normals_available) {
+    pcl::console::print_highlight("Estimating normals..\n");
     pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
     normal_est.setRadiusSearch(radius_search);
 

@@ -5,6 +5,8 @@
 
 #include <weights.h>
 
+#define NS_BIN_SIZE 8
+
 std::vector<float> computeWeightConstant(float curvature_radius, const PointNCloud::ConstPtr &pcd);
 
 std::vector<float> computeWeightExponential(float curvature_radius, const PointNCloud::ConstPtr &pcd);
@@ -17,6 +19,8 @@ std::vector<float> computeWeightTomasi(float curvature_radius, const PointNCloud
 
 std::vector<float> computeWeightCurvature(float curvature_radius, const PointNCloud::ConstPtr &pcd);
 
+std::vector<float> computeWeightNSS(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+
 WeightFunction getWeightFunction(const std::string &identifier) {
     if (identifier == METRIC_WEIGHT_EXP_CURVATURE)
         return computeWeightExponential;
@@ -28,6 +32,8 @@ WeightFunction getWeightFunction(const std::string &identifier) {
         return computeWeightTomasi;
     else if (identifier == METRIC_WEIGHT_CURVATURE)
         return computeWeightCurvature;
+    else if (identifier == METRIC_WEIGHT_NSS)
+        return computeWeightNSS;
     else if (identifier != METRIC_WEIGHT_CONSTANT)
         PCL_WARN("[getWeightFunction] weight function %s isn't supported, constant weights will be used\n",
                  identifier.c_str());
@@ -132,6 +138,43 @@ std::vector<float> computeWeightCurvature(float curvature_radius, const PointNCl
     std::vector<float> weights(pcd->size());
     for (int i = 0; i < pcd->size(); ++i) {
         weights[i] = std::isfinite(keypoints[i].intensity) ? keypoints[i].intensity : 0.f;
+    }
+    return weights;
+}
+
+int findBin(const PointN &normal) {
+    // polar angle in [0, pi]
+    float theta = std::acos(normal.normal_z);
+    // azimuthal angle in [0, 2pi]
+    float phi = std::fmod(std::atan2(normal.normal_y, normal.normal_x) + 2.f * M_PI, 2.f * M_PI);
+
+    theta = std::min(std::max(theta, 0.f), (float) M_PI);
+    phi = std::min(std::max(phi, 0.f), (float) (2.f * M_PI));
+    if (theta == M_PI) theta = 0.f;
+    if (phi == 2.f * M_PI) phi = 0.f;
+
+    return (int) (std::floor(theta * NS_BIN_SIZE) * NS_BIN_SIZE + std::floor(phi * NS_BIN_SIZE));
+}
+
+// weights based on Normal Space Sampling
+std::vector<float> computeWeightNSS(float, const PointNCloud::ConstPtr &pcd) {
+    std::vector<int> hist(NS_BIN_SIZE * NS_BIN_SIZE);
+    for (const auto point: pcd->points) {
+        bool is_finite =
+                std::isfinite(point.normal_x) && std::isfinite(point.normal_y) && std::isfinite(point.normal_z);
+        if (!is_finite) continue;
+        int bin = findBin(point);
+        hist[bin] += 1;
+    }
+
+    std::vector<float> weights(pcd->size(), 0.f);
+    for (int i = 0; i < pcd->size(); ++i) {
+        const auto &point = pcd->points[i];
+        bool is_finite =
+                std::isfinite(point.normal_x) && std::isfinite(point.normal_y) && std::isfinite(point.normal_z);
+        if (!is_finite) continue;
+        int bin = findBin(point);
+        weights[i] = 1.f / (float) hist[bin] / (float) (NS_BIN_SIZE * NS_BIN_SIZE);
     }
     return weights;
 }

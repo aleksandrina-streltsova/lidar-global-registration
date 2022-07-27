@@ -250,20 +250,27 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pc
     pcl::KdTreeFLANN<PointT> tree;
     tree.setInputCloud(pcd);
 
-    int k_neighbours = 8, n_points = pcd->size();
-    pcl::Indices match_indices(k_neighbours);
-    std::vector<float> match_distances(k_neighbours), distances(n_points);
-    for (int i = 0; i < n_points; ++i) {
+    int n = (int) (SPARSE_POINTS_FRACTION * (float) pcd->size());
+    UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
+    std::vector<bool> visited(pcd->size(), false);
+
+    int k_neighbours = 8;
+    pcl::Indices match_indices;
+    std::vector<float> match_distances, distances(n);
+    for (int i = 0; i < n; ++i) {
+        int idx = rand() % (int) pcd->size();
+        while (visited[idx]) idx = (idx + 1) % (int) pcd->size();
+        visited[idx] = true;
         tree.nearestKSearch(*pcd,
-                            i,
+                            idx,
                             k_neighbours,
                             match_indices,
                             match_distances);
         std::nth_element(match_distances.begin(), match_distances.begin() + k_neighbours / 2, match_distances.end());
         distances[i] = std::sqrt(match_distances[k_neighbours / 2]);
     }
-    std::nth_element(distances.begin(), distances.begin() + n_points / 2, distances.end());
-    return distances[n_points / 2];
+    std::nth_element(distances.begin(), distances.begin() + n / 2, distances.end());
+    return distances[n / 2];
 }
 
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
