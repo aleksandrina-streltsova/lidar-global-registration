@@ -39,14 +39,15 @@
 #define ALIGNMENT_CONFIDENCE 0.999
 #define ALIGNMENT_INLIER_FRACTION 0.1
 #define ALIGNMENT_USE_BFMATCHER true
-#define ALIGNMENT_USE_NORMALS false
 #define ALIGNMENT_RANDOMNESS 1
+#define ALIGNMENT_RATIO_PARAMETER 2
 #define ALIGNMENT_N_SAMPLES 3
 #define ALIGNMENT_SAVE_FEATURES false
 #define ALIGNMENT_BLOCK_SIZE 10000
-#define ALIGNMENT_NORMAL_RADIUS_COEF 3
-#define ALIGNMENT_FEATURE_RADIUS_COEF 15
 
+#define SPARSE_POINTS_FRACTION 0.01
+#define FEATURE_NR_POINTS 352
+#define NORMAL_NR_POINTS 30
 #define GROR_ISS_COEF 4.0
 #define SPARSE_POINTS_FRACTION 0.01
 
@@ -114,14 +115,13 @@ struct InlierPair {
 
 struct AlignmentParameters {
     bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
-    bool use_normals{ALIGNMENT_USE_NORMALS}, normals_available;
-    float voxel_size;
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef, gror_iss_coef{GROR_ISS_COEF};
-    float normal_radius_coef{ALIGNMENT_NORMAL_RADIUS_COEF}, feature_radius_coef{ALIGNMENT_FEATURE_RADIUS_COEF};
+    bool normals_available;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef, gror_iss_coef{GROR_ISS_COEF}, iss_coef{2};
+    float feature_radius;
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
-    int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
+    int ratio_parameter{ALIGNMENT_RATIO_PARAMETER}, randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
     std::string alignment_id{ALIGNMENT_DEFAULT}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
     std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
     std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE}, func_id;
@@ -133,6 +133,7 @@ struct AlignmentParameters {
 
     // these parameters cannot be set in config, they are set before alignment steps
     bool fix_seed = true;
+    float voxel_size;
     float match_search_radius = 0;
     std::optional<Eigen::Matrix4f> guess{std::nullopt};
     std::string dir_path{DATA_DEBUG_PATH};
@@ -204,6 +205,18 @@ public:
             return false;
     }
 };
+
+std::string constructName(const AlignmentParameters &parameters, const std::string &name,
+                          bool with_version = true, bool with_metric = true,
+                          bool with_weights = true, bool with_subversion = false);
+
+std::string constructPath(const std::string &test, const std::string &name,
+                          const std::string &extension = "ply", bool with_version = true, bool with_subversion = false);
+
+std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
+                          const std::string &extension = "ply",
+                          bool with_version = true, bool with_metric = true,
+                          bool with_weights = true, bool with_subversion = false);
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
@@ -281,8 +294,6 @@ void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, Nor
 void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
                            bool normals_available);
 
-void smoothNormals(float radius_search, float voxel_size, const PointNCloud::Ptr &pcd);
-
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters);
 
 void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
@@ -300,7 +311,7 @@ inline void estimateFeatures<FPFH>(const PointNCloud::ConstPtr &pcd, const pcl::
                                    pcl::PointCloud<FPFH>::Ptr &features, const AlignmentParameters &parameters) {
     int nr_kps = indices ? indices->size() : pcd->size();
     pcl::FPFHEstimationOMP<PointN, PointN, FPFH> fpfh_estimation;
-    fpfh_estimation.setRadiusSearch(parameters.feature_radius_coef * parameters.voxel_size);
+    fpfh_estimation.setRadiusSearch(parameters.feature_radius);
     fpfh_estimation.setInputCloud(pcd);
     fpfh_estimation.setInputNormals(pcd);
     if (indices) fpfh_estimation.setIndices(indices);
@@ -312,7 +323,7 @@ template<>
 inline void estimateFeatures<USC>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
                                   pcl::PointCloud<USC>::Ptr &features, const AlignmentParameters &parameters) {
     int nr_kps = indices ? indices->size() : pcd->size();
-    float radius_search = parameters.feature_radius_coef * parameters.voxel_size;
+    float radius_search = parameters.feature_radius;
     pcl::UniqueShapeContext<PointN, USC, PointRF> shape_context;
     shape_context.setInputCloud(pcd);
     if (indices) shape_context.setIndices(indices);
@@ -330,7 +341,7 @@ template<>
 inline void estimateFeatures<RoPS135>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
                                       pcl::PointCloud<RoPS135>::Ptr &features, const AlignmentParameters &parameters) {
     int nr_kps = indices ? indices->size() : pcd->size();
-    float radius_search = parameters.feature_radius_coef * parameters.voxel_size;
+    float radius_search = parameters.feature_radius;
     // RoPs estimation object.
     ROPSEstimationWithLocalReferenceFrames<PointN, RoPS135> rops;
     rops.setInputCloud(pcd);
@@ -386,7 +397,7 @@ inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const pcl::
     shot.setInputNormals(pcd);
     // The radius that defines which of the keypoint's neighbors are described.
     // If too large, there may be clutter, and if too small, not enough points may be found.
-    shot.setRadiusSearch(parameters.feature_radius_coef * parameters.voxel_size);
+    shot.setRadiusSearch(parameters.feature_radius);
     PointRFCloud::Ptr frames{nullptr};
     estimateReferenceFrames(pcd, indices, frames, parameters);
     if (frames) shot.setInputReferenceFrames(frames);
@@ -436,18 +447,6 @@ void setPointColor(PointColoredN &point, int color);
 void mixPointColor(PointColoredN &point, int color);
 
 void setPointColor(PointColoredN &point, std::uint8_t red, std::uint8_t green, std::uint8_t blue);
-
-std::string constructName(const AlignmentParameters &parameters, const std::string &name,
-                          bool with_version = true, bool with_metric = true,
-                          bool with_weights = true, bool with_subversion = false);
-
-std::string constructPath(const std::string &test, const std::string &name,
-                          const std::string &extension = "ply", bool with_version = true, bool with_subversion = false);
-
-std::string constructPath(const AlignmentParameters &parameters, const std::string &name,
-                          const std::string &extension = "ply",
-                          bool with_version = true, bool with_metric = true,
-                          bool with_weights = true, bool with_subversion = false);
 
 template<typename PointT>
 bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {

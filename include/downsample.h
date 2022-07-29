@@ -17,11 +17,11 @@ public:
 
     PointN GetAveragePoint() const {
         pcl::Normal n(point_.normal_x / num_of_points_, point_.normal_y / num_of_points_,
-                           point_.normal_z / num_of_points_);
+                      point_.normal_z / num_of_points_);
         float norm = std::sqrt(n.normal_x * n.normal_x + n.normal_y * n.normal_y + n.normal_z * n.normal_z);
         norm = norm < 1e-5 ? 1.f : norm;
         return PointN(point_.x / num_of_points_, point_.y / num_of_points_, point_.z / num_of_points_,
-                       n.normal_x / norm, n.normal_y / norm, n.normal_z / norm);
+                      n.normal_x / norm, n.normal_y / norm, n.normal_z / norm);
     }
 
 private:

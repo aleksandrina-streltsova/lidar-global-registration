@@ -15,6 +15,7 @@
 #include "common.h"
 #include "csv_parser.h"
 #include "io.h"
+#include "filter.h"
 
 #define RF_MIN_ANGLE_RAD 0.04f
 
@@ -23,7 +24,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "11";
+const std::string VERSION = "12";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
@@ -200,14 +201,8 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.save_features = config.get<bool>("save_features", ALIGNMENT_SAVE_FEATURES);
     parameters.bf_block_size = config.get<int>("block_size", ALIGNMENT_BLOCK_SIZE);
 
-    bool use_normals = config.get<bool>("use_normals", ALIGNMENT_USE_NORMALS);
-    // TODO: use normals even with one point cloud missing normals
     bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
-    if (use_normals && !normals_available) {
-        PCL_WARN("Point cloud doesn't have normals.\n");
-    }
     parameters.normals_available = normals_available;
-    parameters.use_normals = use_normals && normals_available;
     parameters_container.push_back(parameters);
 
     auto alignment_ids = config.getVector<std::string>("alignment", ALIGNMENT_DEFAULT);
@@ -256,30 +251,21 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto voxel_sizes = config.getVector<float>("voxel_size").value();
-    for (float vs: voxel_sizes) {
+    auto feature_radii = config.getVector<float>("feature_radius").value();
+    for (float fr: feature_radii) {
         for (auto ps: parameters_container) {
-            ps.voxel_size = vs;
+            ps.feature_radius = fr;
+            ps.voxel_size = std::sqrt(M_PI * fr * fr / (float) FEATURE_NR_POINTS);
             new_parameters_container.push_back(ps);
         }
     }
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto normal_radius_coefs = config.getVector<float>("normal_radius_coef", ALIGNMENT_NORMAL_RADIUS_COEF);
-    for (float nrc: normal_radius_coefs) {
+    auto iss_coefs = config.getVector<float>("iss_coef", 2);
+    for (float ic: iss_coefs) {
         for (auto ps: parameters_container) {
-            ps.normal_radius_coef = nrc;
-            new_parameters_container.push_back(ps);
-        }
-    }
-    std::swap(parameters_container, new_parameters_container);
-    new_parameters_container.clear();
-
-    auto feature_radius_coefs = config.getVector<float>("feature_radius_coef", ALIGNMENT_FEATURE_RADIUS_COEF);
-    for (float frc: feature_radius_coefs) {
-        for (auto ps: parameters_container) {
-            ps.feature_radius_coef = frc;
+            ps.iss_coef = ic;
             new_parameters_container.push_back(ps);
         }
     }
@@ -356,14 +342,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    for (auto &parameters: parameters_container) {
-        if (parameters.voxel_size < min_voxel_size) {
-            PCL_WARN("[getParametersFromConfig] "
-                     "voxel size %.5f is less than estimated point cloud density, setting voxel size to %.5f\n",
-                     parameters.voxel_size, min_voxel_size);
-            parameters.voxel_size = min_voxel_size;
-        }
-    }
     return parameters_container;
 }
 
@@ -379,14 +357,8 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
         exit(1);
     }
 
-    if (density.has_value()) {
-        min_voxel_size = density.value();
-    } else {
-        float src_density = calculatePointCloudDensity<PointN>(src);
-        float tgt_density = calculatePointCloudDensity<PointN>(tgt);
-        PCL_DEBUG("[loadPointClouds] src density: %.5f, tgt density: %.5f.\n", src_density, tgt_density);
-        min_voxel_size = std::max(src_density, tgt_density);
-    }
+    filter_duplicate_points(src);
+    filter_duplicate_points(tgt);
 
     std::string src_filename = fs::path(src_path).filename();
     std::string tgt_filename = fs::path(tgt_path).filename();
@@ -485,54 +457,18 @@ void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalClou
     postprocessNormals(pcd, normals, normals_available);
 }
 
-void smoothNormals(float radius_search, float voxel_size, const PointNCloud::Ptr &pcd) {
-    NormalCloud::Ptr old_normals(new NormalCloud);
-    pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
-    tree->setInputCloud(pcd);
-
-    std::vector<pcl::Indices> vector_of_indices(pcd->size());
-    std::vector<float> distances;
-
-    for (int i = 0; i < (int) std::ceil(radius_search / voxel_size); i++) {
-        pcl::copyPointCloud(*pcd, *old_normals);
-        for (int j = 0; j < pcd->size(); ++j) {
-            pcl::Normal acc(0.0, 0.0, 0.0), old_normal(old_normals->points[j]);
-            for (auto idx: vector_of_indices[j]) {
-                float dot_product = old_normal.normal_x * old_normals->points[idx].normal_x +
-                                    old_normal.normal_y * old_normals->points[idx].normal_y +
-                                    old_normal.normal_z * old_normals->points[idx].normal_z;
-                if (dot_product > 0.0) {
-                    acc.normal_x += old_normals->points[idx].normal_x;
-                    acc.normal_y += old_normals->points[idx].normal_y;
-                    acc.normal_z += old_normals->points[idx].normal_z;
-                }
-            }
-            float norm = std::sqrt(acc.normal_x * acc.normal_x + acc.normal_y * acc.normal_y +
-                                   acc.normal_z * acc.normal_z);
-            pcd->points[j].normal_x = acc.normal_x / norm;
-            pcd->points[j].normal_y = acc.normal_y / norm;
-            pcd->points[j].normal_z = acc.normal_z / norm;
-        }
-    }
-}
-
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters) {
     pcl::IndicesPtr indices(new pcl::Indices);
     if (parameters.keypoint_id == KEYPOINT_ISS) {
         PointNCloud key_points;
-        double iss_salient_radius_ = 4 * parameters.voxel_size;
-        double iss_non_max_radius_ = 2 * parameters.voxel_size;
-        double iss_gamma_21_(0.975);
-        double iss_gamma_32_(0.975);
-        int iss_min_neighbors_(4);
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         pcl::ISSKeypoint3D<PointN, PointN, PointN> iss_detector;
         iss_detector.setSearchMethod(tree);
-        iss_detector.setSalientRadius(iss_salient_radius_);
-        iss_detector.setNonMaxRadius(iss_non_max_radius_);
-        iss_detector.setThreshold21(iss_gamma_21_);
-        iss_detector.setThreshold32(iss_gamma_32_);
-        iss_detector.setMinNeighbors(iss_min_neighbors_);
+        iss_detector.setSalientRadius(parameters.iss_coef * parameters.voxel_size);
+        iss_detector.setNonMaxRadius(parameters.iss_coef * parameters.voxel_size);
+        iss_detector.setThreshold21(0.975);
+        iss_detector.setThreshold32(0.975);
+        iss_detector.setMinNeighbors(4);
         iss_detector.setInputCloud(pcd);
         iss_detector.setNormals(pcd);
         iss_detector.compute(key_points);
@@ -605,7 +541,7 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
 
         pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>::Ptr lrf_estimator(
                 new pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>());
-        float lrf_radius = parameters.voxel_size * parameters.feature_radius_coef;
+        float lrf_radius = parameters.feature_radius;
         lrf_estimator->setRadiusSearch(lrf_radius);
         lrf_estimator->setInputCloud(pcd);
         lrf_estimator->setIndices(indices_failing);
@@ -1009,17 +945,17 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                           bool with_version, bool with_metric, bool with_weights, bool with_subversion) {
     with_weights = parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE &&
                    parameters.weight_id != METRIC_WEIGHT_CONSTANT && with_weights;
+    std::string matching_id = parameters.matching_id;
+    if (matching_id == MATCHING_RATIO) matching_id += std::to_string(parameters.ratio_parameter);
     std::string full_name = parameters.testname + "_" + name +
                             "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
-                            "_" + std::to_string((int) parameters.normal_radius_coef) +
-                            "_" + std::to_string((int) parameters.feature_radius_coef) +
+                            "_" + std::to_string((int) std::round(1e4 * parameters.feature_radius)) +
                             "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
                             (with_metric ? "_" + parameters.metric_id + "_" + parameters.score_id : "") +
-                            "_" + parameters.matching_id + "_" + std::to_string(parameters.randomness) +
+                            "_" + matching_id + "_" + std::to_string(parameters.randomness) +
                             (parameters.coarse_to_fine ? "_ctf" : "") +
-                            (with_weights ? "_" + parameters.weight_id : "") +
-                            (parameters.use_normals ? "_normals" : "");
+                            (with_weights ? "_" + parameters.weight_id : "");
     if (with_version) {
         full_name += "_" + VERSION;
     }

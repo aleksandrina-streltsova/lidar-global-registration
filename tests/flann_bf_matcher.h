@@ -50,12 +50,8 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     pcl::search::KdTree<PointN>::Ptr tree_src(new pcl::search::KdTree<PointN>), tree_tgt(new pcl::search::KdTree<PointN>);
 
     float voxel_size = parameters.voxel_size;
-    float normal_radius = parameters.normal_radius_coef * voxel_size;
-
-    if (!parameters.use_normals) {
-        estimateNormalsRadius(normal_radius, src_downsize, normals_src, parameters.normals_available);
-        estimateNormalsRadius(normal_radius, tgt_downsize, normals_tgt, parameters.normals_available);
-    }
+    estimateNormalsPoints(NORMAL_NR_POINTS, src_downsize, normals_src, parameters.normals_available);
+    estimateNormalsPoints(NORMAL_NR_POINTS, tgt_downsize, normals_tgt, parameters.normals_available);
 
     pcl::concatenateFields(*src_downsize, *normals_src, *src);
     pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);

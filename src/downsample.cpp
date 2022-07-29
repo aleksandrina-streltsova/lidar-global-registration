@@ -16,7 +16,8 @@ void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr
     if (voxel_size * (float) std::numeric_limits<int>::max() < (voxel_max_bound - voxel_min_bound).maxCoeff()) {
         PCL_ERROR("[downsamplePointCloud] voxel_size is too small.");
     }
-    pcl::console::print_highlight("Point cloud downsampled from %zu...", pcd_fullsize->size());
+    pcl::console::print_highlight("Point cloud downsampled with voxel_size = %f, from %zu...",
+                                  parameters.voxel_size, pcd_fullsize->size());
     std::unordered_map<Eigen::Vector3i, AccumulatedPoint, HashEigen<Eigen::Vector3i>> voxelindex_to_accpoint;
     Eigen::Vector3f ref_coord;
     Eigen::Vector3i voxel_index;
@@ -29,7 +30,7 @@ void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr
         voxelindex_to_accpoint[voxel_index].AddPoint(pcd_fullsize, i);
     }
 
-    for (const auto& accpoint : voxelindex_to_accpoint) {
+    for (const auto &accpoint: voxelindex_to_accpoint) {
         points.push_back(accpoint.second.GetAveragePoint());
     }
     pcd_down->points.clear();

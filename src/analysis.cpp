@@ -252,24 +252,24 @@ void AlignmentAnalysis::save(const std::string &testname) {
 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-    out << "voxel_size,normal_radius_coef,feature_radius_coef,distance_thr_coef,edge_thr,";
-    out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,use_normals,";
-    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score\n";
+    out << "voxel_size,feature_radius,distance_thr_coef,edge_thr,";
+    out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,";
+    out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score,iss_coef\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
+    std::string matching_id = analysis.parameters_.matching_id;
+    if (matching_id == MATCHING_RATIO) matching_id += std::to_string(analysis.parameters_.ratio_parameter);
     stream << VERSION << "," << analysis.parameters_.descriptor_id << "," << analysis.testname_ << ","
            << analysis.fitness_ << "," << analysis.rmse_ << ",";
     stream << analysis.correspondences_.size() << "," << analysis.correct_correspondences_.size() << ",";
     stream << analysis.inlier_pairs_.size() << "," << analysis.correct_inlier_pairs_.size() << ",";
     stream << analysis.parameters_.voxel_size << ",";
-    stream << analysis.parameters_.normal_radius_coef << ",";
-    stream << analysis.parameters_.feature_radius_coef << ",";
+    stream << analysis.parameters_.feature_radius << ",";
     stream << analysis.parameters_.distance_thr_coef << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
     stream << analysis.result_.iterations << ",";
-    stream << analysis.parameters_.matching_id << ",";
-    stream << analysis.parameters_.randomness << ",";
+    stream << matching_id << "," << analysis.parameters_.randomness << ",";
     auto func = getUniquenessFunction(analysis.parameters_.func_id);
     if (func != nullptr) {
         stream << analysis.parameters_.func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
@@ -277,13 +277,12 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
         stream << ",,,";
     }
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
-    stream << analysis.parameters_.use_normals << "," << analysis.normal_diff_ << ",";
-    stream << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
+    stream << analysis.normal_diff_ << "," << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
     stream << analysis.parameters_.metric_id << ",";
     stream << analysis.result_.time_te + analysis.result_.time_cs + analysis.result_.time_ds_ne << ",";
     stream << analysis.overlap_error_ << ",";
     stream << analysis.parameters_.alignment_id << "," << analysis.parameters_.keypoint_id << ",";
     stream << analysis.result_.time_cs << "," << analysis.result_.time_te << ",";
-    stream << analysis.parameters_.score_id << "\n";
+    stream << analysis.parameters_.score_id << "," << analysis.parameters_.iss_coef << "\n";
     return stream;
 }

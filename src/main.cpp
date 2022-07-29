@@ -98,12 +98,11 @@ void estimateTestMetric(const YamlConfig &config) {
             PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
             downsamplePointCloud(src, curr_src, curr_parameters);
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
-            float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
             auto tn_name = config.get<std::string>("transformation", constructName(curr_parameters, "transformation"));
             auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
-            estimateNormalsRadius(normal_radius, curr_src, normals_src, false);
-            estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
+            estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, false);
+            estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
             ScoreFunction score_function;
@@ -201,10 +200,9 @@ void generateDebugFiles(const YamlConfig &config) {
             downsamplePointCloud(tgt, curr_tgt, curr_parameters);
             transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                                constructName(curr_parameters, "transformation"));
-            float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
             float error_thr = curr_parameters.distance_thr_coef * curr_parameters.voxel_size;
-            estimateNormalsRadius(normal_radius, curr_src, normals_src, false);
-            estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
+            estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, false);
+            estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, false);
             pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
             pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
 
@@ -231,8 +229,7 @@ void generateDebugFiles(const YamlConfig &config) {
 
             if (curr_parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
                 WeightFunction weight_function = getWeightFunction(curr_parameters.weight_id);
-                auto weights = weight_function(2.f * curr_parameters.normal_radius_coef * curr_parameters.voxel_size,
-                                               curr_src);
+                auto weights = weight_function(6.f * curr_parameters.voxel_size, curr_src);
                 saveColorizedWeights(curr_src, weights, "weights", curr_parameters, transformation_gt);
             }
             saveTemperatureMaps(curr_src, curr_tgt, "temperature", curr_parameters, transformation);

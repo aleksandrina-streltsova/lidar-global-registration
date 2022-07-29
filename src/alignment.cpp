@@ -83,9 +83,7 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
 
     float voxel_size = parameters.voxel_size;
-    float normal_radius = parameters.normal_radius_coef * voxel_size;
-    float feature_radius = parameters.feature_radius_coef * voxel_size;
-
+    float feature_radius = parameters.feature_radius;
     {
         pcl::ScopeTime t("Downsampling and normal estimation");
         // Downsample
@@ -94,19 +92,11 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
         downsamplePointCloud(tgt_final, tgt, parameters);
 
         // Estimate normals
-        if (parameters.use_normals) {
-            pcl::console::print_highlight("Normals are from point clouds. Smoothing normals...\n");
-            smoothNormals(normal_radius, voxel_size, src);
-            smoothNormals(normal_radius, voxel_size, tgt);
-            pcl::copyPointCloud(*src, *normals_src);
-            pcl::copyPointCloud(*tgt, *normals_tgt);
-        } else {
-            pcl::console::print_highlight("Estimating normals...\n");
-            estimateNormalsRadius(normal_radius, src, normals_src, parameters.normals_available);
-            estimateNormalsRadius(normal_radius, tgt, normals_tgt, parameters.normals_available);
-            pcl::concatenateFields(*src, *normals_src, *src);
-            pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
-        }
+        pcl::console::print_highlight("Estimating normals...\n");
+        estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, parameters.normals_available);
+        estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, parameters.normals_available);
+        pcl::concatenateFields(*src, *normals_src, *src);
+        pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
         time_downsampling_and_normals = t.getTimeSeconds();
     }
 

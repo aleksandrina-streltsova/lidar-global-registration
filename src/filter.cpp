@@ -162,10 +162,13 @@ void saveUniquenesses(const PointCloud::Ptr &pcd, const std::vector<float> &uniq
 }
 
 void filter_duplicate_points(PointNCloud::Ptr &pcd) {
+    pcl::console::print_highlight("Point cloud size changed from %zu...", pcd->size());
     std::unordered_set<PointN, PointHash, PointEqual<PointN>> unique_points;
+    unique_points.reserve(pcd->size());
     std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
     pcd->points.clear();
     std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));
     pcd->width = unique_points.size();
     pcd->height = 1;
+    pcl::console::print_highlight("to %zu\n", pcd->size());
 }

@@ -276,7 +276,7 @@ MetricEstimator::Ptr getMetricEstimatorFromParameters(const AlignmentParameters 
     if (parameters.metric_id == METRIC_CLOSEST_PLANE) {
         return std::make_shared<ClosestPlaneMetricEstimator>(sparse, score_function);
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
-        float curvature_radius = 2.f * parameters.normal_radius_coef * parameters.voxel_size;
+        float curvature_radius = 6.f * parameters.voxel_size;
         return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, curvature_radius, sparse,
                                                                      score_function);
     } else if (parameters.metric_id == METRIC_COMBINATION) {
