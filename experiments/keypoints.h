@@ -10,18 +10,14 @@
 
 class ISSKeypoint3DDebug : public pcl::ISSKeypoint3D<PointN, PointN, PointN> {
 public:
-    std::vector<float> getBoundaryPointsDebug();
+    bool initCompute() override;
 
-    std::vector<float> getThirdEigenValuesDebug();
-
-    inline double getBorderRadius() {
-        return this->border_radius_;
+    inline void setMaxNeighbors(int max_neighbors) {
+        max_neighbors_ = max_neighbors;
     }
-};
 
-class HarrisKeypoint3DDebug : public pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN> {
-public:
-    std::vector<float> getResponseHarrisDebug();
+protected:
+    int max_neighbors_ = 0;
 };
 
 #endif

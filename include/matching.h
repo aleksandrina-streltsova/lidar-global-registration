@@ -132,7 +132,7 @@ protected:
 
 template<typename FeatureT>
 void FeatureBasedMatcherImpl<FeatureT>::initialize() {
-    float radius_search = parameters_.feature_radius_coef * parameters_.voxel_size;
+    float radius_search = parameters_.feature_radius;
     {
         pcl::ScopeTime t("Feature estimation");
         AlignmentParameters parameters(parameters_);

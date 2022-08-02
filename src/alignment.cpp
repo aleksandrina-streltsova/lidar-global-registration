@@ -127,6 +127,10 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
     }
     alignment_result.time_cs = time_correspondence_search;
     alignment_result.time_ds_ne = time_downsampling_and_normals;
+    if (parameters.ground_truth.has_value()) {
+        saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
+                           constructName(parameters, "transformation_gt"), parameters.ground_truth.value());
+    }
     saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                        constructName(parameters, "transformation"), alignment_result.transformation);
     return alignment_result;

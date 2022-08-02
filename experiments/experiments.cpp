@@ -6,35 +6,31 @@
 
 #include <pcl/console/print.h>
 #include <pcl/io/ply_io.h>
+#include <pcl/common/transforms.h>
+#include <pcl/common/time.h>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
 
 #include "config.h"
 #include "common.h"
-#include "downsample.h"
-#include "analysis.h"
 #include "keypoints.h"
-#include "io.h"
+#include "matching.h"
+#include "downsample.h"
+#include "feature_analysis.h"
 
 #define KEYPOINT "keypoint"
 
 namespace fs = std::filesystem;
 
 void detectKeyPointsISS(const PointNCloud::ConstPtr &pcd, pcl::IndicesPtr &indices,
-                        const AlignmentParameters &parameters,
-                        const Eigen::Matrix4f &tn, bool is_source) {
+                        const AlignmentParameters &parameters) {
     PointNCloud key_points;
-    double iss_salient_radius = 6 * parameters.voxel_size;
-    double iss_non_max_radius = 4 * parameters.voxel_size;
-    double iss_gamma_21(0.975);
-    double iss_gamma_32(0.975);
-    int iss_min_neighbors(4);
-    pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     ISSKeypoint3DDebug iss_detector;
-    iss_detector.setSearchMethod(tree);
-    iss_detector.setSalientRadius(iss_salient_radius);
-    iss_detector.setNonMaxRadius(iss_non_max_radius);
-    iss_detector.setThreshold21(iss_gamma_21);
-    iss_detector.setThreshold32(iss_gamma_32);
-    iss_detector.setMinNeighbors(iss_min_neighbors);
+    iss_detector.setSalientRadius(1.f);
+    iss_detector.setNonMaxRadius(1.f);
+    iss_detector.setThreshold21(0.975f);
+    iss_detector.setThreshold32(0.975f);
+    iss_detector.setMinNeighbors(4);
+    iss_detector.setMaxNeighbors(352);
     iss_detector.setInputCloud(pcd);
     iss_detector.setNormals(pcd);
     iss_detector.compute(key_points);
@@ -43,47 +39,61 @@ void detectKeyPointsISS(const PointNCloud::ConstPtr &pcd, pcl::IndicesPtr &indic
     if (parameters.fix_seed) {
         std::sort(indices->begin(), indices->end());
     }
-
-    if (iss_detector.getBorderRadius() > 0.0) {
-        auto edges = iss_detector.getBoundaryPointsDebug();
-        saveColorizedWeights(pcd, edges, "iss_boundary_" + std::string(is_source ? "src" : "tgt"), parameters, tn);
-    }
-
-    auto third_evs = iss_detector.getThirdEigenValuesDebug();
-    saveColorizedWeights(pcd, third_evs, "iss_third_ev_" + std::string(is_source ? "src" : "tgt"), parameters, tn);
+    PCL_DEBUG("%d key points detected\n", indices->size());
 }
 
-void detectKeyPointsHarris(const PointNCloud::ConstPtr &pcd, pcl::IndicesPtr &indices,
-                           const AlignmentParameters &parameters,
-                           const Eigen::Matrix4f &tn, bool is_source) {
-    HarrisKeypoint3DDebug harris;
-    pcl::PointCloud<pcl::PointXYZI> key_points;
+void saveDebugFeatures(const std::string &corrs_path,
+                       const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                       const AlignmentParameters &parameters) {
+    pcl::KdTreeFLANN<PointN>::Ptr tree_src(new pcl::KdTreeFLANN<PointN>), tree_tgt(new pcl::KdTreeFLANN<PointN>);
+    tree_src->setInputCloud(src);
+    tree_tgt->setInputCloud(tgt);
+    pcl::IndicesPtr indices_src(new pcl::Indices), indices_tgt(new pcl::Indices);
 
-    double curvature_radius = 6 * parameters.voxel_size;
-    float non_max_radius = 4 * parameters.voxel_size;
-    harris.setInputCloud(pcd);
-    harris.setNormals(pcd);
-    harris.setRadiusSearch(curvature_radius);
-    harris.setRadius(non_max_radius);
-    harris.setNonMaxSupression(true);
-    harris.setThreshold(1e-6);
-    harris.setMethod(pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN>::HARRIS);
-    harris.compute(key_points);
-
-    indices = std::make_shared<pcl::Indices>(pcl::Indices());
-    *indices = harris.getKeypointsIndices()->indices;
-    if (parameters.fix_seed) {
-        std::sort(indices->begin(), indices->end());
+    bool file_exists = std::filesystem::exists(corrs_path);
+    pcl::Indices nn_indices;
+    std::vector<float> nn_dists;
+    if (file_exists) {
+        std::ifstream fin(corrs_path);
+        if (fin.is_open()) {
+            std::string line;
+            std::vector<std::string> tokens;
+            std::getline(fin, line); // header
+            while (std::getline(fin, line)) {
+                // query_idx, match_idx, distance, x_s, y_s, z_s, x_t, y_t, z_t
+                split(line, tokens, ",");
+                PointN p_src(std::stof(tokens[3]), std::stof(tokens[4]), std::stof(tokens[5]));
+                PointN p_tgt(std::stof(tokens[6]), std::stof(tokens[7]), std::stof(tokens[8]));
+                tree_src->nearestKSearch(p_src, 1, nn_indices, nn_dists);
+                indices_src->push_back(nn_indices[0]);
+                tree_tgt->nearestKSearch(p_tgt, 1, nn_indices, nn_dists);
+                indices_tgt->push_back(nn_indices[0]);
+            }
+        } else {
+            perror(("error while opening file " + corrs_path).c_str());
+        }
     }
-    auto response = harris.getResponseHarrisDebug();
-    saveColorizedWeights(pcd, response, "response_harris_" + std::string(is_source ? "src" : "tgt"), parameters, tn);
-}
+    pcl::PointCloud<SHOT>::Ptr features_src(new pcl::PointCloud<SHOT>), features_tgt(new pcl::PointCloud<SHOT>);
+    estimateFeatures<SHOT>(src, indices_src, features_src, parameters);
+    estimateFeatures<SHOT>(tgt, indices_tgt, features_tgt, parameters);
 
-std::string getCloudDownsizePath(const std::string &cloud_path, float voxel_size) {
-    std::string filename = fs::path(cloud_path).filename();
-    std::string filename_downsize = filename.substr(0, filename.rfind('.')) +
-                                    "_" + std::to_string((int) std::round(1e4 * voxel_size)) + ".ply";
-    return fs::path(cloud_path).parent_path() / filename_downsize;
+    AlignmentParameters parameters_bf{parameters};
+    parameters_bf.randomness = 2;
+    auto correspondences_src = matchBF<SHOT>(features_src, features_src, parameters_bf);
+    parameters_bf.randomness = 1;
+    auto correspondences_tgt = matchBF<SHOT>(features_src, features_tgt, parameters_bf);
+    std::vector<float> closest_dists_src(features_src->size(), std::numeric_limits<float>::quiet_NaN());
+    std::vector<float> closest_dists_tgt(features_src->size(), std::numeric_limits<float>::quiet_NaN());
+    for (int i = 0; i < features_src->size(); ++i) {
+        if (correspondences_src[i].distances.size() == 2)
+            closest_dists_src[i] = std::max(correspondences_src[i].distances[0], correspondences_src[i].distances[1]);
+        if (correspondences_tgt[i].distances.size() == 1)
+            closest_dists_tgt[i] = correspondences_tgt[i].distances[0];
+    }
+    saveVector(closest_dists_src, constructPath(parameters, "closest_dists_src", "csv", true, false, false, true));
+    saveVector(closest_dists_tgt, constructPath(parameters, "closest_dists_tgt", "csv", true, false, false, true));
+    saveFeatures<SHOT>(features_src, {nullptr}, parameters, true);
+    saveFeatures<SHOT>(features_tgt, {nullptr}, parameters, false);
 }
 
 void analyzeKeyPoints(const YamlConfig &config) {
@@ -97,124 +107,62 @@ void analyzeKeyPoints(const YamlConfig &config) {
     }
     if (fout.is_open()) {
         if (!file_exists) {
-            fout << "testname,correspondences,correct_correspondences,"
-                 << "keypoints_src,correct_keypoints_src,ratio_src,"
-                 << "keypoints_tgt,correct_keypoints_tgt,ratio_tgt\n";
+            fout << "testname,feature_radius_coef,correspondences,correct_correspondences\n";
         }
     } else {
         perror(("error while opening file " + filepath).c_str());
     }
 
-    PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
-    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    PointNCloud::Ptr src(new PointNCloud), src_gt(new PointNCloud), tgt(new PointNCloud);
+    PointNCloud::Ptr src_ds(new PointNCloud), tgt_ds(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-    pcl::Correspondences correspondences, correct_correspondences;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     Eigen::Matrix4f transformation_gt;
     std::string testname;
     float min_voxel_size;
+
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
-    std::string src_filename = fs::path(src_path).filename();
-    std::string tgt_filename = fs::path(tgt_path).filename();
-    testname = src_filename.substr(0, src_filename.find_last_of('.')) + '_' +
-               tgt_filename.substr(0, tgt_filename.find_last_of('.'));
-
-    bool need_to_load = true, need_to_downsample = true;
+    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt, config.get<float>("density"),
+                    min_voxel_size);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
-        std::string src_downsize_path = getCloudDownsizePath(src_path, parameters.voxel_size);
-        std::string tgt_downsize_path = getCloudDownsizePath(tgt_path, parameters.voxel_size);
-        need_to_downsample = !(fs::exists(src_downsize_path) && fs::exists(tgt_downsize_path)) ||
-                             parameters.coarse_to_fine;
-        if (need_to_downsample && need_to_load) {
-            loadPointClouds(src_path, tgt_path, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt,
-                            config.get<float>("density"), min_voxel_size);
-            need_to_load = false;
-        }
-
         parameters.testname = testname;
-        parameters.keypoint_id = KEYPOINT_ANY;
-        if (parameters.coarse_to_fine) {
-            downsamplePointCloud(src_fullsize, src, parameters);
-            downsamplePointCloud(tgt_fullsize, tgt, parameters);
-        } else {
-            src = src_fullsize;
-            tgt = tgt_fullsize;
-        }
-        std::vector<float> voxel_sizes;
-        std::vector<std::string> matching_ids;
-        getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                          constructName(parameters, "iterations"), voxel_sizes, matching_ids);
-        for (int i = 0; i < voxel_sizes.size(); ++i) {
-            AlignmentParameters curr_parameters(parameters);
-            curr_parameters.voxel_size = voxel_sizes[i];
-            curr_parameters.matching_id = matching_ids[i];
-            bool success = false;
-            std::string corrs_path = constructPath(curr_parameters, "correspondences", "csv", true, false, false);
-            correspondences = *readCorrespondencesFromCSV(corrs_path, success);
-            curr_parameters.keypoint_id = KEYPOINT_ISS;
-            if (!success) {
-                pcl::console::print_error("Failed to read correspondences for %s!\n", curr_parameters.testname.c_str());
-                exit(1);
-            }
-            PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
-            pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
-            if (need_to_downsample) {
-                downsamplePointCloud(src, curr_src, curr_parameters);
-                downsamplePointCloud(tgt, curr_tgt, curr_parameters);
-                if (pcl::io::savePLYFileBinary(src_downsize_path, *curr_src) < 0 ||
-                    pcl::io::savePLYFileBinary(tgt_downsize_path, *curr_tgt) < 0) {
-                    pcl::console::print_error("Error saving src/tgt file!\n");
-                    exit(1);
-                }
-            } else {
-                if (loadPLYFile<PointN>(src_downsize_path, *curr_src, fields_src) < 0 ||
-                    loadPLYFile<PointN>(tgt_downsize_path, *curr_tgt, fields_tgt) < 0) {
-                    pcl::console::print_error("Error loading src/tgt file!\n");
-                    exit(1);
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>{transformation_gt};
+        std::string kps_path = constructPath(parameters, "kps", "csv", true, false, false, false);
+        bool exists = fs::exists(kps_path);
+        if (!exists) {
+            pcl::IndicesPtr indices_src(new pcl::Indices);
+            estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, parameters.normals_available);
+            estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, parameters.normals_available);
+            pcl::concatenateFields(*src, *normals_src, *src);
+            pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
+            detectKeyPointsISS(src, indices_src, parameters);
+            pcl::KdTreeFLANN<PointN> tree;
+            pcl::transformPointCloud(*src, *src_gt, transformation_gt);
+            tree.setInputCloud(tgt);
+            pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
+            pcl::Indices nn_indices;
+            std::vector<float> nn_dists;
+            for (int i = 0; i < indices_src->size(); ++i) {
+                tree.radiusSearch(*src_gt, indices_src->operator[](i), 0.05, nn_indices, nn_dists, 1);
+                if (!nn_indices.empty()) {
+                    correspondences->push_back({indices_src->operator[](i), nn_indices[0], 0.f});
                 }
             }
-            curr_parameters.normals_available = pointCloudHasNormals<PointN>(fields_src) &&
-                                                pointCloudHasNormals<PointN>(fields_tgt);
-            float normal_radius = curr_parameters.normal_radius_coef * curr_parameters.voxel_size;
-            float error_thr = curr_parameters.distance_thr_coef * curr_parameters.voxel_size;
-            estimateNormalsRadius(normal_radius, curr_src, normals_src, false);
-            estimateNormalsRadius(normal_radius, curr_tgt, normals_tgt, false);
-            pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
-            pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
-
-            detectKeyPointsHarris(curr_src, indices_src, curr_parameters, transformation_gt, true);
-            detectKeyPointsHarris(curr_tgt, indices_tgt, curr_parameters, Eigen::Matrix4f::Identity(), false);
-
-            saveColorizedPointCloud(curr_src, indices_src, {}, {}, {}, curr_parameters, transformation_gt, true);
-            saveColorizedPointCloud(curr_tgt, indices_tgt, {}, {}, {}, curr_parameters, Eigen::Matrix4f::Identity(), false);
-
-            buildCorrectCorrespondences(curr_src, curr_tgt, correspondences, correct_correspondences, transformation_gt,
-                                        error_thr);
-
-            std::unordered_set<int> indices_correct_src, indices_correct_tgt;
-            std::transform(correct_correspondences.begin(), correct_correspondences.end(),
-                           std::inserter(indices_correct_src, indices_correct_src.begin()),
-                           [](const pcl::Correspondence &corr) { return corr.index_query; });
-            std::transform(correct_correspondences.begin(), correct_correspondences.end(),
-                           std::inserter(indices_correct_tgt, indices_correct_tgt.begin()),
-                           [](const pcl::Correspondence &corr) { return corr.index_match; });
-            int count_correct_src = 0, count_correct_tgt = 0;
-            for (int idx_src: *indices_src) {
-                if (indices_correct_src.contains(idx_src)) count_correct_src++;
-            }
-            for (int idx_tgt: *indices_tgt) {
-                if (indices_correct_tgt.contains(idx_tgt)) count_correct_tgt++;
-            }
-            float ratio_src = (float) count_correct_src / (float) indices_src->size();
-            float ratio_tgt = (float) count_correct_tgt / (float) indices_tgt->size();
-            fout << constructName(curr_parameters, "keypoints", true, true, true, true) << ","
-                 << correspondences.size() << "," << correct_correspondences.size() << ","
-                 << indices_src->size() << "," << count_correct_src << "," << ratio_src << ","
-                 << indices_tgt->size() << "," << count_correct_tgt << "," << ratio_tgt << "\n";
+            saveCorrespondencesToCSV(kps_path, src, tgt, correspondences);
         }
+        downsamplePointCloud(src, src_ds, parameters);
+        downsamplePointCloud(tgt, tgt_ds, parameters);
+        {
+            pcl::ScopeTime t("Normal estimation");
+            estimateNormalsPoints(NORMAL_NR_POINTS, src_ds, normals_src, parameters.normals_available);
+            estimateNormalsPoints(NORMAL_NR_POINTS, tgt_ds, normals_tgt, parameters.normals_available);
+            pcl::concatenateFields(*src_ds, *normals_src, *src_ds);
+            pcl::concatenateFields(*tgt_ds, *normals_tgt, *tgt_ds);
+        }
+        saveDebugFeatures(kps_path, src_ds, tgt_ds, parameters);
     }
 }
 
@@ -231,9 +179,9 @@ void processTests(const std::vector<YAML::Node> &tests, const std::string &comma
 int main(int argc, char **argv) {
     std::string command(argv[1]);
     if (argc != 3 && !(command == KEYPOINT)) {
-        pcl::console::print_error((std::string("Syntax is: [") +
+        pcl::console::print_error((std::string("Syntax is: %s ") +
                                    KEYPOINT +
-                                   "] %s config.yaml\n").c_str(), argv[0]);
+                                   " config.yaml\n").c_str(), argv[0]);
         exit(1);
     }
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);

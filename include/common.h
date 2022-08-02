@@ -116,6 +116,7 @@ struct InlierPair {
 struct AlignmentParameters {
     bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
     bool normals_available;
+    int feature_nr_points{FEATURE_NR_POINTS};
     float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef, gror_iss_coef{GROR_ISS_COEF}, iss_coef{2};
     float feature_radius;
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
@@ -404,6 +405,8 @@ inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const pcl::
     PCL_WARN("[estimateFeatures<SHOT>] Points probably have NaN normals in their neighbourhood\n");
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
+    saveVectorOfArrays<int, 32>(shot.getVolumesDebugInfo(),
+                                constructPath(parameters, "volumes", "csv", true, false, false));
     rassert(features->size() == nr_kps, 845637470190)
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }

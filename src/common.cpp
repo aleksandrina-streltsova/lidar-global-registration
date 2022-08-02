@@ -251,11 +251,21 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    auto nrs = config.getVector<int>("feature_nr", FEATURE_NR_POINTS);
+    for (int nr: nrs) {
+        for (auto ps: parameters_container) {
+            ps.feature_nr_points = nr;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     auto feature_radii = config.getVector<float>("feature_radius").value();
     for (float fr: feature_radii) {
         for (auto ps: parameters_container) {
             ps.feature_radius = fr;
-            ps.voxel_size = std::sqrt(M_PI * fr * fr / (float) FEATURE_NR_POINTS);
+            ps.voxel_size = std::sqrt(M_PI * fr * fr / (float) ps.feature_nr_points);
             new_parameters_container.push_back(ps);
         }
     }
@@ -948,7 +958,7 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     std::string matching_id = parameters.matching_id;
     if (matching_id == MATCHING_RATIO) matching_id += std::to_string(parameters.ratio_parameter);
     std::string full_name = parameters.testname + "_" + name +
-                            "_" + std::to_string((int) std::round(1e4 * parameters.voxel_size)) +
+                            "_" + std::to_string(parameters.feature_nr_points) +
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
                             "_" + std::to_string((int) std::round(1e4 * parameters.feature_radius)) +
                             "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
@@ -1003,6 +1013,7 @@ void saveCorrespondencesToCSV(const std::string &filepath,
                  << tgt->points[corr.index_match].y << ","
                  << tgt->points[corr.index_match].z << '\n';
         }
+        fout.close();
     } else {
         perror(("error while opening file " + filepath).c_str());
     }

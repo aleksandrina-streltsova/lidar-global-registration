@@ -23,12 +23,12 @@ protected:
 };
 
 template<typename T>
-inline void combineHash(std::size_t& seed, const T& val) {
+inline void combineHash(std::size_t &seed, const T &val) {
     std::hash<T> hasher;
     seed ^= hasher(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-template <typename T>
+template<typename T>
 T calculate_combination_or_max(T n, T k) {
     double result = 1.0;
     for (int i = 0; i < k; ++i) {
@@ -36,10 +36,10 @@ T calculate_combination_or_max(T n, T k) {
         result /= i + 1;
     }
     T max = std::numeric_limits<T>::max();
-    return result > max ? max : (T)result;
+    return result > max ? max : (T) result;
 }
 
-template <typename T>
+template<typename T>
 T quantile(double q, const std::vector<T> &values) {
     if (q < 0.0 || q > 1.0 || values.empty()) {
         return std::numeric_limits<T>::quiet_NaN();
@@ -48,7 +48,7 @@ T quantile(double q, const std::vector<T> &values) {
         return values[0];
     }
     std::size_t n = values.size();
-    std::size_t i = std::floor(q * (double)(n - 1));
+    std::size_t i = std::floor(q * (double) (n - 1));
     std::size_t j = std::min(i + 1, n - 1);
 
     std::vector<T> v = values;
@@ -57,7 +57,7 @@ T quantile(double q, const std::vector<T> &values) {
     if (i < j) {
         std::nth_element(v.begin(), v.begin() + j, v.end());
         T jth = v[j];
-        return ith * ((double)n * q - (double)i) + jth * ((double)j - (double)n * q);
+        return ith * ((double) n * q - (double) i) + jth * ((double) j - (double) n * q);
     }
     return ith;
 }
@@ -86,15 +86,30 @@ T calculate_standard_deviation(const std::vector<T> &v) {
 
 void split(const std::string &str, std::vector<std::string> &tokens, const std::string &delimiter);
 
-template <typename T>
+template<typename T>
 void saveVector(const std::vector<T> &vs, const std::string &filepath) {
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
 
     fout << "value\n";
-    for (float v: vs) {
+    for (T v: vs) {
         fout << v << "\n";
+    }
+    fout.close();
+}
+
+template<typename T, int N>
+void saveVectorOfArrays(const std::vector<std::array<T, N>> &v_as, const std::string &filepath) {
+    std::fstream fout(filepath, std::ios_base::out | std::ios_base::app);
+    if (!fout.is_open())
+        perror(("error while opening file " + filepath).c_str());
+
+    for (const std::array<T, N> &as: v_as) {
+        for (int i = 0; i < N; i++) {
+            fout << as[i] << ",";
+        }
+        fout << as[N] << "\n";
     }
     fout.close();
 }
