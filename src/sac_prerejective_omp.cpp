@@ -105,7 +105,7 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
     metric_estimator_->setSourceCloud(src_);
     metric_estimator_->setTargetCloud(tgt_);
     metric_estimator_->setCorrespondences(correspondences_);
-    metric_estimator_->setInlierThreshold(parameters_.distance_thr_coef * parameters_.voxel_size);
+    metric_estimator_->setInlierThreshold(parameters_.distance_thr);
 }
 
 AlignmentResult SampleConsensusPrerejectiveOMP::align() {

@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "12";
+const std::string VERSION = "13";
 const std::string SUBVERSION = "";
 const std::string ALIGNMENT_DEFAULT = "default";
 const std::string ALIGNMENT_GROR = "gror";
@@ -68,25 +68,29 @@ void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("\n");
 }
 
-Eigen::Matrix4f getTransformation(const std::string &csv_path,
-                                  const std::string &src_filename, const std::string &tgt_filename) {
+std::optional<Eigen::Matrix4f> getTransformation(const std::string &csv_path,
+                                                 const std::string &src_filename, const std::string &tgt_filename) {
     std::ifstream file(csv_path);
     Eigen::Matrix4f src_position, tgt_position;
 
     CSVRow row;
+    bool success_src{false}, success_tgt{false};
     while (file >> row) {
         if (row[0] == src_filename) {
             for (int i = 0; i < 16; ++i) {
                 src_position(i / 4, i % 4) = std::stof(row[i + 1]);
             }
+            success_src = true;
         }
         if (row[0] == tgt_filename) {
             for (int i = 0; i < 16; ++i) {
                 tgt_position(i / 4, i % 4) = std::stof(row[i + 1]);
             }
+            success_tgt = true;
         }
     }
-    return tgt_position.inverse() * src_position;
+    return success_src && success_tgt ? std::optional<Eigen::Matrix4f>{tgt_position.inverse() * src_position}
+                                      : std::nullopt;
 }
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name) {
@@ -186,8 +190,7 @@ void saveIterationsInfo(const std::string &csv_path, const std::string &name,
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
-                                                         const std::vector<::pcl::PCLPointField> &fields_tgt,
-                                                         float min_voxel_size) {
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
     parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", ALIGNMENT_COARSE_TO_FINE);
@@ -225,21 +228,15 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto distance_thr_coefs = config.getVector<float>("distance_thr_coef");
-    if (distance_thr_coefs.has_value()) {
-        for (float coef: distance_thr_coefs.value()) {
-            for (auto ps: parameters_container) {
-                ps.distance_thr_coef = coef;
-                new_parameters_container.push_back(ps);
-            }
-        }
-        std::swap(parameters_container, new_parameters_container);
-        new_parameters_container.clear();
-    } else {
-        for (auto &ps: parameters_container) {
-            ps.distance_thr_coef = (ps.alignment_id == ALIGNMENT_GROR || ps.keypoint_id != KEYPOINT_ANY) ? 2.0 : 1.5;
+    auto distance_thrs = config.getVector<float>("distance_thr").value();
+    for (float thr: distance_thrs) {
+        for (auto ps: parameters_container) {
+            ps.distance_thr = thr;
+            new_parameters_container.push_back(ps);
         }
     }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
 
     auto gror_iss_coefs = config.getVector<float>("gror_iss_coef", GROR_ISS_COEF);
     for (float gic: gror_iss_coefs) {
@@ -357,8 +354,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
 
 void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
                      std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
-                     const std::optional<float> &density, float &min_voxel_size) {
+                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt) {
     pcl::console::print_highlight("Loading point clouds...\n");
 
     if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
@@ -377,7 +373,7 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
 }
 
 void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
-                          const std::string &csv_path, Eigen::Matrix4f &transformation_gt) {
+                          const std::string &csv_path, std::optional<Eigen::Matrix4f> &transformation_gt) {
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
     transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
@@ -474,8 +470,8 @@ pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const Alignmen
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         pcl::ISSKeypoint3D<PointN, PointN, PointN> iss_detector;
         iss_detector.setSearchMethod(tree);
-        iss_detector.setSalientRadius(parameters.iss_coef * parameters.voxel_size);
-        iss_detector.setNonMaxRadius(parameters.iss_coef * parameters.voxel_size);
+        iss_detector.setSalientRadius(parameters.iss_coef * parameters.distance_thr);
+        iss_detector.setNonMaxRadius(parameters.iss_coef * parameters.distance_thr);
         iss_detector.setThreshold21(0.975);
         iss_detector.setThreshold32(0.975);
         iss_detector.setMinNeighbors(4);
@@ -704,7 +700,7 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
     pcl::copyPointCloud(*tgt, *tgt_colored);
     pcl::transformPointCloud(*src_colored, *src_colored, transformation);
     float distance_min = 0;
-    float distance_max = parameters.voxel_size;
+    float distance_max = parameters.distance_thr;
     calculateTemperatureMapDistances(src_colored, tgt_colored, distances_src, distance_min, distance_max);
     calculateTemperatureMapDistances(tgt_colored, src_colored, distances_tgt, distance_min, distance_max);
 
@@ -870,8 +866,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
 
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
-                                 const Eigen::Matrix4f &transformation_gt, float voxel_size,
-                                 const AlignmentParameters &parameters) {
+                                 const Eigen::Matrix4f &transformation_gt, const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "distances", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
@@ -883,7 +878,7 @@ void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNC
     for (const auto &correspondence: correspondences) {
         PointN source_point(src_aligned_gt.points[correspondence.index_query]);
         PointN target_point(tgt->points[correspondence.index_match]);
-        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / voxel_size;
+        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / parameters.distance_thr;
         fout << dist << "\n";
     }
     fout.close();

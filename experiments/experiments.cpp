@@ -117,17 +117,15 @@ void analyzeKeyPoints(const YamlConfig &config) {
     PointNCloud::Ptr src_ds(new PointNCloud), tgt_ds(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-    Eigen::Matrix4f transformation_gt;
+    std::optional<Eigen::Matrix4f> transformation_gt;
     std::string testname;
-    float min_voxel_size;
 
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt, config.get<float>("density"),
-                    min_voxel_size);
+    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
+    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
         parameters.testname = testname;
         parameters.ground_truth = std::optional<Eigen::Matrix4f>{transformation_gt};
         std::string kps_path = constructPath(parameters, "kps", "csv", true, false, false, false);
@@ -140,7 +138,7 @@ void analyzeKeyPoints(const YamlConfig &config) {
             pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
             detectKeyPointsISS(src, indices_src, parameters);
             pcl::KdTreeFLANN<PointN> tree;
-            pcl::transformPointCloud(*src, *src_gt, transformation_gt);
+            pcl::transformPointCloud(*src, *src_gt, transformation_gt.value());
             tree.setInputCloud(tgt);
             pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
             pcl::Indices nn_indices;

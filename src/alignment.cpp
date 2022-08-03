@@ -55,7 +55,7 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
                    });
 
     teaser::RobustRegistrationSolver::Params params;
-    params.noise_bound = parameters.distance_thr_coef * parameters.voxel_size;
+    params.noise_bound = parameters.distance_thr;
     params.cbar2 = 1;
     params.estimate_scaling = false;
     params.rotation_max_iterations = 100;

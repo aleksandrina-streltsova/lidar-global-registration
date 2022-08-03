@@ -38,7 +38,7 @@ public:
 
     AlignmentAnalysis(AlignmentResult result, AlignmentParameters parameters);
 
-    void start(const Eigen::Matrix4f &transformation_gt, const std::string &testname);
+    void start(const std::optional<Eigen::Matrix4f> &transformation_gt, const std::string &testname);
 
     inline bool alignmentHasConverged() const {
         return result_.converged;
@@ -79,13 +79,15 @@ private:
     AlignmentParameters parameters_;
     AlignmentResult result_;
     MetricEstimator::Ptr metric_estimator_;
-    Eigen::Matrix4f transformation_, transformation_gt_;
+    Eigen::Matrix4f transformation_;
+    std::optional<Eigen::Matrix4f> transformation_gt_;
     pcl::Correspondences correspondences_, correct_correspondences_;
     std::vector<InlierPair> inlier_pairs_, correct_inlier_pairs_;
-    float fitness_, rmse_;
-    float pcd_error_, overlap_error_, r_error_, t_error_;
-    float normal_diff_;
-    float corr_uniformity_;
+    float fitness_{std::numeric_limits<float>::quiet_NaN()}, rmse_{std::numeric_limits<float>::quiet_NaN()};
+    float pcd_error_{std::numeric_limits<float>::quiet_NaN()}, overlap_error_{std::numeric_limits<float>::quiet_NaN()};
+    float r_error_{std::numeric_limits<float>::quiet_NaN()}, t_error_{std::numeric_limits<float>::quiet_NaN()};
+    float normal_diff_{std::numeric_limits<float>::quiet_NaN()};
+    float corr_uniformity_{std::numeric_limits<float>::quiet_NaN()};
     std::string testname_;
 
     void print();

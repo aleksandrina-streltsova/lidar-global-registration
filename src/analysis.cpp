@@ -92,7 +92,7 @@ float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, cons
     std::vector<float> distances;
     // calculate bbox of overlapping area
     PointN min_point, max_point;
-    float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
+    float error_thr = parameters.distance_thr;
     for (int i = 0; i < src_aligned->size(); ++i) {
         (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
         const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
@@ -144,7 +144,7 @@ float calculate_normal_difference(const PointNCloud::ConstPtr &src, const PointN
 
     pcl::Indices indices;
     std::vector<float> distances;
-    float error_thr = parameters.distance_thr_coef * parameters.voxel_size;
+    float error_thr = parameters.distance_thr;
     float difference = 0.f;
     int n_points_overlap = 0;
     for (int i = 0; i < src_aligned->size(); ++i) {
@@ -188,45 +188,55 @@ AlignmentAnalysis::AlignmentAnalysis(AlignmentResult result, AlignmentParameters
     metric_estimator_->setSourceCloud(src_);
     metric_estimator_->setTargetCloud(tgt_);
     metric_estimator_->setCorrespondences(result_.correspondences);
-    metric_estimator_->setInlierThreshold(parameters_.distance_thr_coef * parameters_.voxel_size);
+    metric_estimator_->setInlierThreshold(parameters_.distance_thr);
     correspondences_ = *result_.correspondences;
 }
 
-void AlignmentAnalysis::start(const Eigen::Matrix4f &transformation_gt, const std::string &testname) {
+void AlignmentAnalysis::start(const std::optional<Eigen::Matrix4f> &transformation_gt, const std::string &testname) {
     testname_ = testname;
     UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
-    float error_thr = parameters_.distance_thr_coef * parameters_.voxel_size;
+    float error_thr = parameters_.distance_thr;
     transformation_gt_ = transformation_gt;
-
-    buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_, error_thr);
     metric_estimator_->buildInlierPairsAndEstimateMetric(transformation_, inlier_pairs_, rmse_, fitness_, rand);
-    metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_);
-    pcd_error_ = calculate_point_cloud_rmse(src_, transformation_, transformation_gt_);
-    overlap_error_ = calculate_overlap_rmse(src_, tgt_, transformation_, transformation_gt_, error_thr);
-    normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_);
-    corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
-                                                           parameters_, transformation_gt_);
-    std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_);
 
+    if (transformation_gt_.has_value()) {
+        buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_,
+                                    transformation_gt_.value(), error_thr);
+        metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_.value());
+        pcd_error_ = calculate_point_cloud_rmse(src_, transformation_, transformation_gt_.value());
+        overlap_error_ = calculate_overlap_rmse(src_, tgt_, transformation_, transformation_gt_.value(), error_thr);
+        normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_.value());
+        corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
+                                                               parameters_, transformation_gt_.value());
+        std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_.value());
+    }
     print();
     save(testname);
 }
 
 void AlignmentAnalysis::print() {
     // Print results
-    printf("\n");
+    printf("\n Estimated transformation:\n");
     printTransformation(transformation_);
-    printTransformation(transformation_gt_);
+    if (transformation_gt_.has_value()) {
+        printf("\n Ground truth transformation:\n");
+        printTransformation(transformation_gt_.value());
+    }
     pcl::console::print_info("fitness: %0.7f\n", fitness_);
     pcl::console::print_info("inliers_rmse: %0.7f\n", rmse_);
-    pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_pairs_.size(), inlier_pairs_.size());
-    pcl::console::print_info("correct correspondences: %i/%i\n",
-                             correct_correspondences_.size(), correspondences_.size());
-    pcl::console::print_info("rotation error (deg): %0.7f\n", 180.0 / M_PI * r_error_);
-    pcl::console::print_info("translation error: %0.7f\n", t_error_);
-    pcl::console::print_info("point cloud error: %0.7f\n", pcd_error_);
-    pcl::console::print_info("normal mean difference (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
-    pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
+    if (transformation_gt_.has_value()) {
+        pcl::console::print_info("correct inliers: %i/%i\n", correct_inlier_pairs_.size(), inlier_pairs_.size());
+        pcl::console::print_info("correct correspondences: %i/%i\n",
+                                 correct_correspondences_.size(), correspondences_.size());
+        pcl::console::print_info("rotation error (deg): %0.7f\n", 180.0 / M_PI * r_error_);
+        pcl::console::print_info("translation error: %0.7f\n", t_error_);
+        pcl::console::print_info("point cloud error: %0.7f\n", pcd_error_);
+        pcl::console::print_info("normal mean difference (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
+        pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
+    } else {
+        pcl::console::print_info("inliers: %i\n", inlier_pairs_.size());
+        pcl::console::print_info("correspondences: %i\n", correspondences_.size());
+    }
 }
 
 void AlignmentAnalysis::save(const std::string &testname) {
@@ -252,7 +262,7 @@ void AlignmentAnalysis::save(const std::string &testname) {
 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-    out << "voxel_size,feature_radius,distance_thr_coef,edge_thr,";
+    out << "voxel_size,feature_radius,distance_thr,edge_thr,";
     out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,";
     out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score,iss_coef\n";
 }
@@ -266,7 +276,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.inlier_pairs_.size() << "," << analysis.correct_inlier_pairs_.size() << ",";
     stream << analysis.parameters_.voxel_size << ",";
     stream << analysis.parameters_.feature_radius << ",";
-    stream << analysis.parameters_.distance_thr_coef << ",";
+    stream << analysis.parameters_.distance_thr << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
     stream << analysis.result_.iterations << ",";
     stream << matching_id << "," << analysis.parameters_.randomness << ",";

@@ -7,19 +7,19 @@
 
 #define NS_BIN_SIZE 8
 
-std::vector<float> computeWeightConstant(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightConstant(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightExponential(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightExponential(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightLogCurvedness(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightLogCurvedness(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightHarris(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightHarris(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightTomasi(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightTomasi(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightCurvature(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightCurvature(int nr_points, const PointNCloud::ConstPtr &pcd);
 
-std::vector<float> computeWeightNSS(float curvature_radius, const PointNCloud::ConstPtr &pcd);
+std::vector<float> computeWeightNSS(int nr_points, const PointNCloud::ConstPtr &pcd);
 
 WeightFunction getWeightFunction(const std::string &identifier) {
     if (identifier == METRIC_WEIGHT_EXP_CURVATURE)
@@ -40,22 +40,22 @@ WeightFunction getWeightFunction(const std::string &identifier) {
     return computeWeightConstant;
 }
 
-std::vector<float> computeWeightConstant(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightConstant(int nr_points, const PointNCloud::ConstPtr &pcd) {
     return std::vector<float>(pcd->size(), 1.0);
 }
 
-void estimateCurvatures(float curvature_radius, const PointNCloud::ConstPtr &pcd,
+void estimateCurvatures(int nr_points, const PointNCloud::ConstPtr &pcd,
                         const pcl::PointCloud<pcl::PrincipalCurvatures>::Ptr &pcs) {
     pcl::PrincipalCurvaturesEstimation<PointN, PointN, pcl::PrincipalCurvatures> estimation;
-    estimation.setRadiusSearch(curvature_radius);
+    estimation.setKSearch(nr_points);
     estimation.setInputCloud(pcd);
     estimation.setInputNormals(pcd);
     estimation.compute(*pcs);
 }
 
-std::vector<float> computeWeightExponential(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightExponential(int nr_points, const PointNCloud::ConstPtr &pcd) {
     pcl::PointCloud<pcl::PrincipalCurvatures>::Ptr pcs(new pcl::PointCloud<pcl::PrincipalCurvatures>);
-    estimateCurvatures(curvature_radius, pcd, pcs);
+    estimateCurvatures(nr_points, pcd, pcs);
 
     std::vector<float> max_pcs(pcs->size());
     std::vector<float> weights(pcs->size());
@@ -75,9 +75,9 @@ std::vector<float> computeWeightExponential(float curvature_radius, const PointN
     return weights;
 }
 
-std::vector<float> computeWeightLogCurvedness(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightLogCurvedness(int nr_points, const PointNCloud::ConstPtr &pcd) {
     pcl::PointCloud<pcl::PrincipalCurvatures>::Ptr pcs(new pcl::PointCloud<pcl::PrincipalCurvatures>);
-    estimateCurvatures(curvature_radius, pcd, pcs);
+    estimateCurvatures(nr_points, pcd, pcs);
 
     std::vector<float> weights(pcs->size());
     for (int i = 0; i < pcd->size(); ++i) {
@@ -89,19 +89,19 @@ std::vector<float> computeWeightLogCurvedness(float curvature_radius, const Poin
 }
 
 void initializeHarrisKeypoint3D(pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN> &harris,
-                                float curvature_radius, const PointNCloud::ConstPtr &pcd) {
-    harris.setRadiusSearch(curvature_radius);
+                                int nr_points, const PointNCloud::ConstPtr &pcd) {
+    harris.setKSearch(nr_points);
     harris.setThreshold(0.f);
     harris.setInputCloud(pcd);
     harris.setNormals(pcd);
     harris.setNonMaxSupression(false);
 }
 
-std::vector<float> computeWeightHarris(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightHarris(int nr_points, const PointNCloud::ConstPtr &pcd) {
     pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN> harris;
     pcl::PointCloud<pcl::PointXYZI> keypoints;
 
-    initializeHarrisKeypoint3D(harris, curvature_radius, pcd);
+    initializeHarrisKeypoint3D(harris, nr_points, pcd);
     harris.setMethod(pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN>::HARRIS);
     harris.compute(keypoints);
 
@@ -112,11 +112,11 @@ std::vector<float> computeWeightHarris(float curvature_radius, const PointNCloud
     return weights;
 }
 
-std::vector<float> computeWeightTomasi(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightTomasi(int nr_points, const PointNCloud::ConstPtr &pcd) {
     pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN> harris;
     pcl::PointCloud<pcl::PointXYZI> keypoints;
 
-    initializeHarrisKeypoint3D(harris, curvature_radius, pcd);
+    initializeHarrisKeypoint3D(harris, nr_points, pcd);
     harris.setMethod(pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN>::TOMASI);
     harris.compute(keypoints);
 
@@ -127,11 +127,11 @@ std::vector<float> computeWeightTomasi(float curvature_radius, const PointNCloud
     return weights;
 }
 
-std::vector<float> computeWeightCurvature(float curvature_radius, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightCurvature(int nr_points, const PointNCloud::ConstPtr &pcd) {
     pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN> harris;
     pcl::PointCloud<pcl::PointXYZI> keypoints;
 
-    initializeHarrisKeypoint3D(harris, curvature_radius, pcd);
+    initializeHarrisKeypoint3D(harris, nr_points, pcd);
     harris.setMethod(pcl::HarrisKeypoint3D<PointN, pcl::PointXYZI, PointN>::CURVATURE);
     harris.compute(keypoints);
 
@@ -157,7 +157,7 @@ int findBin(const PointN &normal) {
 }
 
 // weights based on Normal Space Sampling
-std::vector<float> computeWeightNSS(float, const PointNCloud::ConstPtr &pcd) {
+std::vector<float> computeWeightNSS(int, const PointNCloud::ConstPtr &pcd) {
     std::vector<int> hist(NS_BIN_SIZE * NS_BIN_SIZE);
     for (const auto point: pcd->points) {
         bool is_finite =

@@ -117,8 +117,8 @@ struct AlignmentParameters {
     bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
     bool normals_available;
     int feature_nr_points{FEATURE_NR_POINTS};
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, distance_thr_coef, gror_iss_coef{GROR_ISS_COEF}, iss_coef{2};
-    float feature_radius;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, gror_iss_coef{GROR_ISS_COEF}, iss_coef{2};
+    float distance_thr, feature_radius;
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
@@ -153,16 +153,14 @@ struct AlignmentResult {
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
-                                                         const std::vector<::pcl::PCLPointField> &fields_tgt,
-                                                         float min_voxel_size);
+                                                         const std::vector<::pcl::PCLPointField> &fields_tgt);
 
 void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
                      std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt,
-                     const std::optional<float> &density, float &min_voxel_size);
+                     std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt);
 
 void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
-                          const std::string &csv_path, Eigen::Matrix4f &transformation_gt);
+                          const std::string &csv_path, std::optional<Eigen::Matrix4f> &transformation_gt);
 
 struct MultivaluedCorrespondence {
     int query_idx = -1;
@@ -221,8 +219,8 @@ std::string constructPath(const AlignmentParameters &parameters, const std::stri
 
 void printTransformation(const Eigen::Matrix4f &transformation);
 
-Eigen::Matrix4f getTransformation(const std::string &csv_path,
-                                  const std::string &src_filename, const std::string &tgt_filename);
+std::optional<Eigen::Matrix4f> getTransformation(const std::string &csv_path,
+                                                 const std::string &src_filename, const std::string &tgt_filename);
 
 Eigen::Matrix4f getTransformation(const std::string &csv_path, const std::string &transformation_name);
 
