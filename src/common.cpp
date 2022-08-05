@@ -193,7 +193,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
     AlignmentParameters parameters;
-    parameters.coarse_to_fine = config.get<bool>("coarse_to_fine", ALIGNMENT_COARSE_TO_FINE);
     parameters.edge_thr_coef = config.get<float>("edge_thr", ALIGNMENT_EDGE_THR);
     parameters.max_iterations = config.get<int>("iteration", std::numeric_limits<int>::max());
     parameters.confidence = config.get<float>("confidence", ALIGNMENT_CONFIDENCE);
@@ -238,16 +237,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto gror_iss_coefs = config.getVector<float>("gror_iss_coef", GROR_ISS_COEF);
-    for (float gic: gror_iss_coefs) {
-        for (auto ps: parameters_container) {
-            ps.gror_iss_coef = gic;
-            new_parameters_container.push_back(ps);
-        }
-    }
-    std::swap(parameters_container, new_parameters_container);
-    new_parameters_container.clear();
-
     auto nrs = config.getVector<int>("feature_nr", FEATURE_NR_POINTS);
     for (int nr: nrs) {
         for (auto ps: parameters_container) {
@@ -258,18 +247,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto feature_radii = config.getVector<float>("feature_radius").value();
-    for (float fr: feature_radii) {
-        for (auto ps: parameters_container) {
-            ps.feature_radius = fr;
-            ps.voxel_size = std::sqrt(M_PI * fr * fr / (float) ps.feature_nr_points);
-            new_parameters_container.push_back(ps);
-        }
-    }
-    std::swap(parameters_container, new_parameters_container);
-    new_parameters_container.clear();
-
-    auto iss_coefs = config.getVector<float>("iss_coef", 2);
+    auto iss_coefs = config.getVector<float>("iss_coef").value();
     for (float ic: iss_coefs) {
         for (auto ps: parameters_container) {
             ps.iss_coef = ic;
@@ -377,6 +355,16 @@ void loadTransformationGt(const std::string &src_path, const std::string &tgt_pa
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
     transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
+}
+
+std::ostream &operator<<(std::ostream &out, const MultivaluedCorrespondence &corr) {
+    out << corr.query_idx;
+    for (int i = 0; i < corr.match_indices.size(); ++i) {
+        out << ',' << corr.match_indices[i];
+        if (corr.distances.size() == corr.match_indices.size()) out << ',' << corr.distances[i];
+        else out << ',' << corr.distances[2 * i] << ',' << corr.distances[2 * i + 1];
+    }
+    return out;
 }
 
 void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
@@ -496,9 +484,8 @@ pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const Alignmen
     return indices;
 }
 
-void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                             PointRFCloud::Ptr &frames_kps, const AlignmentParameters &parameters) {
-    int nr_kps = indices ? indices->size() : pcd->size();
+void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                             PointRFCloud::Ptr &frames, float radius_search, const AlignmentParameters &parameters) {
     std::string lrf_id = parameters.lrf_id;
     std::transform(lrf_id.begin(), lrf_id.end(), lrf_id.begin(), [](unsigned char c) { return std::tolower(c); });
     if (lrf_id == "gt") {
@@ -514,19 +501,18 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
             lrf.y_axis[d] = lrf_eigen.col(1)[d];
             lrf.z_axis[d] = lrf_eigen.col(2)[d];
         }
-        frames_kps = std::make_shared<PointRFCloud>(PointRFCloud());
-        frames_kps->resize(nr_kps, lrf);
+        frames = std::make_shared<PointRFCloud>(PointRFCloud());
+        frames->resize(pcd->size(), lrf);
     } else if (lrf_id == "gravity") {
-        pcl::IndicesPtr indices_failing(new pcl::Indices), indices_kps_failing(new pcl::Indices);
-        PointRFCloud::Ptr frames_kps_failing(new PointRFCloud);
-        frames_kps = std::make_shared<PointRFCloud>(PointRFCloud());
-        frames_kps->resize(nr_kps);
+        pcl::IndicesPtr indices_failing(new pcl::Indices);
+        PointRFCloud::Ptr frames_failing(new PointRFCloud);
+        frames = std::make_shared<PointRFCloud>(PointRFCloud());
+        frames->resize(pcd->size());
 
         Eigen::Vector3f gravity(0, 0, 1);
-        for (int i = 0; i < nr_kps; ++i) {
-            int idx = indices ? indices->operator[](i) : i;
-            PointRF &output_rf = frames_kps->points[i];
-            const PointN &normal = pcd->points[idx];
+        for (int i = 0; i < pcd->size(); ++i) {
+            PointRF &output_rf = frames->points[i];
+            const PointN &normal = pcd->points[i];
             Eigen::Vector3f z_axis(normal.normal_x, normal.normal_y, normal.normal_z);
             if (std::acos(std::abs(std::clamp(z_axis.dot(gravity), -1.0f, 1.0f))) > RF_MIN_ANGLE_RAD) {
                 Eigen::Vector3f y_axis = gravity.cross(z_axis);
@@ -537,8 +523,7 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
                     output_rf.z_axis[d] = z_axis[d];
                 }
             } else {
-                indices_failing->push_back(idx);
-                indices_kps_failing->push_back(i);
+                indices_failing->push_back(i);
             }
         }
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
@@ -547,15 +532,17 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::Indice
 
         pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>::Ptr lrf_estimator(
                 new pcl::SHOTLocalReferenceFrameEstimation<PointN, PointRF>());
-        float lrf_radius = parameters.feature_radius;
-        lrf_estimator->setRadiusSearch(lrf_radius);
+        lrf_estimator->setRadiusSearch(radius_search);
         lrf_estimator->setInputCloud(pcd);
         lrf_estimator->setIndices(indices_failing);
+        lrf_estimator->setSearchSurface(surface);
         lrf_estimator->setSearchMethod(tree);
-        lrf_estimator->compute(*frames_kps_failing);
-        for (int i = 0; i < indices_kps_failing->size(); ++i) {
-            frames_kps->points[indices_kps_failing->operator[](i)] = frames_kps_failing->points[i];
+        lrf_estimator->compute(*frames_failing);
+        for (int i = 0; i < indices_failing->size(); ++i) {
+            frames->points[indices_failing->operator[](i)] = frames_failing->points[i];
         }
+        PCL_DEBUG("[estimateReferenceFrames] %i/%i frames are estimated using SHOT.\n",
+                  frames_failing->size(), frames->size());
     } else if (lrf_id != DEFAULT_LRF) {
         PCL_WARN("[estimateReferenceFrames] LRF %s isn't supported, default LRF will be used.\n", lrf_id.c_str());
     }
@@ -955,11 +942,9 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     std::string full_name = parameters.testname + "_" + name +
                             "_" + std::to_string(parameters.feature_nr_points) +
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
-                            "_" + std::to_string((int) std::round(1e4 * parameters.feature_radius)) +
                             "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
                             (with_metric ? "_" + parameters.metric_id + "_" + parameters.score_id : "") +
                             "_" + matching_id + "_" + std::to_string(parameters.randomness) +
-                            (parameters.coarse_to_fine ? "_ctf" : "") +
                             (with_weights ? "_" + parameters.weight_id : "");
     if (with_version) {
         full_name += "_" + VERSION;

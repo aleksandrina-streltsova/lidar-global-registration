@@ -39,8 +39,9 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     PointNCloud::Ptr src_downsize(new PointNCloud), tgt_downsize(new PointNCloud);
     // Downsample
     pcl::console::print_highlight("Downsampling...\n");
-    downsamplePointCloud(src_fullsize, src_downsize, parameters);
-    downsamplePointCloud(tgt_fullsize, tgt_downsize, parameters);
+    float voxel_size = 0.05;
+    downsamplePointCloud(src_fullsize, src_downsize, voxel_size);
+    downsamplePointCloud(tgt_fullsize, tgt_downsize, voxel_size);
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud), src_aligned(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
@@ -49,7 +50,6 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
     pcl::search::KdTree<PointN>::Ptr tree_src(new pcl::search::KdTree<PointN>), tree_tgt(new pcl::search::KdTree<PointN>);
 
-    float voxel_size = parameters.voxel_size;
     estimateNormalsPoints(NORMAL_NR_POINTS, src_downsize, normals_src, parameters.normals_available);
     estimateNormalsPoints(NORMAL_NR_POINTS, tgt_downsize, normals_tgt, parameters.normals_available);
 

@@ -21,27 +21,6 @@
 
 namespace fs = std::filesystem;
 
-void detectKeyPointsISS(const PointNCloud::ConstPtr &pcd, pcl::IndicesPtr &indices,
-                        const AlignmentParameters &parameters) {
-    PointNCloud key_points;
-    ISSKeypoint3DDebug iss_detector;
-    iss_detector.setSalientRadius(1.f);
-    iss_detector.setNonMaxRadius(1.f);
-    iss_detector.setThreshold21(0.975f);
-    iss_detector.setThreshold32(0.975f);
-    iss_detector.setMinNeighbors(4);
-    iss_detector.setMaxNeighbors(352);
-    iss_detector.setInputCloud(pcd);
-    iss_detector.setNormals(pcd);
-    iss_detector.compute(key_points);
-    indices = std::make_shared<pcl::Indices>(pcl::Indices());
-    *indices = iss_detector.getKeypointsIndices()->indices;
-    if (parameters.fix_seed) {
-        std::sort(indices->begin(), indices->end());
-    }
-    PCL_DEBUG("%d key points detected\n", indices->size());
-}
-
 void saveDebugFeatures(const std::string &corrs_path,
                        const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                        const AlignmentParameters &parameters) {
@@ -74,8 +53,11 @@ void saveDebugFeatures(const std::string &corrs_path,
         }
     }
     pcl::PointCloud<SHOT>::Ptr features_src(new pcl::PointCloud<SHOT>), features_tgt(new pcl::PointCloud<SHOT>);
-    estimateFeatures<SHOT>(src, indices_src, features_src, parameters);
-    estimateFeatures<SHOT>(tgt, indices_tgt, features_tgt, parameters);
+    PointNCloud::Ptr kps_src(new PointNCloud), kps_tgt(new PointNCloud);
+    pcl::copyPointCloud(*src, *indices_src, *kps_src);
+    pcl::copyPointCloud(*tgt, *indices_tgt, *kps_tgt);
+    estimateFeatures<SHOT>(kps_src, src, features_src, 10 * parameters.distance_thr, parameters);
+    estimateFeatures<SHOT>(kps_tgt, tgt, features_tgt, 10 * parameters.distance_thr, parameters);
 
     AlignmentParameters parameters_bf{parameters};
     parameters_bf.randomness = 2;
@@ -136,7 +118,7 @@ void analyzeKeyPoints(const YamlConfig &config) {
             estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, parameters.normals_available);
             pcl::concatenateFields(*src, *normals_src, *src);
             pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
-            detectKeyPointsISS(src, indices_src, parameters);
+            indices_src = detectKeyPoints(src, parameters);
             pcl::KdTreeFLANN<PointN> tree;
             pcl::transformPointCloud(*src, *src_gt, transformation_gt.value());
             tree.setInputCloud(tgt);
@@ -151,8 +133,8 @@ void analyzeKeyPoints(const YamlConfig &config) {
             }
             saveCorrespondencesToCSV(kps_path, src, tgt, correspondences);
         }
-        downsamplePointCloud(src, src_ds, parameters);
-        downsamplePointCloud(tgt, tgt_ds, parameters);
+        downsamplePointCloud(src, src_ds, parameters.distance_thr);
+        downsamplePointCloud(tgt, tgt_ds, parameters.distance_thr);
         {
             pcl::ScopeTime t("Normal estimation");
             estimateNormalsPoints(NORMAL_NR_POINTS, src_ds, normals_src, parameters.normals_available);

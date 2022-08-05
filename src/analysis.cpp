@@ -262,7 +262,7 @@ void AlignmentAnalysis::save(const std::string &testname) {
 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,fitness,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-    out << "voxel_size,feature_radius,distance_thr,edge_thr,";
+    out << "voxel_size,nr_points,distance_thr,edge_thr,";
     out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,";
     out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score,iss_coef\n";
 }
@@ -274,8 +274,8 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
            << analysis.fitness_ << "," << analysis.rmse_ << ",";
     stream << analysis.correspondences_.size() << "," << analysis.correct_correspondences_.size() << ",";
     stream << analysis.inlier_pairs_.size() << "," << analysis.correct_inlier_pairs_.size() << ",";
-    stream << analysis.parameters_.voxel_size << ",";
-    stream << analysis.parameters_.feature_radius << ",";
+    stream << analysis.parameters_.distance_thr << ",";
+    stream << analysis.parameters_.feature_nr_points << ",";
     stream << analysis.parameters_.distance_thr << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
     stream << analysis.result_.iterations << ",";

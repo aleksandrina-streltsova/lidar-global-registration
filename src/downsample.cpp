@@ -1,8 +1,7 @@
 #include "downsample.h"
 
-void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr &pcd_down,
-                          const AlignmentParameters &parameters) {
-    float voxel_size = parameters.voxel_size;
+void downsamplePointCloud(const PointNCloud::ConstPtr &pcd_fullsize, PointNCloud::Ptr &pcd_down, float voxel_size) {
+    pcl::console::print_highlight("Downsampling [voxel_size = %.5f]...\n", voxel_size);
     if (voxel_size <= 0.0) {
         PCL_ERROR("[downsamplePointCloud] voxel_size <= 0.");
     }
@@ -17,7 +16,7 @@ void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr
         PCL_ERROR("[downsamplePointCloud] voxel_size is too small.");
     }
     pcl::console::print_highlight("Point cloud downsampled with voxel_size = %f, from %zu...",
-                                  parameters.voxel_size, pcd_fullsize->size());
+                                  voxel_size, pcd_fullsize->size());
     std::unordered_map<Eigen::Vector3i, AccumulatedPoint, HashEigen<Eigen::Vector3i>> voxelindex_to_accpoint;
     Eigen::Vector3f ref_coord;
     Eigen::Vector3i voxel_index;

@@ -9,10 +9,6 @@
 
 #include "gror/ia_gror.h"
 
-#define INITIAL_STEP_VOXEL_SIZE_COEF 8
-#define FINAL_STEP_EDG_THR_COEF 0.99
-#define MATCH_SEARCH_RADIUS_COEF 4
-
 namespace fs = std::filesystem;
 
 AlignmentResult alignRansac(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
@@ -30,7 +26,7 @@ AlignmentResult alignGror(const PointNCloud::Ptr &src, const PointNCloud::Ptr &t
     pcl::PointCloud<PointN>::Ptr pcs(new pcl::PointCloud<PointN>);
     gror.setInputSource(src);
     gror.setInputTarget(tgt);
-    gror.setResolution(parameters.voxel_size);
+    gror.setResolution(parameters.distance_thr);
     gror.setOptimalSelectionNumber(800);
     gror.setNumberOfThreads(omp_get_num_procs());
     gror.setInputCorrespondences(correspondences);
@@ -72,24 +68,21 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
     return AlignmentResult{src, tgt, transformation, correspondences, 1, true, t.getTimeSeconds()};
 }
 
-AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
-                                     const PointNCloud::Ptr &tgt_final,
-                                     const AlignmentParameters &parameters) {
+AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
+                                 const PointNCloud::Ptr &tgt_fullsize,
+                                 const AlignmentParameters &parameters) {
+    pcl::ScopeTime t_alignment("Alignment");
     double time_correspondence_search = 0.0, time_downsampling_and_normals = 0.0;
-    bool is_initial = !parameters.guess.has_value();
-    pcl::console::print_highlight("Starting%s alignment step...\n", std::string(is_initial ? " initial" : "").c_str());
-
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
 
-    float voxel_size = parameters.voxel_size;
-    float feature_radius = parameters.feature_radius;
     {
         pcl::ScopeTime t("Downsampling and normal estimation");
         // Downsample
-        pcl::console::print_highlight("Downsampling [voxel_size = %.5f]...\n", parameters.voxel_size);
-        downsamplePointCloud(src_final, src, parameters);
-        downsamplePointCloud(tgt_final, tgt, parameters);
+        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src_fullsize);
+        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt_fullsize);
+        downsamplePointCloud(src_fullsize, src, voxel_size_src);
+        downsamplePointCloud(tgt_fullsize, tgt, voxel_size_tgt);
 
         // Estimate normals
         pcl::console::print_highlight("Estimating normals...\n");
@@ -105,7 +98,7 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
     pcl::CorrespondencesPtr correspondences;
 //    correspondences = readCorrespondencesFromCSV(filepath, success);
     if (success) {
-        PCL_DEBUG("[executeAlignmentStep] read correspondences from file\n");
+        PCL_DEBUG("[alignPointClouds] read correspondences from file\n");
     } else {
         pcl::ScopeTime t("Correspondence search");
         FeatureBasedCorrespondenceSearch corr_search(src, tgt, parameters);
@@ -120,7 +113,7 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
         alignment_result = alignTeaser(src, tgt, correspondences, parameters);
     } else {
         if (parameters.alignment_id != ALIGNMENT_DEFAULT) {
-            PCL_WARN("[executeAlignmentStep] Transformation estimation method %s isn't supported,"
+            PCL_WARN("[alignPointClouds] Transformation estimation method %s isn't supported,"
                      " default LRF will be used.\n", parameters.alignment_id.c_str());
         }
         alignment_result = alignRansac(src, tgt, correspondences, parameters);
@@ -134,44 +127,4 @@ AlignmentResult executeAlignmentStep(const PointNCloud::Ptr &src_final,
     saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                        constructName(parameters, "transformation"), alignment_result.transformation);
     return alignment_result;
-}
-
-AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
-                                 const PointNCloud::Ptr &tgt_fullsize,
-                                 const AlignmentParameters &parameters) {
-    pcl::ScopeTime t("Alignment");
-    AlignmentResult final_result;
-    if (parameters.coarse_to_fine) {
-        PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-        downsamplePointCloud(src_fullsize, src, parameters);
-        downsamplePointCloud(tgt_fullsize, tgt, parameters);
-        float final_voxel_size = parameters.voxel_size;
-        float initial_voxel_size = INITIAL_STEP_VOXEL_SIZE_COEF * final_voxel_size;
-
-        // initial step
-        AlignmentParameters initial_parameters(parameters);
-        initial_parameters.voxel_size = initial_voxel_size;
-        auto initial_result = executeAlignmentStep(src, tgt, initial_parameters);
-
-        // final step
-        AlignmentParameters final_parameters(parameters);
-        final_parameters.voxel_size = final_voxel_size;
-        final_parameters.match_search_radius = MATCH_SEARCH_RADIUS_COEF * initial_voxel_size;
-        final_parameters.guess = std::optional<Eigen::Matrix4f>{initial_result.transformation};
-        final_parameters.matching_id = MATCHING_LEFT_TO_RIGHT;
-        final_parameters.metric_id = METRIC_CORRESPONDENCES;
-        final_parameters.edge_thr_coef = FINAL_STEP_EDG_THR_COEF;
-        final_result = executeAlignmentStep(src, tgt, final_parameters);
-
-        saveIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                           constructName(parameters, "iterations"),
-                           {initial_voxel_size, final_voxel_size},
-                           {initial_parameters.matching_id, final_parameters.matching_id});
-    } else {
-        final_result = executeAlignmentStep(src_fullsize, tgt_fullsize, parameters);
-        saveIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                           constructName(parameters, "iterations"),
-                           {parameters.voxel_size}, {parameters.matching_id});
-    }
-    return final_result;
 }

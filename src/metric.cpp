@@ -201,7 +201,7 @@ void WeightedClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(cons
 void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
     src_ = src;
     auto weight_function = getWeightFunction(weight_id_);
-    weights_ = weight_function(curvature_radius_, src_);
+    weights_ = weight_function(nr_points_, src_);
     weights_sum_ = 0.f;
     for (float weight: weights_) {
         weights_sum_ += weight;
@@ -276,8 +276,7 @@ MetricEstimator::Ptr getMetricEstimatorFromParameters(const AlignmentParameters 
     if (parameters.metric_id == METRIC_CLOSEST_PLANE) {
         return std::make_shared<ClosestPlaneMetricEstimator>(sparse, score_function);
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
-        float curvature_radius = 6.f * parameters.voxel_size;
-        return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, curvature_radius, sparse,
+        return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, NORMAL_NR_POINTS, sparse,
                                                                      score_function);
     } else if (parameters.metric_id == METRIC_COMBINATION) {
         return std::make_shared<CombinationMetricEstimator>(sparse, score_function);

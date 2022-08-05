@@ -34,7 +34,6 @@
 #define DEBUG_N_EDGES 100ul
 #define ROPS_DIM 135
 
-#define ALIGNMENT_COARSE_TO_FINE false
 #define ALIGNMENT_EDGE_THR 0.95
 #define ALIGNMENT_CONFIDENCE 0.999
 #define ALIGNMENT_INLIER_FRACTION 0.1
@@ -48,8 +47,8 @@
 #define SPARSE_POINTS_FRACTION 0.01
 #define FEATURE_NR_POINTS 352
 #define NORMAL_NR_POINTS 30
-#define GROR_ISS_COEF 4.0
 #define SPARSE_POINTS_FRACTION 0.01
+#define FINE_VOXEL_SIZE_COEFFICIENT 10
 
 // Types
 typedef pcl::PointXYZ Point;
@@ -108,17 +107,20 @@ extern const std::string METRIC_SCORE_MAE;
 extern const std::string METRIC_SCORE_MSE;
 extern const std::string METRIC_SCORE_EXP;
 
+using CorrespondenceWithFlag = std::pair<pcl::Correspondence, bool>;
+using CorrespondencesWithFlags = std::vector<CorrespondenceWithFlag>;
+using CorrespondencesWithFlagsPtr = std::shared_ptr<CorrespondencesWithFlags>;
+
 struct InlierPair {
     int idx_src, idx_tgt;
     float dist;
 };
 
 struct AlignmentParameters {
-    bool coarse_to_fine{ALIGNMENT_COARSE_TO_FINE};
     bool normals_available;
     int feature_nr_points{FEATURE_NR_POINTS};
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, gror_iss_coef{GROR_ISS_COEF}, iss_coef{2};
-    float distance_thr, feature_radius;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, iss_coef;
+    float distance_thr;
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
@@ -134,7 +136,6 @@ struct AlignmentParameters {
 
     // these parameters cannot be set in config, they are set before alignment steps
     bool fix_seed = true;
-    float voxel_size;
     float match_search_radius = 0;
     std::optional<Eigen::Matrix4f> guess{std::nullopt};
     std::string dir_path{DATA_DEBUG_PATH};
@@ -167,6 +168,8 @@ struct MultivaluedCorrespondence {
     pcl::Indices match_indices;
     std::vector<float> distances;
 };
+
+std::ostream &operator<<(std::ostream &out, const MultivaluedCorrespondence &corr);
 
 void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_idx,
                                      int k_matches, int match_idx, float distance);
@@ -236,7 +239,7 @@ void saveIterationsInfo(const std::string &csv_path, const std::string &name,
                         const std::vector<std::string> &matching_ids);
 
 template<typename PointT>
-std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
+std::pair<PointT, PointT> calculateBoundingBox(const typename pcl::PointCloud<PointT>::ConstPtr &pcd) {
     float min = std::numeric_limits<float>::min(), max = std::numeric_limits<float>::max();
     PointT min_point_AABB(max, max, max);
     PointT max_point_AABB(min, min, min);
@@ -295,56 +298,51 @@ void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalClou
 
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters);
 
-void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                             PointRFCloud::Ptr &frames_kps, const AlignmentParameters &parameters);
+void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                             PointRFCloud::Ptr &frames, float radius_search, const AlignmentParameters &parameters);
 
 template<typename FeatureT>
-void estimateFeatures(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                      typename pcl::PointCloud<FeatureT>::Ptr &features, const AlignmentParameters &parameters) {
+void estimateFeatures(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                      typename pcl::PointCloud<FeatureT>::Ptr &features,
+                      float radius_search, const AlignmentParameters &parameters) {
     throw std::runtime_error("Feature with proposed reference frame isn't supported!");
 }
 
 
 template<>
-inline void estimateFeatures<FPFH>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                                   pcl::PointCloud<FPFH>::Ptr &features, const AlignmentParameters &parameters) {
-    int nr_kps = indices ? indices->size() : pcd->size();
+inline void estimateFeatures<FPFH>(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                                   pcl::PointCloud<FPFH>::Ptr &features,
+                                   float radius_search, const AlignmentParameters &parameters) {
     pcl::FPFHEstimationOMP<PointN, PointN, FPFH> fpfh_estimation;
-    fpfh_estimation.setRadiusSearch(parameters.feature_radius);
+    fpfh_estimation.setRadiusSearch(radius_search);
     fpfh_estimation.setInputCloud(pcd);
-    fpfh_estimation.setInputNormals(pcd);
-    if (indices) fpfh_estimation.setIndices(indices);
+    fpfh_estimation.setSearchSurface(surface);
+    fpfh_estimation.setInputNormals(surface);
     fpfh_estimation.compute(*features);
-    rassert(features->size() == nr_kps, 104935923)
 }
 
 template<>
-inline void estimateFeatures<USC>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                                  pcl::PointCloud<USC>::Ptr &features, const AlignmentParameters &parameters) {
-    int nr_kps = indices ? indices->size() : pcd->size();
-    float radius_search = parameters.feature_radius;
+inline void estimateFeatures<USC>(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                                  pcl::PointCloud<USC>::Ptr &features,
+                                  float radius_search, const AlignmentParameters &parameters) {
     pcl::UniqueShapeContext<PointN, USC, PointRF> shape_context;
     shape_context.setInputCloud(pcd);
-    if (indices) shape_context.setIndices(indices);
+    shape_context.setSearchSurface(surface);
     shape_context.setMinimalRadius(radius_search / 10.f);
     shape_context.setRadiusSearch(radius_search);
     shape_context.setPointDensityRadius(radius_search / 5.f);
     shape_context.setLocalRadius(radius_search);
     shape_context.compute(*features);
-    rassert(features->size() == nr_kps, 3489281234)
-    std::cout << "output points.size (): " << features->points.size() << std::endl;
-
 }
 
 template<>
-inline void estimateFeatures<RoPS135>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                                      pcl::PointCloud<RoPS135>::Ptr &features, const AlignmentParameters &parameters) {
-    int nr_kps = indices ? indices->size() : pcd->size();
-    float radius_search = parameters.feature_radius;
+inline void estimateFeatures<RoPS135>(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                                      pcl::PointCloud<RoPS135>::Ptr &features,
+                                      float radius_search, const AlignmentParameters &parameters) {
     // RoPs estimation object.
     ROPSEstimationWithLocalReferenceFrames<PointN, RoPS135> rops;
     rops.setInputCloud(pcd);
-    if (indices) rops.setIndices(indices);
+    rops.setSearchSurface(surface);
     rops.setRadiusSearch(radius_search);
     // Number of partition bins that is used for distribution matrix calculation.
     rops.setNumberOfPartitionBins(5);
@@ -355,7 +353,7 @@ inline void estimateFeatures<RoPS135>(const PointNCloud::ConstPtr &pcd, const pc
     rops.setSupportRadius(radius_search);
 
     PointRFCloud::Ptr frames{nullptr};
-    estimateReferenceFrames(pcd, indices, frames, parameters);
+    estimateReferenceFrames(pcd, surface, frames, radius_search, parameters);
     if (!frames) {
         // Perform triangulation.
         pcl::search::KdTree<Point>::Ptr tree(new pcl::search::KdTree<Point>);
@@ -381,31 +379,28 @@ inline void estimateFeatures<RoPS135>(const PointNCloud::ConstPtr &pcd, const pc
     }
 
     rops.compute(*features);
-    rassert(features->size() == nr_kps, 2434751037284)
 }
 
 template<>
-inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const pcl::IndicesConstPtr &indices,
-                                   pcl::PointCloud<SHOT>::Ptr &features, const AlignmentParameters &parameters) {
-    int nr_kps = indices ? indices->size() : pcd->size();
+inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
+                                   pcl::PointCloud<SHOT>::Ptr &features,
+                                   float radius_search, const AlignmentParameters &parameters) {
     // SHOT estimation object.
     pcl::SHOTEstimationOMP<PointN, PointN, SHOT> shot;
     shot.setInputCloud(pcd);
-    if (indices) shot.setIndices(indices);
-//	shot.setSearchSurface(surface);
-    shot.setInputNormals(pcd);
+    shot.setSearchSurface(surface);
+    shot.setInputNormals(surface);
     // The radius that defines which of the keypoint's neighbors are described.
     // If too large, there may be clutter, and if too small, not enough points may be found.
-    shot.setRadiusSearch(parameters.feature_radius);
+    shot.setRadiusSearch(radius_search);
     PointRFCloud::Ptr frames{nullptr};
-    estimateReferenceFrames(pcd, indices, frames, parameters);
+    estimateReferenceFrames(pcd, surface, frames, radius_search, parameters);
     if (frames) shot.setInputReferenceFrames(frames);
     PCL_WARN("[estimateFeatures<SHOT>] Points probably have NaN normals in their neighbourhood\n");
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
-    saveVectorOfArrays<int, 32>(shot.getVolumesDebugInfo(),
-                                constructPath(parameters, "volumes", "csv", true, false, false));
-    rassert(features->size() == nr_kps, 845637470190)
+    std::string volumes_path = constructPath(parameters, "volumes", "csv", true, false, false);
+    saveVectorOfArrays<int, 32>(shot.getVolumesDebugInfo(), volumes_path);
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }
 
@@ -436,7 +431,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
 
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,
-                                 const Eigen::Matrix4f &transformation_gt, float voxel_size,
+                                 const Eigen::Matrix4f &transformation_gt,
                                  const AlignmentParameters &parameters);
 
 void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,

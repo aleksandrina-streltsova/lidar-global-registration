@@ -62,7 +62,6 @@ void estimateTestMetric(const YamlConfig &config) {
         perror(("error while opening file " + filepath).c_str());
     }
 
-    PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
@@ -72,7 +71,7 @@ void estimateTestMetric(const YamlConfig &config) {
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    loadPointClouds(src_path, tgt_path, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt);
+    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
     if (transformation_gt) {
         PCL_ERROR("Failed to read ground truth for %s!\n", testname.c_str());
@@ -80,18 +79,13 @@ void estimateTestMetric(const YamlConfig &config) {
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
         parameters.testname = testname;
-        if (parameters.coarse_to_fine) {
-            downsamplePointCloud(src_fullsize, src, parameters);
-            downsamplePointCloud(tgt_fullsize, tgt, parameters);
-        } else {
-            src = src_fullsize;
-            tgt = tgt_fullsize;
-        }
         std::vector<float> voxel_sizes;
         std::vector<std::string> matching_ids;
         PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
-        downsamplePointCloud(src, curr_src, parameters);
-        downsamplePointCloud(tgt, curr_tgt, parameters);
+        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src);
+        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt);
+        downsamplePointCloud(src, curr_src, voxel_size_src);
+        downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
         auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
@@ -147,9 +141,8 @@ void estimateTestMetric(const YamlConfig &config) {
 }
 
 void generateDebugFiles(const YamlConfig &config) {
-    PointNCloud::Ptr src_fullsize(new PointNCloud), tgt_fullsize(new PointNCloud);
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    PointNCloud::Ptr src_fullsize_aligned(new PointNCloud), src_fullsize_aligned_gt(new PointNCloud);
+    PointNCloud::Ptr src_aligned(new PointNCloud), src_aligned_gt(new PointNCloud);
     NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
     pcl::CorrespondencesPtr correct_correspondences(new pcl::Correspondences);
@@ -162,18 +155,11 @@ void generateDebugFiles(const YamlConfig &config) {
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    loadPointClouds(src_path, tgt_path, testname, src_fullsize, tgt_fullsize, fields_src, fields_tgt);
+    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
         parameters.testname = testname;
-        if (parameters.coarse_to_fine) {
-            downsamplePointCloud(src_fullsize, src, parameters);
-            downsamplePointCloud(tgt_fullsize, tgt, parameters);
-        } else {
-            src = src_fullsize;
-            tgt = tgt_fullsize;
-        }
         std::vector<float> voxel_sizes;
         std::vector<std::string> matching_ids;
         getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
@@ -187,8 +173,10 @@ void generateDebugFiles(const YamlConfig &config) {
         }
         PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
         pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
-        downsamplePointCloud(src, curr_src, parameters);
-        downsamplePointCloud(tgt, curr_tgt, parameters);
+        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src);
+        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt);
+        downsamplePointCloud(src, curr_src, voxel_size_src);
+        downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                            constructName(parameters, "transformation"));
         float error_thr = parameters.distance_thr;
@@ -216,7 +204,7 @@ void generateDebugFiles(const YamlConfig &config) {
             saveColorizedPointCloud(curr_src, indices_src, *correspondences, *correct_correspondences, inlier_pairs,
                                     parameters, transformation_gt.value(), true);
             saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", parameters, transformation_gt.value());
-            saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_gt_fullsize", parameters, transformation_gt.value());
+            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", parameters, transformation_gt.value());
         }
         saveColorizedPointCloud(curr_tgt, indices_tgt, *correspondences, *correct_correspondences, inlier_pairs,
                                 parameters, Eigen::Matrix4f::Identity(), false);
@@ -227,7 +215,7 @@ void generateDebugFiles(const YamlConfig &config) {
             saveColorizedWeights(curr_src, weights, "weights", parameters, transformation);
         }
         saveTemperatureMaps(curr_src, curr_tgt, "temperature", parameters, transformation);
-        saveTemperatureMaps(src_fullsize, tgt_fullsize, "temperature_fullsize", parameters, transformation,parameters.normals_available);
+        saveTemperatureMaps(src, tgt, "temperature_fullsize", parameters, transformation,parameters.normals_available);
     }
 }
 

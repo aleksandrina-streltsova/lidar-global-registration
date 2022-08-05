@@ -5,7 +5,7 @@
 
 class AccumulatedPoint {
 public:
-    void AddPoint(const PointNCloud::Ptr &pcd, int index) {
+    void AddPoint(const PointNCloud::ConstPtr &pcd, int index) {
         point_.x += pcd->points[index].x;
         point_.y += pcd->points[index].y;
         point_.z += pcd->points[index].z;
@@ -29,7 +29,6 @@ private:
     PointN point_ = PointN(0, 0, 0, 0, 0, 0);
 };
 
-void downsamplePointCloud(const PointNCloud::Ptr &pcd_fullsize, PointNCloud::Ptr &pcd_down,
-                          const AlignmentParameters &parameters);
+void downsamplePointCloud(const PointNCloud::ConstPtr &pcd_fullsize, PointNCloud::Ptr &pcd_down, float voxel_size);
 
 #endif

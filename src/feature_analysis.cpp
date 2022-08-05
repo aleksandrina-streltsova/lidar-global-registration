@@ -39,8 +39,10 @@ void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNClo
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     // Downsample
     pcl::console::print_highlight("Downsampling...\n");
-    downsamplePointCloud(src_fullsize, src, parameters);
-    downsamplePointCloud(tgt_fullsize, tgt, parameters);
+    float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src_fullsize);
+    float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt_fullsize);
+    downsamplePointCloud(src_fullsize, src, voxel_size_src);
+    downsamplePointCloud(tgt_fullsize, tgt, voxel_size_tgt);
 
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
 

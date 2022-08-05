@@ -1,6 +1,7 @@
 #ifndef REGISTRATION_MATCHING_H
 #define REGISTRATION_MATCHING_H
 
+#include <memory>
 #include <unordered_set>
 #include <utility>
 #include <opencv2/features2d.hpp>
@@ -14,10 +15,11 @@
 #include <pcl/common/time.h>
 
 #include "common.h"
+#include "downsample.h"
 
-#define MATCHING_RATIO_THRESHOLD 0.95f
+#define MATCHING_RATIO_THRESHOLD 1.1f
 #define MATCHING_CLUSTER_THRESHOLD 0.8f
-#define MATCHING_CLUSTER_RADIUS_COEF 7.f
+#define MATCHING_CLUSTER_K 150
 
 class FeatureBasedMatcher {
 public:
@@ -105,53 +107,170 @@ protected:
     using KdTree = pcl::search::KdTree<PointN>;
 
     // estimate features and initialize k-d trees
-    void initialize();
+    void initialize(const PointNCloud::ConstPtr &pcd,
+                    const pcl::IndicesConstPtr &kps_indices,
+                    std::vector<pcl::Indices> &kps_indices_multiscale,
+                    std::vector<PointNCloud::Ptr> &kps_multiscale,
+                    std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
+                    std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
+                    int &min_log2_radius, const AlignmentParameters &parameters);
 
-    virtual pcl::CorrespondencesPtr match_impl() = 0;
-
-    // convert local indices into global indices
-    void finalize(const pcl::CorrespondencesPtr &correspondences);
+    virtual CorrespondencesWithFlagsPtr match_impl(int idx_src, int idx_tgt) = 0;
 
     pcl::CorrespondencesPtr match() override {
-        initialize();
+        pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
+        std::vector<MultivaluedCorrespondence> mv_correspondences(kps_indices_src_->size());
+        AlignmentParameters parameters(parameters_);
+        initialize(src_, kps_indices_src_, kps_indices_src_multiscale_,
+                   kps_src_multiscale_, kps_tree_src_multiscale_, kps_features_src_multiscale_,
+                   min_log2_radius_src_, parameters);
+        // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
+        initialize(tgt_, kps_indices_tgt_, kps_indices_tgt_multiscale_,
+                   kps_tgt_multiscale_, kps_tree_tgt_multiscale_, kps_features_tgt_multiscale_,
+                   min_log2_radius_tgt_, parameters);
         {
             pcl::ScopeTime t("Matching");
-            auto correspondences = match_impl();
-            finalize(correspondences);
-            return correspondences;
+            int nr_scales_src = kps_features_src_multiscale_.size(), nr_scales_tgt = kps_features_tgt_multiscale_.size();
+            int max_log2_radius_src = min_log2_radius_src_ - 1 + nr_scales_src;
+            int max_log2_radius_tgt = min_log2_radius_tgt_ - 1 + nr_scales_tgt;
+            for (int log2_radius = std::max(min_log2_radius_src_, min_log2_radius_tgt_);
+                 log2_radius <= std::min(max_log2_radius_src, max_log2_radius_tgt); ++log2_radius) {
+                int idx_src = log2_radius - min_log2_radius_src_, idx_tgt = log2_radius - min_log2_radius_tgt_;
+                auto correspondences_with_flags = match_impl(idx_src, idx_tgt);
+                rassert(correspondences_with_flags->size() == kps_features_src_multiscale_[idx_src]->size(),
+                        9082472354896501);
+                int keypoint_idx = 0;
+                for (int i = 0; i < correspondences_with_flags->size(); ++i) {
+                    pcl::Correspondence corr = correspondences_with_flags->operator[](i).first;
+                    int index_query = kps_indices_src_multiscale_[idx_src][corr.index_query];
+                    int index_match =
+                            corr.index_match > 0 ? kps_indices_tgt_multiscale_[idx_tgt][corr.index_match] : -1;
+                    while (kps_indices_src_->operator[](keypoint_idx) != index_query) keypoint_idx++;
+                    mv_correspondences[keypoint_idx].query_idx = index_query;
+                    mv_correspondences[keypoint_idx].match_indices.push_back(index_match);
+                    mv_correspondences[keypoint_idx].distances.push_back(corr.distance);
+                    if (index_match > 0) {
+                        float dist = (parameters_.ground_truth.value() * src_->points[index_query].getVector4fMap() -
+                                      tgt_->points[index_match].getVector4fMap()).norm();
+                        mv_correspondences[keypoint_idx].distances.push_back(dist);
+                    } else {
+                        mv_correspondences[keypoint_idx].distances.push_back(-1.f);
+                    }
+                }
+            }
         }
+        saveVector(mv_correspondences, constructPath(parameters_, "multiscale", "csv", true, false, false));
+        for (const auto &mv_corr: mv_correspondences) {
+            std::unordered_map<int, std::pair<int, float>> counter;
+            for (int i = 0; i < mv_corr.match_indices.size(); ++i) {
+                if (mv_corr.match_indices[i] < 0) continue;
+                if (counter.find(mv_corr.match_indices[i]) != counter.end()) {
+                    counter[mv_corr.match_indices[i]].first++;
+                    counter[mv_corr.match_indices[i]].second += mv_corr.distances[2 * i];
+                } else {
+                    counter[mv_corr.match_indices[i]] = {1, mv_corr.distances[2 * i]};
+                }
+            }
+            std::pair<int, float> best_match{0, 0.f};
+            pcl::Correspondence corr;
+            corr.index_query = mv_corr.query_idx;
+            for (auto[index_match, count_dist]: counter) {
+                if (count_dist.first > best_match.first ||
+                    (count_dist.first == best_match.first && count_dist.second < best_match.second)) {
+                    best_match = count_dist;
+                    corr.index_match = index_match;
+                    corr.distance = count_dist.second;
+                }
+            }
+            if (best_match.first > 0) correspondences->push_back(corr);
+        }
+        return correspondences;
     }
 
+    // downsampling and normal estimation time, feature estimation time
+    double time_ds_ne_{0.0}, time_fe_{0.0};
+    int min_log2_radius_src_{std::numeric_limits<int>::max()}, min_log2_radius_tgt_{std::numeric_limits<int>::max()};
     PointNCloud::ConstPtr src_, tgt_;
     typename pcl::IndicesConstPtr kps_indices_src_, kps_indices_tgt_;
-    PointNCloud::Ptr kps_src_{new PointNCloud}, kps_tgt_{new PointNCloud};
-    typename FeatureCloud::Ptr kps_features_src_{new FeatureCloud}, kps_features_tgt_{new FeatureCloud};
-    typename KdTree::Ptr kps_tree_src_{new KdTree}, kps_tree_tgt_{new KdTree};
+    std::vector<pcl::Indices> kps_indices_src_multiscale_, kps_indices_tgt_multiscale_;
+    std::vector<PointNCloud::Ptr> kps_src_multiscale_, kps_tgt_multiscale_;
+    std::vector<typename FeatureCloud::Ptr> kps_features_src_multiscale_, kps_features_tgt_multiscale_;
+    std::vector<typename KdTree::Ptr> kps_tree_src_multiscale_, kps_tree_tgt_multiscale_;
+    pcl::DefaultPointRepresentation<FeatureT> point_representation_{};
     AlignmentParameters parameters_;
 };
 
 template<typename FeatureT>
-void FeatureBasedMatcherImpl<FeatureT>::initialize() {
-    float radius_search = parameters_.feature_radius;
-    {
-        pcl::ScopeTime t("Feature estimation");
-        AlignmentParameters parameters(parameters_);
-        estimateFeatures<FeatureT>(src_, kps_indices_src_, kps_features_src_, parameters);
-        // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
-        parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
-        estimateFeatures<FeatureT>(tgt_, kps_indices_tgt_, kps_features_tgt_, parameters);
+void FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &pcd,
+                                                   const pcl::IndicesConstPtr &kps_indices,
+                                                   std::vector<pcl::Indices> &kps_indices_multiscale,
+                                                   std::vector<PointNCloud::Ptr> &kps_multiscale,
+                                                   std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
+                                                   std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
+                                                   int &min_log2_radius, const AlignmentParameters &parameters) {
+    KdTree tree(true);
+    tree.setInputCloud(pcd);
+    std::vector<int> log2_radii(kps_indices->size());
+    int max_log2_radius = std::numeric_limits<int>::lowest();
+    pcl::Indices nn_indices;
+    std::vector<float> nn_sqr_dists;
+    int k = 5, nr_extra_scales = 3;
+    for (int i = 0; i < kps_indices->size(); ++i) {
+        tree.nearestKSearch(*pcd, kps_indices->operator[](i), k, nn_indices, nn_sqr_dists);
+        float density = sqrtf(nn_sqr_dists[k - 1]);
+        float feature_radius = sqrtf((float) parameters.feature_nr_points * density * density / M_PI);
+        log2_radii[i] = (int) std::floor(std::log2(feature_radius));
+        min_log2_radius = std::min(log2_radii[i], min_log2_radius);
+        max_log2_radius = std::max(log2_radii[i], max_log2_radius);
     }
-    pcl::copyPointCloud(*src_, *kps_indices_src_, *kps_src_);
-    pcl::copyPointCloud(*tgt_, *kps_indices_tgt_, *kps_tgt_);
-    kps_tree_src_->setInputCloud(kps_src_);
-    kps_tree_tgt_->setInputCloud(kps_tgt_);
-}
-
-template<typename FeatureT>
-void FeatureBasedMatcherImpl<FeatureT>::finalize(const pcl::CorrespondencesPtr &correspondences) {
-    for (auto &corr: *correspondences) {
-        corr.index_query = this->kps_indices_src_->operator[](corr.index_query);
-        corr.index_match = this->kps_indices_tgt_->operator[](corr.index_match);
+    max_log2_radius += nr_extra_scales;
+    int nr_scales = max_log2_radius - (min_log2_radius - 1);
+    kps_multiscale.resize(nr_scales);
+    kps_indices_multiscale.resize(nr_scales);
+    kps_tree_multiscale.resize(nr_scales);
+    kps_features_multiscale.resize(nr_scales);
+    for (int i = 0; i < nr_scales; ++i) {
+        kps_multiscale[i] = std::make_shared<PointNCloud>();
+        kps_indices_multiscale[i].reserve(kps_indices->size());
+        kps_tree_multiscale[i] = std::make_shared<KdTree>();
+        kps_features_multiscale[i] = std::make_shared<FeatureCloud>();
+    }
+    // for each scale build indices
+    for (int i = 0; i < kps_indices->size(); ++i) {
+        for (int j = log2_radii[i]; j <= max_log2_radius; ++j) {
+            kps_indices_multiscale[j - min_log2_radius].push_back(kps_indices->operator[](i));
+        }
+    }
+    // for each scale estimate features
+    for (int i = 0; i < nr_scales; i++) {
+        PointNCloud::Ptr pcd_ds(new PointNCloud);
+        NormalCloud::Ptr normals_pcd_ds(new NormalCloud);
+        float search_radius = powf(2.0, (float) (min_log2_radius + i));
+        float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters.feature_nr_points);
+        {
+            pcl::ScopeTime t("Downsampling and normal estimation");
+            downsamplePointCloud(pcd, pcd_ds, voxel_size);
+            estimateNormalsPoints(NORMAL_NR_POINTS, pcd_ds, normals_pcd_ds, parameters_.normals_available);
+            pcl::concatenateFields(*pcd_ds, *normals_pcd_ds, *pcd_ds);
+            time_ds_ne_ += t.getTimeSeconds();
+        }
+        {
+            pcl::ScopeTime t("Feature estimation");
+            pcl::copyPointCloud(*pcd, kps_indices_multiscale[i], *kps_multiscale[i]);
+            pcl::console::print_highlight("Estimating features  [search_radius = %.5f]...\n", search_radius);
+            estimateFeatures<FeatureT>(kps_multiscale[i], pcd_ds, kps_features_multiscale[i],
+                                       search_radius, parameters);
+            int count_invalid = 0;
+            for (int j = 0; j < kps_features_multiscale[i]->size(); ++j) {
+                if (!point_representation_.isValid(kps_features_multiscale[i]->points[j]))
+                    count_invalid++;
+            }
+            PCL_DEBUG("[%s::initialize] %i/%i invalid features\n",
+                      getClassName().c_str(), count_invalid, kps_features_multiscale[i]->size());
+            time_fe_ += t.getTimeSeconds();
+        }
+        kps_tree_multiscale[i]->setInputCloud(kps_multiscale[i]);
     }
 }
 
@@ -186,47 +305,55 @@ public:
                        AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                            indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesWithFlagsPtr match_impl(int idx_src, int idx_tgt) override {
+        const auto &kps_src = this->kps_src_multiscale_[idx_src];
+        const auto &kps_tgt = this->kps_tgt_multiscale_[idx_tgt];
+        const auto &kps_tree_src = this->kps_tree_src_multiscale_[idx_src];
+        const auto &kps_tree_tgt = this->kps_tree_tgt_multiscale_[idx_tgt];
+        const auto &kps_features_src = this->kps_features_src_multiscale_[idx_src];
+        const auto &kps_features_tgt = this->kps_features_tgt_multiscale_[idx_tgt];
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (this->parameters_.guess.has_value()) {
-            mv_correspondences_ij = matchLocal<FeatureT>(this->kps_src_, this->kps_tree_tgt_,
-                                                         this->kps_features_src_, this->kps_features_tgt_,
+            mv_correspondences_ij = matchLocal<FeatureT>(kps_src, kps_tree_tgt, kps_features_src, kps_features_tgt,
                                                          this->parameters_);
         } else if (this->parameters_.use_bfmatcher) {
-            mv_correspondences_ij = matchBF<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                      this->parameters_);
+            mv_correspondences_ij = matchBF<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         } else {
-            mv_correspondences_ij = matchFLANN<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                         this->parameters_);
+            mv_correspondences_ij = matchFLANN<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         }
         this->printDebugInfo(mv_correspondences_ij);
         std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
         if (this->parameters_.guess.has_value()) {
-            mv_correspondences_ji = matchLocal<FeatureT>(this->kps_tgt_, this->kps_tree_src_,
-                                                         this->kps_features_tgt_, this->kps_features_src_,
+            mv_correspondences_ji = matchLocal<FeatureT>(kps_tgt, kps_tree_src, kps_features_tgt, kps_features_src,
                                                          this->parameters_);
         } else if (this->parameters_.use_bfmatcher) {
-            mv_correspondences_ji = matchBF<FeatureT>(this->kps_features_tgt_, this->kps_features_src_,
-                                                      this->parameters_);
+            mv_correspondences_ji = matchBF<FeatureT>(kps_features_tgt, kps_features_src, this->parameters_);
         } else {
-            mv_correspondences_ji = matchFLANN<FeatureT>(this->kps_features_tgt_, this->kps_features_src_,
-                                                         this->parameters_);
+            mv_correspondences_ji = matchFLANN<FeatureT>(kps_features_tgt, kps_features_src, this->parameters_);
         }
-        pcl::CorrespondencesPtr correspondences_mutual(new pcl::Correspondences);
-        for (int i = 0; i < this->kps_src_->size(); ++i) {
+        int n = kps_features_src->size(), count_successful = 0;
+        CorrespondencesWithFlagsPtr correspondences_mutual(new CorrespondencesWithFlags);
+        correspondences_mutual->reserve(n);
+        for (int i = 0; i < n; ++i) {
+            bool success = false;
             for (const int &j: mv_correspondences_ij[i].match_indices) {
                 auto &corr_j = mv_correspondences_ji[j];
                 for (int k = 0; k < corr_j.match_indices.size(); ++k) {
                     if (corr_j.match_indices[k] == i) {
-                        correspondences_mutual->push_back({i, j, corr_j.distances[k]});
+                        correspondences_mutual->emplace_back(pcl::Correspondence{i, j, corr_j.distances[k]}, true);
+                        success = true;
                         break;
                     }
                 }
             }
+            if (!success) {
+                correspondences_mutual->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
+            } else {
+                count_successful++;
+            }
         }
         PCL_DEBUG("[%s::match] %i correspondences remain after mutual filtering.\n",
-                  getClassName().c_str(),
-                  correspondences_mutual->size());
+                  getClassName().c_str(), count_successful);
         return correspondences_mutual;
     }
 
@@ -245,37 +372,46 @@ public:
                  AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                      indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesWithFlagsPtr match_impl(int idx_src, int idx_tgt) override {
         if (this->parameters_.randomness != 1) {
             PCL_WARN("[%s::match] k_corrs different from 1 cannot be used with ratio filtering, using k_corrs = 1.\n",
                      getClassName().c_str());
         }
-        this->parameters_.randomness = 2;
+        const auto &kps_src = this->kps_src_multiscale_[idx_src];
+        const auto &kps_tgt = this->kps_tgt_multiscale_[idx_tgt];
+        const auto &kps_tree_src = this->kps_tree_src_multiscale_[idx_src];
+        const auto &kps_tree_tgt = this->kps_tree_tgt_multiscale_[idx_tgt];
+        const auto &kps_features_src = this->kps_features_src_multiscale_[idx_src];
+        const auto &kps_features_tgt = this->kps_features_tgt_multiscale_[idx_tgt];
+        this->parameters_.randomness = this->parameters_.ratio_parameter;
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (this->parameters_.guess.has_value()) {
-            mv_correspondences_ij = matchLocal<FeatureT>(this->kps_src_, this->kps_tree_tgt_,
-                                                         this->kps_features_src_, this->kps_features_tgt_,
+            mv_correspondences_ij = matchLocal<FeatureT>(kps_src, kps_tree_tgt, kps_features_src, kps_features_tgt,
                                                          this->parameters_);
         } else if (this->parameters_.use_bfmatcher) {
-            mv_correspondences_ij = matchBF<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                      this->parameters_);
+            mv_correspondences_ij = matchBF<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         } else {
-            mv_correspondences_ij = matchFLANN<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                         this->parameters_);
+            mv_correspondences_ij = matchFLANN<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         }
         this->printDebugInfo(mv_correspondences_ij);
         float dist1, dist2, ratio;
-        pcl::CorrespondencesPtr correspondences_ratio(new pcl::Correspondences);
-        for (auto &mv_corr: mv_correspondences_ij) {
-            if (mv_corr.match_indices.size() != 2) {
+        int n = kps_features_src->size(), count_successful = 0, match_idx;
+        CorrespondencesWithFlagsPtr correspondences_ratio(new CorrespondencesWithFlags);
+        for (int i = 0; i < n; ++i) {
+            const auto &mv_corr = mv_correspondences_ij[i];
+            if (mv_corr.match_indices.size() != this->parameters_.ratio_parameter) {
+                correspondences_ratio->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
                 continue;
             }
-            dist1 = std::min(mv_corr.distances[0], mv_corr.distances[1]);
-            dist2 = std::max(mv_corr.distances[0], mv_corr.distances[1]);
+            dist1 = mv_corr.distances[0];
+            dist2 = mv_corr.distances[this->parameters_.ratio_parameter - 1];
             ratio = (dist2 == 0.f) ? 1.f : (dist1 / dist2);
             if (ratio < MATCHING_RATIO_THRESHOLD) {
-                int i = (dist1 < dist2) ? 0 : 1;
-                correspondences_ratio->push_back({mv_corr.query_idx, mv_corr.match_indices[i], ratio});
+                match_idx = mv_corr.match_indices[0];
+                correspondences_ratio->emplace_back(pcl::Correspondence{i, match_idx, ratio}, true);
+                count_successful++;
+            } else {
+                correspondences_ratio->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
             }
         }
         PCL_DEBUG("[%s::match] %i correspondences remain after ratio filtering.\n",
@@ -301,48 +437,52 @@ public:
                    AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                        indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesWithFlagsPtr match_impl(int idx_src, int idx_tgt) override {
+        const auto &kps_src = this->kps_src_multiscale_[idx_src];
+        const auto &kps_tgt = this->kps_tgt_multiscale_[idx_tgt];
+        const auto &kps_tree_src = this->kps_tree_src_multiscale_[idx_src];
+        const auto &kps_tree_tgt = this->kps_tree_tgt_multiscale_[idx_tgt];
+        const auto &kps_features_src = this->kps_features_src_multiscale_[idx_src];
+        const auto &kps_features_tgt = this->kps_features_tgt_multiscale_[idx_tgt];
         std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
         if (this->parameters_.guess.has_value()) {
-            mv_correspondences_ij = matchLocal<FeatureT>(this->kps_src_, this->kps_tree_tgt_,
-                                                         this->kps_features_src_, this->kps_features_tgt_,
+            mv_correspondences_ij = matchLocal<FeatureT>(kps_src, kps_tree_tgt, kps_features_src, kps_features_tgt,
                                                          this->parameters_);
         } else if (this->parameters_.use_bfmatcher) {
-            mv_correspondences_ij = matchBF<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                      this->parameters_);
+            mv_correspondences_ij = matchBF<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         } else {
-            mv_correspondences_ij = matchFLANN<FeatureT>(this->kps_features_src_, this->kps_features_tgt_,
-                                                         this->parameters_);
+            mv_correspondences_ij = matchFLANN<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
         }
         this->printDebugInfo(mv_correspondences_ij);
         std::vector<MultivaluedCorrespondence> mv_correspondences_ji;
         if (this->parameters_.guess.has_value()) {
-            mv_correspondences_ji = matchLocal<FeatureT>(this->kps_tgt_, this->kps_tree_src_,
-                                                         this->kps_features_tgt_, this->kps_features_src_,
+            mv_correspondences_ji = matchLocal<FeatureT>(kps_tgt, kps_tree_src, kps_features_tgt, kps_features_src,
                                                          this->parameters_);
         } else if (this->parameters_.use_bfmatcher) {
-            mv_correspondences_ji = matchBF<FeatureT>(this->kps_features_tgt_, this->kps_features_src_,
-                                                      this->parameters_);
+            mv_correspondences_ji = matchBF<FeatureT>(kps_features_tgt, kps_features_src, this->parameters_);
         } else {
-            mv_correspondences_ji = matchFLANN<FeatureT>(this->kps_features_tgt_, this->kps_features_src_,
-                                                         this->parameters_);
+            mv_correspondences_ji = matchFLANN<FeatureT>(kps_features_tgt, kps_features_src, this->parameters_);
         }
-        float matching_cluster_radius = MATCHING_CLUSTER_RADIUS_COEF * this->parameters_.voxel_size;
-        pcl::CorrespondencesPtr correspondences_cluster(new pcl::Correspondences);
-        for (int i = 0; i < this->kps_src_->size(); ++i) {
+        int n = kps_features_src->size(), count_successful = 0;
+        CorrespondencesWithFlagsPtr correspondences_cluster(new CorrespondencesWithFlags);
+        correspondences_cluster->reserve(n);
+        for (int i = 0; i < n; ++i) {
             for (int j: mv_correspondences_ij[i].match_indices) {
-                float distance_i = calculateCorrespondenceDistance(i, j, matching_cluster_radius, mv_correspondences_ij,
-                                                                   this->kps_tree_src_, this->kps_tree_tgt_);
-                float distance_j = calculateCorrespondenceDistance(j, i, matching_cluster_radius, mv_correspondences_ji,
-                                                                   this->kps_tree_tgt_, this->kps_tree_src_);
+                float distance_i = calculateCorrespondenceDistance(i, j, MATCHING_CLUSTER_K, mv_correspondences_ij,
+                                                                   kps_tree_src, kps_tree_tgt);
+                float distance_j = calculateCorrespondenceDistance(j, i, MATCHING_CLUSTER_K, mv_correspondences_ji,
+                                                                   kps_tree_tgt, kps_tree_src);
                 if (distance_i < MATCHING_CLUSTER_THRESHOLD && distance_j < MATCHING_CLUSTER_THRESHOLD) {
-                    correspondences_cluster->push_back({i, j, std::max(distance_i, distance_j)});
+                    correspondences_cluster->emplace_back(pcl::Correspondence{i, j, std::max(distance_i, distance_j)},
+                                                          true);
+                    count_successful++;
+                } else {
+                    correspondences_cluster->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
                 }
             }
         }
         PCL_DEBUG("[%s::match] %i correspondences remain after cluster filtering.\n",
-                  getClassName().c_str(),
-                  correspondences_cluster->size());
+                  getClassName().c_str(), count_successful);
         return correspondences_cluster;
     }
 
@@ -351,17 +491,17 @@ public:
     }
 
 protected:
-    float calculateCorrespondenceDistance(int i, int j, float radius,
+    float calculateCorrespondenceDistance(int i, int j, int k,
                                           const std::vector<MultivaluedCorrespondence> &mv_correspondences_ij,
                                           const KdTreeConstPtr &pcd_tree_src, const KdTreeConstPtr &pcd_tree_tgt) {
         std::unordered_set<int> i_neighbors, j_neighbors;
         pcl::Indices match_indices;
         std::vector<float> distances;
 
-        pcd_tree_src->radiusSearch(i, radius, match_indices, distances);
+        pcd_tree_src->nearestKSearch(i, k, match_indices, distances);
         std::copy(match_indices.begin(), match_indices.end(), std::inserter(i_neighbors, i_neighbors.begin()));
 
-        pcd_tree_tgt->radiusSearch(j, radius, match_indices, distances);
+        pcd_tree_tgt->nearestKSearch(j, k, match_indices, distances);
         std::copy(match_indices.begin(), match_indices.end(), std::inserter(j_neighbors, j_neighbors.begin()));
 
         int count_consistent_pairs = 0, count_pairs = 0;
@@ -457,9 +597,9 @@ std::vector<MultivaluedCorrespondence> matchBF(const typename pcl::PointCloud<Fe
                 }
             }
             matches.clear();
-            PCL_DEBUG("\t[matchBF] %d / % d blocks processed.\n", j, n_train_blocks);
+            PCL_DEBUG("\t[matchBF] %d/%d blocks processed.\n", j, n_train_blocks);
         }
-        PCL_DEBUG("[matchBF] %d / % d blocks processed.\n", i + 1, n_query_blocks);
+        PCL_DEBUG("[matchBF] %d/%d blocks processed.\n", i + 1, n_query_blocks);
     }
     for (int i = 0; i < query_features->size(); i++) {
         if (!point_representation.isValid(query_features->points[i])) {

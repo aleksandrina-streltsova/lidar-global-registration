@@ -126,9 +126,9 @@ class WeightedClosestPlaneMetricEstimator : public MetricEstimator {
 public:
     WeightedClosestPlaneMetricEstimator() = delete;
 
-    WeightedClosestPlaneMetricEstimator(std::string weight_id, float curvature_radius, bool sparse = false,
+    WeightedClosestPlaneMetricEstimator(std::string weight_id, int nr_points, bool sparse = false,
                                         ScoreFunction score_function = ScoreFunction::Constant)
-            : weight_id_(std::move(weight_id)), curvature_radius_(curvature_radius), sparse_(sparse),
+            : weight_id_(std::move(weight_id)), nr_points_(nr_points), sparse_(sparse),
               MetricEstimator(score_function) {}
 
 
@@ -159,7 +159,7 @@ protected:
     pcl::KdTreeFLANN<PointN> tree_tgt_;
     std::string weight_id_;
     std::vector<float> weights_;
-    float curvature_radius_;
+    int nr_points_;
     float weights_sum_ = 0.f;
     bool sparse_;
 };
