@@ -59,14 +59,14 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
     float rmse = 0.f, dist_to_plane;
     PointN nearest_point;
     pcl::Indices nn_indices;
-    std::vector<float> nn_dists;
+    std::vector<float> nn_sqr_dists;
     for (int i = 0; i < src->size(); ++i) {
-        tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_dists);
-        if (nn_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
+        tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_sqr_dists);
+        if (nn_sqr_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
             nearest_point = tgt->points[nn_indices[0]];
             dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
                                       (nearest_point.getVector3fMap() - src_aligned[i].getVector3fMap()));
-            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_dists[0];
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
             rmse += dist_to_plane * dist_to_plane;
             overlap_size++;
         }

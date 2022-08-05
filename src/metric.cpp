@@ -29,10 +29,10 @@ void buildClosestPlaneInliers(const PointNCloud &src,
         point_transformed = (transformation * src[idx].getVector4fMap()).block<3, 1>(0, 0);
         // Find its nearest neighbor in the target
         pcl::Indices nn_indices(1);
-        std::vector<float> nn_dists(1);
+        std::vector<float> nn_sqr_dists(1);
         tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
-                              search_radius, nn_indices, nn_dists);
-        if (!nn_dists.empty()) {
+                              search_radius, nn_indices, nn_sqr_dists);
+        if (!nn_sqr_dists.empty()) {
             nearest_point = tgt[nn_indices[0]].getVector3fMap();
             normal = tgt[nn_indices[0]].getNormalVector3fMap();
             dist_to_plane = std::fabs(normal.transpose() * (nearest_point - point_transformed));

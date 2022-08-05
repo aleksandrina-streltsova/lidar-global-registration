@@ -642,23 +642,23 @@ void calculateTemperatureMapDistances(PointColoredNCloud::Ptr &compared,
 
     int n = compared->size();
     pcl::Indices nn_indices;
-    std::vector<float> nn_dists;
+    std::vector<float> nn_sqr_dists;
     float dist_to_plane;
     PointColoredN nearest_point;
 
 #pragma omp parallel default(none) \
-    firstprivate(nn_indices, nn_dists, dist_to_plane, n, distance_min, distance_max, nearest_point) \
+    firstprivate(nn_indices, nn_sqr_dists, dist_to_plane, n, distance_min, distance_max, nearest_point) \
     shared(tree_reference, compared, reference, distances)
     for (int i = 0; i < n; ++i) {
-        tree_reference.radiusSearch(*compared, i, distance_max, nn_indices, nn_dists, 1);
-        if (nn_dists.empty()) {
+        tree_reference.radiusSearch(*compared, i, distance_max, nn_indices, nn_sqr_dists, 1);
+        if (nn_sqr_dists.empty()) {
             dist_to_plane = distance_max;
         } else {
             nearest_point = reference->points[nn_indices[0]];
             dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
                                       (nearest_point.getVector3fMap() - compared->points[i].getVector3fMap()));
             // normal can be invalid
-            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_dists[0];
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
         }
         setPointColor(compared->points[i], getColor(dist_to_plane, distance_min, distance_max));
         distances[i] = dist_to_plane;

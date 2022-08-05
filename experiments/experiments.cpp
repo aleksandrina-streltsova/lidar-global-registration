@@ -31,7 +31,7 @@ void saveDebugFeatures(const std::string &corrs_path,
 
     bool file_exists = std::filesystem::exists(corrs_path);
     pcl::Indices nn_indices;
-    std::vector<float> nn_dists;
+    std::vector<float> nn_sqr_dists;
     if (file_exists) {
         std::ifstream fin(corrs_path);
         if (fin.is_open()) {
@@ -43,9 +43,9 @@ void saveDebugFeatures(const std::string &corrs_path,
                 split(line, tokens, ",");
                 PointN p_src(std::stof(tokens[3]), std::stof(tokens[4]), std::stof(tokens[5]));
                 PointN p_tgt(std::stof(tokens[6]), std::stof(tokens[7]), std::stof(tokens[8]));
-                tree_src->nearestKSearch(p_src, 1, nn_indices, nn_dists);
+                tree_src->nearestKSearch(p_src, 1, nn_indices, nn_sqr_dists);
                 indices_src->push_back(nn_indices[0]);
-                tree_tgt->nearestKSearch(p_tgt, 1, nn_indices, nn_dists);
+                tree_tgt->nearestKSearch(p_tgt, 1, nn_indices, nn_sqr_dists);
                 indices_tgt->push_back(nn_indices[0]);
             }
         } else {
@@ -124,9 +124,9 @@ void analyzeKeyPoints(const YamlConfig &config) {
             tree.setInputCloud(tgt);
             pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
             pcl::Indices nn_indices;
-            std::vector<float> nn_dists;
+            std::vector<float> nn_sqr_dists;
             for (int i = 0; i < indices_src->size(); ++i) {
-                tree.radiusSearch(*src_gt, indices_src->operator[](i), 0.05, nn_indices, nn_dists, 1);
+                tree.radiusSearch(*src_gt, indices_src->operator[](i), 0.05, nn_indices, nn_sqr_dists, 1);
                 if (!nn_indices.empty()) {
                     correspondences->push_back({indices_src->operator[](i), nn_indices[0], 0.f});
                 }
