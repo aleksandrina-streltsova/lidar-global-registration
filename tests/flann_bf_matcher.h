@@ -44,17 +44,13 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
     downsamplePointCloud(tgt_fullsize, tgt_downsize, voxel_size);
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud), src_aligned(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
     pcl::search::KdTree<PointN>::Ptr tree_src(new pcl::search::KdTree<PointN>), tree_tgt(new pcl::search::KdTree<PointN>);
 
-    estimateNormalsPoints(NORMAL_NR_POINTS, src_downsize, normals_src, parameters.normals_available);
-    estimateNormalsPoints(NORMAL_NR_POINTS, tgt_downsize, normals_tgt, parameters.normals_available);
-
-    pcl::concatenateFields(*src_downsize, *normals_src, *src);
-    pcl::concatenateFields(*tgt_downsize, *normals_tgt, *tgt);
+    estimateNormalsPoints(parameters.normal_nr_points, src_downsize, {nullptr}, parameters.normals_available);
+    estimateNormalsPoints(parameters.normal_nr_points, tgt_downsize, {nullptr}, parameters.normals_available);
 
     tree_src->setInputCloud(src);
     tree_tgt->setInputCloud(tgt);

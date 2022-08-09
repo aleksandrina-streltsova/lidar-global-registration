@@ -97,7 +97,6 @@ void analyzeKeyPoints(const YamlConfig &config) {
 
     PointNCloud::Ptr src(new PointNCloud), src_gt(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_ds(new PointNCloud), tgt_ds(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     std::optional<Eigen::Matrix4f> transformation_gt;
     std::string testname;
@@ -114,10 +113,8 @@ void analyzeKeyPoints(const YamlConfig &config) {
         bool exists = fs::exists(kps_path);
         if (!exists) {
             pcl::IndicesPtr indices_src(new pcl::Indices);
-            estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, parameters.normals_available);
-            estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, parameters.normals_available);
-            pcl::concatenateFields(*src, *normals_src, *src);
-            pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
+            estimateNormalsPoints(parameters.normal_nr_points, src, {nullptr}, parameters.normals_available);
+            estimateNormalsPoints(parameters.normal_nr_points, tgt, {nullptr}, parameters.normals_available);
             indices_src = detectKeyPoints(src, parameters);
             pcl::KdTreeFLANN<PointN> tree;
             pcl::transformPointCloudWithNormals(*src, *src_gt, transformation_gt.value());
@@ -137,10 +134,8 @@ void analyzeKeyPoints(const YamlConfig &config) {
         downsamplePointCloud(tgt, tgt_ds, parameters.distance_thr);
         {
             pcl::ScopeTime t("Normal estimation");
-            estimateNormalsPoints(NORMAL_NR_POINTS, src_ds, normals_src, parameters.normals_available);
-            estimateNormalsPoints(NORMAL_NR_POINTS, tgt_ds, normals_tgt, parameters.normals_available);
-            pcl::concatenateFields(*src_ds, *normals_src, *src_ds);
-            pcl::concatenateFields(*tgt_ds, *normals_tgt, *tgt_ds);
+            estimateNormalsPoints(parameters.normal_nr_points, src_ds, {nullptr}, parameters.normals_available);
+            estimateNormalsPoints(parameters.normal_nr_points, tgt_ds, {nullptr}, parameters.normals_available);
         }
         saveDebugFeatures(kps_path, src_ds, tgt_ds, parameters);
     }

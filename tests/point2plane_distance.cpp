@@ -53,7 +53,6 @@ int main() {
             0, 0, 0, 1;
     pcl::transformPointCloudWithNormals(*src, *src, transformation_gt.inverse());
     AlignmentParameters parameters{
-            .normals_available = false,
             .iss_coef = 1,
             .distance_thr = 0.1f,
             .bf_block_size = 200000,
@@ -62,6 +61,7 @@ int main() {
             .max_iterations = 1000,
             .ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt),
             .fix_seed = true,
+            .normals_available = false,
             .dir_path = TMP_DIR
     };
     fs::create_directory(TMP_DIR);

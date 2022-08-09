@@ -139,16 +139,16 @@ protected:
             int nr_scales_src = kps_features_src_multiscale_.size(), nr_scales_tgt = kps_features_tgt_multiscale_.size();
             int max_log2_radius_src = min_log2_radius_src_ - 1 + nr_scales_src;
             int max_log2_radius_tgt = min_log2_radius_tgt_ - 1 + nr_scales_tgt;
+            std::vector<float> norm_diffs_pcd, norm_diffs_kps;
             for (int log2_radius = std::max(min_log2_radius_src_, min_log2_radius_tgt_);
                  log2_radius <= std::min(max_log2_radius_src, max_log2_radius_tgt); ++log2_radius) {
                 int idx_src = log2_radius - min_log2_radius_src_, idx_tgt = log2_radius - min_log2_radius_tgt_;
                 float search_radius = powf(2.0, (float) log2_radius);
                 float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters_.feature_nr_points);
                 if (parameters_.ground_truth.has_value()) {
-                    calculateNormalDifference(srcs_ds[idx_src], tgts_ds[idx_tgt], voxel_size,
-                                              parameters_.ground_truth.value());
-                    saveTemperatureMaps(srcs_ds[idx_src], tgts_ds[idx_tgt], "t" + std::to_string(idx_src), parameters_,
-                                        voxel_size,parameters_.ground_truth.value());
+                    norm_diffs_pcd.push_back(calculateNormalDifference(srcs_ds[idx_src], tgts_ds[idx_tgt], voxel_size, parameters_.ground_truth.value()));
+                    norm_diffs_kps.push_back(calculateNormalDifference(kps_src_multiscale_[idx_src], kps_tgt_multiscale_[idx_tgt], parameters_.distance_thr, parameters_.ground_truth.value()));
+//                    saveTemperatureMaps(srcs_ds[idx_src], tgts_ds[idx_tgt], "t" + std::to_string(idx_src), parameters_,voxel_size,parameters_.ground_truth.value());
                 }
                 auto correspondences_with_flags = match_impl(idx_src, idx_tgt);
                 rassert(correspondences_with_flags->size() == kps_features_src_multiscale_[idx_src]->size(),
@@ -157,8 +157,7 @@ protected:
                 for (int i = 0; i < correspondences_with_flags->size(); ++i) {
                     pcl::Correspondence corr = correspondences_with_flags->operator[](i).first;
                     int index_query = kps_indices_src_multiscale_[idx_src][corr.index_query];
-                    int index_match =
-                            corr.index_match > 0 ? kps_indices_tgt_multiscale_[idx_tgt][corr.index_match] : -1;
+                    int index_match = corr.index_match > 0 ? kps_indices_tgt_multiscale_[idx_tgt][corr.index_match] : -1;
                     while (kps_indices_src_->operator[](keypoint_idx) != index_query) keypoint_idx++;
                     mv_correspondences[keypoint_idx].query_idx = index_query;
                     mv_correspondences[keypoint_idx].match_indices.push_back(index_match);
@@ -172,6 +171,8 @@ protected:
                     }
                 }
             }
+            saveVector(norm_diffs_pcd, constructPath(parameters_, "median_norm_diff", "csv", true, false, false));
+            saveVector(norm_diffs_kps, constructPath(parameters_, "median_norm_diff_kps", "csv", true, false, false));
         }
         saveVector(mv_correspondences, constructPath(parameters_, "multiscale", "csv", true, false, false));
         for (const auto &mv_corr: mv_correspondences) {
@@ -260,20 +261,21 @@ FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &pcd,
     std::vector<PointNCloud::Ptr> pcds_ds;
     for (int i = 0; i < nr_scales; i++) {
         PointNCloud::Ptr pcd_ds(new PointNCloud);
-        NormalCloud::Ptr normals_pcd_ds(new NormalCloud);
         float search_radius = powf(2.0, (float) (min_log2_radius + i));
         float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters.feature_nr_points);
         {
             pcl::ScopeTime t("Downsampling and normal estimation");
             downsamplePointCloud(pcd, pcd_ds, voxel_size);
-            estimateNormalsPoints(NORMAL_NR_POINTS, pcd_ds, normals_pcd_ds, parameters_.normals_available);
-            pcl::concatenateFields(*pcd_ds, *normals_pcd_ds, *pcd_ds);
+            estimateNormalsPoints(parameters_.normal_nr_points, pcd_ds, {nullptr}, parameters_.normals_available);
             pcds_ds.push_back(pcd_ds);
             time_ds_ne_ += t.getTimeSeconds();
         }
         {
             pcl::ScopeTime t("Feature estimation");
             pcl::copyPointCloud(*pcd, kps_indices_multiscale[i], *kps_multiscale[i]);
+            if (parameters.reestimate_frames) {
+                estimateNormalsPoints(parameters_.normal_nr_points, kps_multiscale[i], pcd_ds, true);
+            }
             pcl::console::print_highlight("Estimating features  [search_radius = %.5f]...\n", search_radius);
             estimateFeatures<FeatureT>(kps_multiscale[i], pcd_ds, kps_features_multiscale[i],
                                        search_radius, parameters);

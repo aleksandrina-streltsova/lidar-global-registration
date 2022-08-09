@@ -63,7 +63,6 @@ void estimateTestMetric(const YamlConfig &config) {
     }
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     std::optional<Eigen::Matrix4f> transformation_gt;
     std::string testname;
@@ -89,10 +88,8 @@ void estimateTestMetric(const YamlConfig &config) {
         auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, parameters.normals_available);
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, parameters.normals_available);
-        pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
-        pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
+        estimateNormalsPoints(parameters.normal_nr_points, curr_src, {nullptr}, parameters.normals_available);
+        estimateNormalsPoints(parameters.normal_nr_points, curr_tgt, {nullptr}, parameters.normals_available);
         ScoreFunction score_function;
         if (parameters.score_id == METRIC_SCORE_MAE) {
             score_function = ScoreFunction::MAE;
@@ -143,7 +140,6 @@ void estimateTestMetric(const YamlConfig &config) {
 void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_aligned(new PointNCloud), src_aligned_gt(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
     pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
     pcl::CorrespondencesPtr correct_correspondences(new pcl::Correspondences);
     std::vector<InlierPair> inlier_pairs;
@@ -176,10 +172,8 @@ void generateDebugFiles(const YamlConfig &config) {
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                            constructName(parameters, "transformation"));
         float error_thr = parameters.distance_thr;
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, parameters.normals_available);
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, parameters.normals_available);
-        pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
-        pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
+        estimateNormalsPoints(parameters.normal_nr_points, curr_src, {nullptr}, parameters.normals_available);
+        estimateNormalsPoints(parameters.normal_nr_points, curr_tgt, {nullptr}, parameters.normals_available);
 
         indices_src = detectKeyPoints(curr_src, parameters);
         indices_tgt = detectKeyPoints(curr_tgt, parameters);
@@ -210,8 +204,8 @@ void generateDebugFiles(const YamlConfig &config) {
             auto weights = weight_function(NORMAL_NR_POINTS, curr_src);
             saveColorizedWeights(curr_src, weights, "weights", parameters, transformation);
         }
-        saveTemperatureMaps(curr_src, curr_tgt, "temperature", parameters, transformation);
-        saveTemperatureMaps(src, tgt, "temperature_fullsize", parameters, transformation,parameters.normals_available);
+        saveTemperatureMaps(curr_src, curr_tgt, "temperature", parameters, error_thr, transformation);
+        saveTemperatureMaps(src, tgt, "temperature_fullsize", parameters, error_thr, transformation, parameters.normals_available);
     }
 }
 

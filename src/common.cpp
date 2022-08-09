@@ -247,6 +247,26 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
+    auto normal_nrs = config.getVector<int>("normal_nr").value();
+    for (int normal_nr: normal_nrs) {
+        for (auto ps: parameters_container) {
+            ps.normal_nr_points = normal_nr;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
+    auto flags_reestimate = config.getVector<bool>("reestimate").value();
+    for (int flag: flags_reestimate) {
+        for (auto ps: parameters_container) {
+            ps.reestimate_frames = flag;
+            new_parameters_container.push_back(ps);
+        }
+    }
+    std::swap(parameters_container, new_parameters_container);
+    new_parameters_container.clear();
+
     auto iss_coefs = config.getVector<float>("iss_coef").value();
     for (float ic: iss_coefs) {
         for (auto ps: parameters_container) {
@@ -391,11 +411,11 @@ float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
     return (max_point - min_point).norm();
 }
 
-void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, bool normals_available) {
+void postprocessNormals(PointNCloud::Ptr &pcd, bool normals_available) {
     // use normals from point cloud to orient estimated normals and replace NaN normals
     if (normals_available) {
         for (int i = 0; i < pcd->size(); ++i) {
-            auto &normal = normals->points[i];
+            auto &normal = pcd->points[i];
             const auto &point = pcd->points[i];
             if (!std::isfinite(normal.normal_x) || !std::isfinite(normal.normal_y) || !std::isfinite(normal.normal_z)) {
                 normal.normal_x = point.normal_x;
@@ -410,7 +430,7 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
         }
     }
     int nan_normals_counter = 0, nan_curvatures_counter = 0;
-    for (auto &normal: normals->points) {
+    for (auto &normal: pcd->points) {
         const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
         if (!std::isfinite(normal_vec[0]) || !std::isfinite(normal_vec[1]) || !std::isfinite(normal_vec[2])) {
             nan_normals_counter++;
@@ -428,29 +448,29 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
     PCL_DEBUG("[estimateNormals] %d NaN normals, %d NaN curvatures.\n", nan_normals_counter, nan_curvatures_counter);
 }
 
-void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            bool normals_available) {
     pcl::console::print_highlight("Estimating normals..\n");
-    pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
+    pcl::NormalEstimationOMP<PointN, PointN> normal_est;
     normal_est.setRadiusSearch(radius_search);
-
     normal_est.setInputCloud(pcd);
+    if (surface) normal_est.setSearchSurface(surface);
     pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     normal_est.setSearchMethod(tree);
-    normal_est.compute(*normals);
-    postprocessNormals(pcd, normals, normals_available);
+    normal_est.compute(*pcd);
+    postprocessNormals(pcd,normals_available);
 }
 
-void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            bool normals_available) {
-    pcl::NormalEstimationOMP<PointN, pcl::Normal> normal_est;
+    pcl::NormalEstimationOMP<PointN, PointN> normal_est;
     normal_est.setKSearch(k_points);
-
     normal_est.setInputCloud(pcd);
+    if (surface) normal_est.setSearchSurface(surface);
     pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     normal_est.setSearchMethod(tree);
-    normal_est.compute(*normals);
-    postprocessNormals(pcd, normals, normals_available);
+    normal_est.compute(*pcd);
+    postprocessNormals(pcd, normals_available);
 }
 
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters) {
@@ -684,11 +704,8 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                          const std::string &name, const AlignmentParameters &parameters, float distance_thr,
                          const Eigen::Matrix4f &transformation, bool normals_available) {
     if (!normals_available) {
-        NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-        estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, false);
-        estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, false);
-        pcl::concatenateFields(*src, *normals_src, *src);
-        pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
+        estimateNormalsPoints(parameters.normal_nr_points, src, {nullptr}, false);
+        estimateNormalsPoints(parameters.normal_nr_points, tgt, {nullptr}, false);
     }
     int n_src = src->size(), n_tgt = tgt->size();
     PointColoredNCloud::Ptr src_colored(new PointColoredNCloud), tgt_colored(new PointColoredNCloud);
@@ -727,9 +744,9 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
     float normal_diff_min = 0;
     float normal_diff_max = M_PI / 2;
     calculateTemperatureMap(src_colored, tgt_colored, TemperatureType::NormalDifference, temperatures_src,
-                            normal_diff_min,normal_diff_max, distance_max);
+                            normal_diff_min, normal_diff_max, distance_max);
     calculateTemperatureMap(tgt_colored, src_colored, TemperatureType::NormalDifference, temperatures_tgt,
-                            normal_diff_min,normal_diff_max, distance_max);
+                            normal_diff_min, normal_diff_max, distance_max);
 //    std::string normal_diffs_path_src = constructPath(parameters, name + "_normal_diffs_src", "csv");
 //    std::string normal_diffs_path_tgt = constructPath(parameters, name + "_normal_diffs_tgt", "csv");
 //    saveVector(temperatures_src, normal_diffs_path_src);
@@ -977,7 +994,9 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
                             "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
                             (with_metric ? "_" + parameters.metric_id + "_" + parameters.score_id : "") +
                             "_" + matching_id + "_" + std::to_string(parameters.randomness) +
-                            (with_weights ? "_" + parameters.weight_id : "");
+                            (with_weights ? "_" + parameters.weight_id : "") +
+                            "_" + std::to_string(parameters.normal_nr_points) +
+                            "_"  + std::to_string(parameters.reestimate_frames);
     if (with_version) {
         full_name += "_" + VERSION;
     }

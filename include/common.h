@@ -117,8 +117,8 @@ struct InlierPair {
 };
 
 struct AlignmentParameters {
-    bool normals_available;
-    int feature_nr_points{FEATURE_NR_POINTS};
+    bool reestimate_frames;
+    int feature_nr_points{FEATURE_NR_POINTS}, normal_nr_points{NORMAL_NR_POINTS};
     float edge_thr_coef{ALIGNMENT_EDGE_THR}, iss_coef;
     float distance_thr;
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
@@ -135,7 +135,7 @@ struct AlignmentParameters {
     std::optional<Eigen::Matrix4f> ground_truth{std::nullopt};
 
     // these parameters cannot be set in config, they are set before alignment steps
-    bool fix_seed = true;
+    bool fix_seed = true, normals_available;
     float match_search_radius = 0;
     std::optional<Eigen::Matrix4f> guess{std::nullopt};
     std::string dir_path{DATA_DEBUG_PATH};
@@ -290,10 +290,10 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::ConstPt
 
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
 
-void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            bool normals_available);
 
-void estimateNormalsPoints(int k_points, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
+void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            bool normals_available);
 
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters);

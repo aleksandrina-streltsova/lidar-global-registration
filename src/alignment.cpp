@@ -74,8 +74,6 @@ AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
     pcl::ScopeTime t_alignment("Alignment");
     double time_correspondence_search = 0.0, time_downsampling_and_normals = 0.0;
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-
     {
         pcl::ScopeTime t("Downsampling and normal estimation");
         // Downsample
@@ -86,10 +84,8 @@ AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
 
         // Estimate normals
         pcl::console::print_highlight("Estimating normals...\n");
-        estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, parameters.normals_available);
-        estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, parameters.normals_available);
-        pcl::concatenateFields(*src, *normals_src, *src);
-        pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
+        estimateNormalsPoints(parameters.normal_nr_points, src, {nullptr}, parameters.normals_available);
+        estimateNormalsPoints(parameters.normal_nr_points, tgt, {nullptr}, parameters.normals_available);
         time_downsampling_and_normals = t.getTimeSeconds();
     }
 
