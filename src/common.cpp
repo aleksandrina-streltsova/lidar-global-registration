@@ -409,12 +409,11 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
             }
         }
     }
-    int nan_counter = 0;
+    int nan_normals_counter = 0, nan_curvatures_counter = 0;
     for (auto &normal: normals->points) {
         const Eigen::Vector4f &normal_vec = normal.getNormalVector4fMap();
-        if (!std::isfinite(normal_vec[0]) || !std::isfinite(normal_vec[1]) ||
-            !std::isfinite(normal_vec[2]) || !std::isfinite(normal_vec[3])) {
-            nan_counter++;
+        if (!std::isfinite(normal_vec[0]) || !std::isfinite(normal_vec[1]) || !std::isfinite(normal_vec[2])) {
+            nan_normals_counter++;
         } else {
             float norm = std::sqrt(normal.normal_x * normal.normal_x + normal.normal_y * normal.normal_y +
                                    normal.normal_z * normal.normal_z);
@@ -422,8 +421,11 @@ void postprocessNormals(const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals, 
             normal.normal_y /= norm;
             normal.normal_z /= norm;
         }
+        if (!std::isfinite(normal_vec[3])) {
+            nan_curvatures_counter++;
+        }
     }
-    PCL_DEBUG("[estimateNormals] %d NaN normals.\n", nan_counter);
+    PCL_DEBUG("[estimateNormals] %d NaN normals, %d NaN curvatures.\n", nan_normals_counter, nan_curvatures_counter);
 }
 
 void estimateNormalsRadius(float radius_search, const PointNCloud::Ptr &pcd, NormalCloud::Ptr &normals,
@@ -555,7 +557,7 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
                              const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
                              const Eigen::Matrix4f &transformation_gt, bool is_source) {
     PointNCloud pcd_aligned;
-    pcl::transformPointCloud(*pcd, pcd_aligned, transformation_gt);
+    pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
 
     PointColoredNCloud dst;
     dst.resize(pcd->size());
@@ -623,7 +625,7 @@ void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &
         pcl::copyPoint(pcd->points[i], dst.points[i]);
         setPointColor(dst.points[i], getColor(weights[i], weights_min, weights_max));
     }
-    pcl::transformPointCloud(dst, dst, transformation_gt);
+    pcl::transformPointCloudWithNormals(dst, dst, transformation_gt);
     std::string filepath = constructPath(parameters, name, "ply", true, true, true, true);
     pcl::io::savePLYFileBinary(filepath, dst);
 }
@@ -633,78 +635,108 @@ void saveHistogram(const std::string &values_path, const std::string &hist_path)
     system(command.c_str());
 }
 
-void calculateTemperatureMapDistances(PointColoredNCloud::Ptr &compared,
-                                      PointColoredNCloud::Ptr &reference,
-                                      std::vector<float> &distances,
-                                      float distance_min, float distance_max) {
+void calculateTemperatureMap(PointColoredNCloud::Ptr &compared,
+                             PointColoredNCloud::Ptr &reference,
+                             TemperatureType type, std::vector<float> &temperatures,
+                             float temperature_min, float temperature_max, float distance_max) {
     pcl::KdTreeFLANN<PointColoredN> tree_reference;
     tree_reference.setInputCloud(reference);
 
     int n = compared->size();
     pcl::Indices nn_indices;
     std::vector<float> nn_sqr_dists;
-    float dist_to_plane;
+    float temperature;
     PointColoredN nearest_point;
 
 #pragma omp parallel default(none) \
-    firstprivate(nn_indices, nn_sqr_dists, dist_to_plane, n, distance_min, distance_max, nearest_point) \
-    shared(tree_reference, compared, reference, distances)
+    firstprivate(nn_indices, nn_sqr_dists, temperature, n, distance_max, nearest_point, \
+                 temperature_min, temperature_max, type) \
+    shared(tree_reference, compared, reference, temperatures)
     for (int i = 0; i < n; ++i) {
         tree_reference.radiusSearch(*compared, i, distance_max, nn_indices, nn_sqr_dists, 1);
         if (nn_sqr_dists.empty()) {
-            dist_to_plane = distance_max;
+            setPointColor(compared->points[i], getColor(temperature_max, temperature_min, temperature_max));
+            temperatures[i] = temperature_max;
         } else {
             nearest_point = reference->points[nn_indices[0]];
-            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
-                                      (nearest_point.getVector3fMap() - compared->points[i].getVector3fMap()));
-            // normal can be invalid
-            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+            if (type == TemperatureType::NormalDifference) {
+                float cos_normal_diff = nearest_point.getNormalVector3fMap().dot(
+                        compared->points[i].getNormalVector3fMap());
+                float normal_diff = std::fabs(std::acos(std::max(std::min(cos_normal_diff, 1.f), -1.f)));
+                normal_diff = std::min(normal_diff, temperature_max);
+                normal_diff = std::isfinite(normal_diff) ? normal_diff : temperature_max;
+                temperature = normal_diff;
+            } else {
+                float dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                                (nearest_point.getVector3fMap() -
+                                                 compared->points[i].getVector3fMap()));
+                // normal can be invalid
+                dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+                temperature = dist_to_plane;
+            }
+            setPointColor(compared->points[i], getColor(temperature, temperature_min, temperature_max));
+            temperatures[i] = temperature;
         }
-        setPointColor(compared->points[i], getColor(dist_to_plane, distance_min, distance_max));
-        distances[i] = dist_to_plane;
     }
 }
 
 void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                         const std::string &name, const AlignmentParameters &parameters,
+                         const std::string &name, const AlignmentParameters &parameters, float distance_thr,
                          const Eigen::Matrix4f &transformation, bool normals_available) {
     if (!normals_available) {
         NormalCloud::Ptr normals_src(new NormalCloud), normals_tgt(new NormalCloud);
-        int k_points = 6;
-        estimateNormalsPoints(k_points, src, normals_src, false);
-        estimateNormalsPoints(k_points, tgt, normals_tgt, false);
+        estimateNormalsPoints(NORMAL_NR_POINTS, src, normals_src, false);
+        estimateNormalsPoints(NORMAL_NR_POINTS, tgt, normals_tgt, false);
         pcl::concatenateFields(*src, *normals_src, *src);
         pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
     }
     int n_src = src->size(), n_tgt = tgt->size();
     PointColoredNCloud::Ptr src_colored(new PointColoredNCloud), tgt_colored(new PointColoredNCloud);
-    std::vector<float> distances_src, distances_tgt;
-    distances_src.resize(n_src);
-    distances_tgt.resize(n_tgt);
+    std::vector<float> temperatures_src, temperatures_tgt;
+    temperatures_src.resize(n_src);
+    temperatures_tgt.resize(n_tgt);
     src_colored->resize(n_src);
     tgt_colored->resize(n_tgt);
     pcl::copyPointCloud(*src, *src_colored);
     pcl::copyPointCloud(*tgt, *tgt_colored);
-    pcl::transformPointCloud(*src_colored, *src_colored, transformation);
+    pcl::transformPointCloudWithNormals(*src_colored, *src_colored, transformation);
     float distance_min = 0;
-    float distance_max = parameters.distance_thr;
-    calculateTemperatureMapDistances(src_colored, tgt_colored, distances_src, distance_min, distance_max);
-    calculateTemperatureMapDistances(tgt_colored, src_colored, distances_tgt, distance_min, distance_max);
+    float distance_max = distance_thr;
+    calculateTemperatureMap(src_colored, tgt_colored, TemperatureType::Distance, temperatures_src, distance_min,
+                            distance_max, distance_max);
+    calculateTemperatureMap(tgt_colored, src_colored, TemperatureType::Distance, temperatures_tgt, distance_min,
+                            distance_max, distance_max);
 
-    distances_src.erase(std::remove_if(distances_src.begin(), distances_src.end(),
-                                       [&distance_max](float d) { return d >= distance_max; }), distances_src.end());
-    distances_tgt.erase(std::remove_if(distances_tgt.begin(), distances_tgt.end(),
-                                       [&distance_max](float d) { return d >= distance_max; }), distances_tgt.end());
+    temperatures_src.erase(std::remove_if(temperatures_src.begin(), temperatures_src.end(),
+                                          [&distance_max](float d) { return d >= distance_max; }),
+                           temperatures_src.end());
+    temperatures_tgt.erase(std::remove_if(temperatures_tgt.begin(), temperatures_tgt.end(),
+                                          [&distance_max](float d) { return d >= distance_max; }),
+                           temperatures_tgt.end());
     std::string distances_path_src = constructPath(parameters, name + "_distances_src", "csv");
     std::string distances_path_tgt = constructPath(parameters, name + "_distances_tgt", "csv");
-    saveVector(distances_src, distances_path_src);
-    saveVector(distances_tgt, distances_path_tgt);
+    saveVector(temperatures_src, distances_path_src);
+    saveVector(temperatures_tgt, distances_path_tgt);
 
     saveHistogram(distances_path_src, constructPath(parameters, name + "_histogram_src", "png"));
     saveHistogram(distances_path_tgt, constructPath(parameters, name + "_histogram_tgt", "png"));
 
-    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_src"), *src_colored);
-    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_tgt"), *tgt_colored);
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_dists_src"), *src_colored);
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_dists_tgt"), *tgt_colored);
+
+    float normal_diff_min = 0;
+    float normal_diff_max = M_PI / 2;
+    calculateTemperatureMap(src_colored, tgt_colored, TemperatureType::NormalDifference, temperatures_src,
+                            normal_diff_min,normal_diff_max, distance_max);
+    calculateTemperatureMap(tgt_colored, src_colored, TemperatureType::NormalDifference, temperatures_tgt,
+                            normal_diff_min,normal_diff_max, distance_max);
+//    std::string normal_diffs_path_src = constructPath(parameters, name + "_normal_diffs_src", "csv");
+//    std::string normal_diffs_path_tgt = constructPath(parameters, name + "_normal_diffs_tgt", "csv");
+//    saveVector(temperatures_src, normal_diffs_path_src);
+//    saveVector(temperatures_tgt, normal_diffs_path_tgt);
+
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_normal_diffs_src"), *src_colored);
+    pcl::io::savePLYFileBinary(constructPath(parameters, name + "_normal_diffs_tgt"), *tgt_colored);
 }
 
 void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t match_offset,
@@ -767,7 +799,7 @@ void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::Co
                          const AlignmentParameters &parameters, bool sparse) {
     PointColoredNCloud::Ptr dst(new PointColoredNCloud);
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
-    pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
     float diagonal = getAABBDiagonal(src_aligned_gt);
 
     dst->resize(src_aligned_gt->size() + tgt->size());
@@ -811,7 +843,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
                                 const AlignmentParameters &parameters, bool sparse) {
     PointColoredNCloud::Ptr dst(new PointColoredNCloud);
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
-    pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
     float half_diagonal = 0.5 * getAABBDiagonal(src_aligned_gt);
 
     dst->resize(src_aligned_gt->size() + tgt->size());
@@ -859,7 +891,7 @@ void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNC
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
     PointNCloud src_aligned_gt;
-    pcl::transformPointCloud(*src, src_aligned_gt, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, src_aligned_gt, transformation_gt);
 
     fout << "distance\n";
     for (const auto &correspondence: correspondences) {

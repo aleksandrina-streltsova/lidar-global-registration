@@ -261,7 +261,7 @@ bool pointInBoundingBox(PointT point, PointT min_point, PointT max_point) {
 }
 
 template<typename PointT>
-float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::Ptr &pcd) {
+float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::ConstPtr &pcd) {
     pcl::KdTreeFLANN<PointT> tree;
     tree.setInputCloud(pcd);
 
@@ -414,8 +414,12 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
 void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
 
+enum TemperatureType {
+    Distance, NormalDifference
+};
+
 void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                         const std::string &name, const AlignmentParameters &parameters,
+                         const std::string &name, const AlignmentParameters &parameters, float distance_thr,
                          const Eigen::Matrix4f &transformation, bool normals_available = true);
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,

@@ -46,7 +46,7 @@ void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNClo
 
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
 
-    pcl::transformPointCloud(*src, *src_aligned_gt, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
     std::string filepath = constructPath(parameters, "ids", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     std::vector<int> src_ids = getPointIds(src_aligned_gt, extracted_points);

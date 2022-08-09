@@ -120,7 +120,7 @@ void analyzeKeyPoints(const YamlConfig &config) {
             pcl::concatenateFields(*tgt, *normals_tgt, *tgt);
             indices_src = detectKeyPoints(src, parameters);
             pcl::KdTreeFLANN<PointN> tree;
-            pcl::transformPointCloud(*src, *src_gt, transformation_gt.value());
+            pcl::transformPointCloudWithNormals(*src, *src_gt, transformation_gt.value());
             tree.setInputCloud(tgt);
             pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
             pcl::Indices nn_indices;

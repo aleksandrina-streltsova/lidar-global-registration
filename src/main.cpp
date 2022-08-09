@@ -89,8 +89,8 @@ void estimateTestMetric(const YamlConfig &config) {
         auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, false);
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, false);
+        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, parameters.normals_available);
+        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, parameters.normals_available);
         pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
         pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
         ScoreFunction score_function;
@@ -160,10 +160,6 @@ void generateDebugFiles(const YamlConfig &config) {
 
     for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
         parameters.testname = testname;
-        std::vector<float> voxel_sizes;
-        std::vector<std::string> matching_ids;
-        getIterationsInfo(fs::path(DATA_DEBUG_PATH) / fs::path(ITERATIONS_CSV),
-                          constructName(parameters, "iterations"), voxel_sizes, matching_ids);
         bool success = false;
         std::string corrs_path = constructPath(parameters, "correspondences", "csv", true, false, false);
         correspondences = readCorrespondencesFromCSV(corrs_path, success);
@@ -180,8 +176,8 @@ void generateDebugFiles(const YamlConfig &config) {
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                            constructName(parameters, "transformation"));
         float error_thr = parameters.distance_thr;
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, false);
-        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, false);
+        estimateNormalsPoints(NORMAL_NR_POINTS, curr_src, normals_src, parameters.normals_available);
+        estimateNormalsPoints(NORMAL_NR_POINTS, curr_tgt, normals_tgt, parameters.normals_available);
         pcl::concatenateFields(*curr_src, *normals_src, *curr_src);
         pcl::concatenateFields(*curr_tgt, *normals_tgt, *curr_tgt);
 
@@ -203,8 +199,8 @@ void generateDebugFiles(const YamlConfig &config) {
             saveCorrespondenceDistances(curr_src, curr_tgt, *correspondences, transformation_gt.value(), parameters);
             saveColorizedPointCloud(curr_src, indices_src, *correspondences, *correct_correspondences, inlier_pairs,
                                     parameters, transformation_gt.value(), true);
-            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", parameters, transformation_gt.value());
-            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", parameters, transformation_gt.value());
+            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", parameters, error_thr, transformation_gt.value());
+            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", parameters, error_thr, transformation_gt.value(), parameters.normals_available);
         }
         saveColorizedPointCloud(curr_tgt, indices_tgt, *correspondences, *correct_correspondences, inlier_pairs,
                                 parameters, Eigen::Matrix4f::Identity(), false);
@@ -337,7 +333,7 @@ void runLoopTest(const YamlConfig &config) {
         }
         auto[r_err, t_err] = calculate_rotation_and_translation_errors(transformation_diff,
                                                                        Eigen::Matrix4f::Identity());
-        float pcd_err = calculate_point_cloud_rmse(tgt, transformation_diff, Eigen::Matrix4f::Identity());
+        float pcd_err = calculatePointCloudRmse(tgt, transformation_diff, Eigen::Matrix4f::Identity());
         fout << constructName(parameters, testname) << "," << r_err << "," << t_err << "," << pcd_err << "\n";
     }
 }

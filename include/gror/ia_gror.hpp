@@ -262,7 +262,7 @@ inline Eigen::Matrix4f pcl::registration::GRORInitialAlignment<PointSource, Poin
 {
 	PointCloudSourcePtr gr_issS(new PointCloudSource);
 	inliers_.reset(new Correspondences);
-	pcl::transformPointCloud(*input_, *gr_issS, transform);
+	pcl::transformPointCloudWithNormals(*input_, *gr_issS, transform);
 	Eigen::Matrix4f p_p_matrix = Eigen::Matrix4f::Identity();
 	int sum = 0;
 	std::vector<int> corr_p_s_index;

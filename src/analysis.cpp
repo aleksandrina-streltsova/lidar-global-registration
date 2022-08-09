@@ -29,12 +29,12 @@ inline float dist2(const PointN &p1, const PointN &p2) {
     return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
 };
 
-float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
-                                 const Eigen::Matrix4f &transformation,
-                                 const Eigen::Matrix4f &transformation_gt) {
+float calculatePointCloudRmse(const PointNCloud::ConstPtr &pcd,
+                              const Eigen::Matrix4f &transformation,
+                              const Eigen::Matrix4f &transformation_gt) {
     PointNCloud pcd_transformed;
     Eigen::Matrix4f transformation_diff = transformation.inverse() * transformation_gt;
-    pcl::transformPointCloud(*pcd, pcd_transformed, transformation_diff);
+    pcl::transformPointCloudWithNormals(*pcd, pcd_transformed, transformation_diff);
 
     float rmse = 0.f;
     for (int i = 0; i < pcd->size(); ++i) {
@@ -44,13 +44,13 @@ float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
     return rmse;
 }
 
-float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                             const Eigen::Matrix4f &transformation,
-                             const Eigen::Matrix4f &transformation_gt,
-                             float inlier_threshold) {
+float calculateOverlapRmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                           const Eigen::Matrix4f &transformation,
+                           const Eigen::Matrix4f &transformation_gt,
+                           float inlier_threshold) {
     PointNCloud src_aligned, src_aligned_gt;
-    pcl::transformPointCloud(*src, src_aligned, transformation);
-    pcl::transformPointCloud(*src, src_aligned_gt, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, src_aligned, transformation);
+    pcl::transformPointCloudWithNormals(*src, src_aligned_gt, transformation_gt);
 
     pcl::KdTreeFLANN<PointN> tree_tgt;
     tree_tgt.setInputCloud(tgt);
@@ -79,12 +79,12 @@ float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud
     return rmse;
 }
 
-float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                          const pcl::Correspondences &correct_correspondences,
-                                          const AlignmentParameters &parameters,
-                                          const Eigen::Matrix4f &transformation_gt) {
+float calculateCorrespondenceUniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                        const pcl::Correspondences &correct_correspondences,
+                                        const AlignmentParameters &parameters,
+                                        const Eigen::Matrix4f &transformation_gt) {
     PointNCloud::Ptr src_aligned(new PointNCloud);
-    pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, *src_aligned, transformation_gt);
     pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(tgt);
 
@@ -135,29 +135,33 @@ float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, cons
     return std::cbrt(entropy[0] * entropy[1] * entropy[2]);
 }
 
-float calculate_normal_difference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt) {
+float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                float distance_thr, const Eigen::Matrix4f &transformation_gt) {
     PointNCloud::Ptr src_aligned(new PointNCloud);
-    pcl::transformPointCloud(*src, *src_aligned, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, *src_aligned, transformation_gt);
     pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(tgt);
 
     pcl::Indices indices;
     std::vector<float> distances;
-    float error_thr = parameters.distance_thr;
-    float difference = 0.f;
+    std::vector<float> differences;
     int n_points_overlap = 0;
     for (int i = 0; i < src_aligned->size(); ++i) {
         (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
         const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
-        if (std::sqrt(distances[0]) < error_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
+        if (std::sqrt(distances[0]) < distance_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
             float cos = std::clamp(p_src.normal_x * p_tgt.normal_x + p_src.normal_y * p_tgt.normal_y +
                                    p_src.normal_z * p_tgt.normal_z, -1.f, 1.f);
-            difference += std::abs(std::acos(cos));
+            differences.push_back(std::abs(std::acos(cos)));
             n_points_overlap++;
         }
     }
-    return difference / (float) n_points_overlap;
+    if (n_points_overlap == 0) return M_PI;
+    std::nth_element(differences.begin(), differences.begin() + n_points_overlap / 2, differences.end());
+    float result = differences[n_points_overlap / 2];
+    PCL_DEBUG("[calculateNormalDifference] median of normal differences (deg): %0.7f [distance threshold = %0.7f]\n",
+              180 * result / M_PI, distance_thr);
+    return result;
 }
 
 void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
@@ -169,7 +173,7 @@ void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNC
 
     PointNCloud input_transformed;
     input_transformed.resize(src->size());
-    pcl::transformPointCloud(*src, input_transformed, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src, input_transformed, transformation_gt);
 
     for (const auto &correspondence: correspondences) {
         PointN source_point(input_transformed.points[correspondence.index_query]);
@@ -203,11 +207,11 @@ void AlignmentAnalysis::start(const std::optional<Eigen::Matrix4f> &transformati
         buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_,
                                     transformation_gt_.value(), error_thr);
         metric_estimator_->buildCorrectInlierPairs(inlier_pairs_, correct_inlier_pairs_, transformation_gt_.value());
-        pcd_error_ = calculate_point_cloud_rmse(src_, transformation_, transformation_gt_.value());
-        overlap_error_ = calculate_overlap_rmse(src_, tgt_, transformation_, transformation_gt_.value(), error_thr);
-        normal_diff_ = calculate_normal_difference(src_, tgt_, parameters_, transformation_gt_.value());
-        corr_uniformity_ = calculate_correspondence_uniformity(src_, tgt_, correct_correspondences_,
-                                                               parameters_, transformation_gt_.value());
+        pcd_error_ = calculatePointCloudRmse(src_, transformation_, transformation_gt_.value());
+        overlap_error_ = calculateOverlapRmse(src_, tgt_, transformation_, transformation_gt_.value(), error_thr);
+        normal_diff_ = calculateNormalDifference(src_, tgt_, error_thr, transformation_gt_.value());
+        corr_uniformity_ = calculateCorrespondenceUniformity(src_, tgt_, correct_correspondences_,
+                                                             parameters_, transformation_gt_.value());
         std::tie(r_error_, t_error_) = calculate_rotation_and_translation_errors(transformation_, transformation_gt_.value());
     }
     print();
@@ -231,7 +235,7 @@ void AlignmentAnalysis::print() {
         pcl::console::print_info("rotation error (deg): %0.7f\n", 180.0 / M_PI * r_error_);
         pcl::console::print_info("translation error: %0.7f\n", t_error_);
         pcl::console::print_info("point cloud error: %0.7f\n", pcd_error_);
-        pcl::console::print_info("normal mean difference (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
+        pcl::console::print_info("median of normal differences (deg): %0.7f\n", 180.0 / M_PI * normal_diff_);
         pcl::console::print_info("uniformity of correct correspondences' distribution: %0.7f\n", corr_uniformity_);
     } else {
         pcl::console::print_info("inliers: %i\n", inlier_pairs_.size());

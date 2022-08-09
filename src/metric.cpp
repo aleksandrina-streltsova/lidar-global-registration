@@ -87,7 +87,7 @@ void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inl
 
     PointNCloud src_transformed;
     src_transformed.resize(src_->size());
-    pcl::transformPointCloud(*src_, src_transformed, transformation_gt);
+    pcl::transformPointCloudWithNormals(*src_, src_transformed, transformation_gt);
 
     for (const auto &ip: inlier_pairs) {
         PointN source_point(src_transformed.points[ip.idx_src]);

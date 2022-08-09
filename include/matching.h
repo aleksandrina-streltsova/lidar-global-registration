@@ -16,6 +16,7 @@
 
 #include "common.h"
 #include "downsample.h"
+#include "analysis.h"
 
 #define MATCHING_RATIO_THRESHOLD 1.1f
 #define MATCHING_CLUSTER_THRESHOLD 0.8f
@@ -107,28 +108,32 @@ protected:
     using KdTree = pcl::search::KdTree<PointN>;
 
     // estimate features and initialize k-d trees
-    void initialize(const PointNCloud::ConstPtr &pcd,
-                    const pcl::IndicesConstPtr &kps_indices,
-                    std::vector<pcl::Indices> &kps_indices_multiscale,
-                    std::vector<PointNCloud::Ptr> &kps_multiscale,
-                    std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
-                    std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
-                    int &min_log2_radius, const AlignmentParameters &parameters);
+    std::vector<PointNCloud::Ptr> initialize(const PointNCloud::ConstPtr &pcd,
+                                             const pcl::IndicesConstPtr &kps_indices,
+                                             std::vector<pcl::Indices> &kps_indices_multiscale,
+                                             std::vector<PointNCloud::Ptr> &kps_multiscale,
+                                             std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
+                                             std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
+                                             int &min_log2_radius, const AlignmentParameters &parameters);
 
     virtual CorrespondencesWithFlagsPtr match_impl(int idx_src, int idx_tgt) = 0;
 
     pcl::CorrespondencesPtr match() override {
         pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
         std::vector<MultivaluedCorrespondence> mv_correspondences(kps_indices_src_->size());
-        AlignmentParameters parameters(parameters_);
-        initialize(src_, kps_indices_src_, kps_indices_src_multiscale_,
-                   kps_src_multiscale_, kps_tree_src_multiscale_, kps_features_src_multiscale_,
-                   min_log2_radius_src_, parameters);
-        // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
-        parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
-        initialize(tgt_, kps_indices_tgt_, kps_indices_tgt_multiscale_,
-                   kps_tgt_multiscale_, kps_tree_tgt_multiscale_, kps_features_tgt_multiscale_,
-                   min_log2_radius_tgt_, parameters);
+        std::vector<PointNCloud::Ptr> srcs_ds, tgts_ds;
+        {
+            // temporary parameters
+            AlignmentParameters parameters(parameters_);
+            srcs_ds = initialize(src_, kps_indices_src_, kps_indices_src_multiscale_,
+                                 kps_src_multiscale_, kps_tree_src_multiscale_, kps_features_src_multiscale_,
+                                 min_log2_radius_src_, parameters);
+            // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
+            parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
+            tgts_ds = initialize(tgt_, kps_indices_tgt_, kps_indices_tgt_multiscale_,
+                                 kps_tgt_multiscale_, kps_tree_tgt_multiscale_, kps_features_tgt_multiscale_,
+                                 min_log2_radius_tgt_, parameters);
+        }
         {
             pcl::ScopeTime t("Matching");
             int nr_scales_src = kps_features_src_multiscale_.size(), nr_scales_tgt = kps_features_tgt_multiscale_.size();
@@ -137,6 +142,14 @@ protected:
             for (int log2_radius = std::max(min_log2_radius_src_, min_log2_radius_tgt_);
                  log2_radius <= std::min(max_log2_radius_src, max_log2_radius_tgt); ++log2_radius) {
                 int idx_src = log2_radius - min_log2_radius_src_, idx_tgt = log2_radius - min_log2_radius_tgt_;
+                float search_radius = powf(2.0, (float) log2_radius);
+                float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters_.feature_nr_points);
+                if (parameters_.ground_truth.has_value()) {
+                    calculateNormalDifference(srcs_ds[idx_src], tgts_ds[idx_tgt], voxel_size,
+                                              parameters_.ground_truth.value());
+                    saveTemperatureMaps(srcs_ds[idx_src], tgts_ds[idx_tgt], "t" + std::to_string(idx_src), parameters_,
+                                        voxel_size,parameters_.ground_truth.value());
+                }
                 auto correspondences_with_flags = match_impl(idx_src, idx_tgt);
                 rassert(correspondences_with_flags->size() == kps_features_src_multiscale_[idx_src]->size(),
                         9082472354896501);
@@ -202,13 +215,14 @@ protected:
 };
 
 template<typename FeatureT>
-void FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &pcd,
-                                                   const pcl::IndicesConstPtr &kps_indices,
-                                                   std::vector<pcl::Indices> &kps_indices_multiscale,
-                                                   std::vector<PointNCloud::Ptr> &kps_multiscale,
-                                                   std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
-                                                   std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
-                                                   int &min_log2_radius, const AlignmentParameters &parameters) {
+std::vector<PointNCloud::Ptr>
+FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &pcd,
+                                              const pcl::IndicesConstPtr &kps_indices,
+                                              std::vector<pcl::Indices> &kps_indices_multiscale,
+                                              std::vector<PointNCloud::Ptr> &kps_multiscale,
+                                              std::vector<typename KdTree::Ptr> &kps_tree_multiscale,
+                                              std::vector<typename FeatureCloud::Ptr> &kps_features_multiscale,
+                                              int &min_log2_radius, const AlignmentParameters &parameters) {
     KdTree tree(true);
     tree.setInputCloud(pcd);
     std::vector<int> log2_radii(kps_indices->size());
@@ -243,6 +257,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &
         }
     }
     // for each scale estimate features
+    std::vector<PointNCloud::Ptr> pcds_ds;
     for (int i = 0; i < nr_scales; i++) {
         PointNCloud::Ptr pcd_ds(new PointNCloud);
         NormalCloud::Ptr normals_pcd_ds(new NormalCloud);
@@ -253,6 +268,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &
             downsamplePointCloud(pcd, pcd_ds, voxel_size);
             estimateNormalsPoints(NORMAL_NR_POINTS, pcd_ds, normals_pcd_ds, parameters_.normals_available);
             pcl::concatenateFields(*pcd_ds, *normals_pcd_ds, *pcd_ds);
+            pcds_ds.push_back(pcd_ds);
             time_ds_ne_ += t.getTimeSeconds();
         }
         {
@@ -272,6 +288,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(const PointNCloud::ConstPtr &
         }
         kps_tree_multiscale[i]->setInputCloud(kps_multiscale[i]);
     }
+    return pcds_ds;
 }
 
 template<typename FeatureT>

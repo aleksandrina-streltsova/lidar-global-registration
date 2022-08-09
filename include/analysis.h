@@ -11,21 +11,21 @@
 std::pair<float, float> calculate_rotation_and_translation_errors(const Eigen::Matrix4f &transformation,
                                                                   const Eigen::Matrix4f &transformation_gt);
 
-float calculate_point_cloud_rmse(const PointNCloud::ConstPtr &pcd,
-                                 const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
+float calculatePointCloudRmse(const PointNCloud::ConstPtr &pcd,
+                              const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt);
 
-float calculate_overlap_rmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                             const Eigen::Matrix4f &transformation,
-                             const Eigen::Matrix4f &transformation_gt,
-                             float inlier_threshold);
+float calculateOverlapRmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                           const Eigen::Matrix4f &transformation,
+                           const Eigen::Matrix4f &transformation_gt,
+                           float inlier_threshold);
 
-float calculate_correspondence_uniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                          const pcl::Correspondences &correct_correspondences,
-                                          const AlignmentParameters &parameters,
-                                          const Eigen::Matrix4f &transformation_gt);
+float calculateCorrespondenceUniformity(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                        const pcl::Correspondences &correct_correspondences,
+                                        const AlignmentParameters &parameters,
+                                        const Eigen::Matrix4f &transformation_gt);
 
-float calculate_normal_difference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
+float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                float distance_thr, const Eigen::Matrix4f &transformation_gt);
 
 void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const pcl::Correspondences &correspondences,

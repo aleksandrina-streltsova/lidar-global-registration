@@ -51,11 +51,11 @@ int main() {
             0.996758, 0.080377, -0.00349969, -6.13404,
             0.00365057, -0.00173067, 0.999992, -1.17221,
             0, 0, 0, 1;
-    pcl::transformPointCloud(*src, *src, transformation_gt.inverse());
+    pcl::transformPointCloudWithNormals(*src, *src, transformation_gt.inverse());
     AlignmentParameters parameters{
             .normals_available = false,
-            .voxel_size = 1.98f,
-            .distance_thr_coef = 1.f,
+            .iss_coef = 1,
+            .distance_thr = 0.1f,
             .bf_block_size = 200000,
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
@@ -72,7 +72,7 @@ int main() {
     auto alignment_analysis = AlignmentAnalysis(alignment_result, parameters);
 
 //    PointNCloud src_aligned;
-//    pcl::transformPointCloud(*src, src_aligned, alignment_result.getFinalTransformation());
+//    pcl::transformPointCloudWithNormals(*src, src_aligned, alignment_result.getFinalTransformation());
 //    pcl::io::savePLYFileBinary("corner1_aligned.ply",  src_aligned);
 
     auto transformation = alignment_result.transformation;

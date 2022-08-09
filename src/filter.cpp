@@ -155,7 +155,7 @@ void saveUniquenesses(const PointCloud::Ptr &pcd, const std::vector<float> &uniq
         setPointColor(dst.points[i], COLOR_BROWN);
     }
     if (is_source) {
-        pcl::transformPointCloud(dst, dst, transformation_gt);
+        pcl::transformPointCloudWithNormals(dst, dst, transformation_gt);
     }
     filepath = constructPath(parameters, name);
     pcl::io::savePLYFileASCII(filepath, dst);
