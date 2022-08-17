@@ -30,18 +30,16 @@ void buildClosestPlaneInliers(const PointNCloud &src,
         // Find its nearest neighbor in the target
         pcl::Indices nn_indices(1);
         std::vector<float> nn_sqr_dists(1);
-        tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
-                              search_radius, nn_indices, nn_sqr_dists);
-        if (!nn_sqr_dists.empty()) {
-            nearest_point = tgt[nn_indices[0]].getVector3fMap();
-            normal = tgt[nn_indices[0]].getNormalVector3fMap();
-            dist_to_plane = std::fabs(normal.transpose() * (nearest_point - point_transformed));
-            // Check if point is an inlier
-            if (dist_to_plane < inlier_threshold) {
-                // Update inliers and rmse
-                inlier_pairs.push_back({(int) idx, nn_indices[0], dist_to_plane});
-                rmse += dist_to_plane * dist_to_plane;
-            }
+        tree_tgt.nearestKSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
+                                1, nn_indices, nn_sqr_dists);
+        nearest_point = tgt[nn_indices[0]].getVector3fMap();
+        normal = tgt[nn_indices[0]].getNormalVector3fMap();
+        dist_to_plane = std::fabs(normal.transpose() * (nearest_point - point_transformed));
+        // Check if point is an inlier
+        if (dist_to_plane < inlier_threshold) {
+            // Update inliers and rmse
+            inlier_pairs.push_back({(int) idx, nn_indices[0], dist_to_plane});
+            rmse += dist_to_plane * dist_to_plane;
         }
     }
 

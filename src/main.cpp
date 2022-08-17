@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <array>
 #include <pcl/common/io.h>
+#include <pcl/common/transforms.h>
 
 #include "analysis.h"
 #include "feature_analysis.h"
@@ -72,12 +73,12 @@ void estimateTestMetric(const YamlConfig &config) {
 
     loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
-    if (transformation_gt) {
+    if (!transformation_gt) {
         PCL_ERROR("Failed to read ground truth for %s!\n", testname.c_str());
     }
 
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
-        parameters.testname = testname;
+    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+        params.testname = testname;
         std::vector<float> voxel_sizes;
         std::vector<std::string> matching_ids;
         PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
@@ -85,17 +86,17 @@ void estimateTestMetric(const YamlConfig &config) {
         float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt);
         downsamplePointCloud(src, curr_src, voxel_size_src);
         downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
-        auto tn_name = config.get<std::string>("transformation", constructName(parameters, "transformation"));
+        auto tn_name = config.get<std::string>("transformation", constructName(params, "transformation"));
         auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
 
-        estimateNormalsPoints(parameters.normal_nr_points, curr_src, {nullptr}, parameters.normals_available);
-        estimateNormalsPoints(parameters.normal_nr_points, curr_tgt, {nullptr}, parameters.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, curr_src, {nullptr}, params.vp_src, params.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, curr_tgt, {nullptr}, params.vp_tgt, params.normals_available);
         ScoreFunction score_function;
-        if (parameters.score_id == METRIC_SCORE_MAE) {
+        if (params.score_id == METRIC_SCORE_MAE) {
             score_function = ScoreFunction::MAE;
-        } else if (parameters.score_id == METRIC_SCORE_MSE) {
+        } else if (params.score_id == METRIC_SCORE_MSE) {
             score_function = ScoreFunction::MSE;
-        } else if (parameters.score_id == METRIC_SCORE_EXP) {
+        } else if (params.score_id == METRIC_SCORE_EXP) {
             score_function = ScoreFunction::EXP;
         } else {
             score_function = ScoreFunction::Constant;
@@ -106,25 +107,25 @@ void estimateTestMetric(const YamlConfig &config) {
         std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
         float error, metric_icp, metric_corr;
         bool success = false;
-        std::string corrs_path = constructPath(parameters, "correspondences", "csv", true, false, false);
+        std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
         correspondences = readCorrespondencesFromCSV(corrs_path, success);
         if (!success) {
-            pcl::console::print_error("Failed to read correspondences for %s!\n", parameters.testname.c_str());
+            pcl::console::print_error("Failed to read correspondences for %s!\n", params.testname.c_str());
             exit(1);
         }
 
         estimator_corr.setSourceCloud(curr_src);
         estimator_corr.setTargetCloud(curr_tgt);
-        estimator_corr.setInlierThreshold(parameters.distance_thr);
+        estimator_corr.setInlierThreshold(params.distance_thr);
         estimator_corr.setCorrespondences(correspondences);
 
         estimator_icp.setSourceCloud(curr_src);
         estimator_icp.setTargetCloud(curr_tgt);
-        estimator_icp.setInlierThreshold(parameters.distance_thr);
+        estimator_icp.setInlierThreshold(params.distance_thr);
         estimator_icp.setCorrespondences(correspondences);
 
 
-        fout << constructName(parameters, "metric", true, true, false);
+        fout << constructName(params, "metric", true, true, false);
         std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt.value()};
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
         for (auto &tn: transformations) {
@@ -154,13 +155,13 @@ void generateDebugFiles(const YamlConfig &config) {
     loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
-        parameters.testname = testname;
+    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+        params.testname = testname;
         bool success = false;
-        std::string corrs_path = constructPath(parameters, "correspondences", "csv", true, false, false);
+        std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
         correspondences = readCorrespondencesFromCSV(corrs_path, success);
         if (!success) {
-            pcl::console::print_error("Failed to read correspondences for %s!\n", parameters.testname.c_str());
+            pcl::console::print_error("Failed to read correspondences for %s!\n", params.testname.c_str());
             exit(1);
         }
         PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
@@ -170,42 +171,42 @@ void generateDebugFiles(const YamlConfig &config) {
         downsamplePointCloud(src, curr_src, voxel_size_src);
         downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
         transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                                           constructName(parameters, "transformation"));
-        float error_thr = parameters.distance_thr;
-        estimateNormalsPoints(parameters.normal_nr_points, curr_src, {nullptr}, parameters.normals_available);
-        estimateNormalsPoints(parameters.normal_nr_points, curr_tgt, {nullptr}, parameters.normals_available);
+                                           constructName(params, "transformation"));
+        float error_thr = params.distance_thr;
+        estimateNormalsPoints(params.normal_nr_points, curr_src, {nullptr}, params.vp_src, params.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, curr_tgt, {nullptr}, params.vp_tgt, params.normals_available);
 
-        indices_src = detectKeyPoints(curr_src, parameters);
-        indices_tgt = detectKeyPoints(curr_tgt, parameters);
+        indices_src = detectKeyPoints(curr_src, params);
+        indices_tgt = detectKeyPoints(curr_tgt, params);
 
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
-        auto metric_estimator = getMetricEstimatorFromParameters(parameters);
+        auto metric_estimator = getMetricEstimatorFromParameters(params);
         metric_estimator->setSourceCloud(curr_src);
         metric_estimator->setTargetCloud(curr_tgt);
-        metric_estimator->setInlierThreshold(parameters.distance_thr);
+        metric_estimator->setInlierThreshold(params.distance_thr);
         metric_estimator->setCorrespondences(correspondences);
         metric_estimator->buildInlierPairs(transformation, inlier_pairs, error, rand);
         if (transformation_gt.has_value()) {
             buildCorrectCorrespondences(curr_src, curr_tgt, *correspondences, *correct_correspondences,
                                         transformation_gt.value(), error_thr);
-            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), parameters);
-            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), parameters, true);
-            saveCorrespondenceDistances(curr_src, curr_tgt, *correspondences, transformation_gt.value(), parameters);
+            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params);
+            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params, true);
+            saveCorrespondenceDistances(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params);
             saveColorizedPointCloud(curr_src, indices_src, *correspondences, *correct_correspondences, inlier_pairs,
-                                    parameters, transformation_gt.value(), true);
-            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", parameters, error_thr, transformation_gt.value());
-            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", parameters, error_thr, transformation_gt.value(), parameters.normals_available);
+                                    params, transformation_gt.value(), true);
+            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", params, error_thr, transformation_gt.value());
+            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", params, error_thr, transformation_gt.value(), params.normals_available);
         }
         saveColorizedPointCloud(curr_tgt, indices_tgt, *correspondences, *correct_correspondences, inlier_pairs,
-                                parameters, Eigen::Matrix4f::Identity(), false);
+                                params, Eigen::Matrix4f::Identity(), false);
 
-        if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
-            WeightFunction weight_function = getWeightFunction(parameters.weight_id);
+        if (params.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
+            WeightFunction weight_function = getWeightFunction(params.weight_id);
             auto weights = weight_function(NORMAL_NR_POINTS, curr_src);
-            saveColorizedWeights(curr_src, weights, "weights", parameters, transformation);
+            saveColorizedWeights(curr_src, weights, "weights", params, transformation);
         }
-        saveTemperatureMaps(curr_src, curr_tgt, "temperature", parameters, error_thr, transformation);
-        saveTemperatureMaps(src, tgt, "temperature_fullsize", parameters, error_thr, transformation, parameters.normals_available);
+        saveTemperatureMaps(curr_src, curr_tgt, "temperature", params, error_thr, transformation);
+        saveTemperatureMaps(src, tgt, "temperature_fullsize", params, error_thr, transformation, params.normals_available);
     }
 }
 

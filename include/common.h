@@ -39,16 +39,25 @@
 #define ALIGNMENT_INLIER_FRACTION 0.1
 #define ALIGNMENT_USE_BFMATCHER true
 #define ALIGNMENT_RANDOMNESS 1
-#define ALIGNMENT_RATIO_PARAMETER 2
 #define ALIGNMENT_N_SAMPLES 3
 #define ALIGNMENT_SAVE_FEATURES false
 #define ALIGNMENT_BLOCK_SIZE 10000
+
+#define KEYPOINTS_ISS_COEF 0.5
+
+#define FEATURES_SCALE_FACTOR 2.0
+#define FEATURES_REESTIMATE_FRAMES true
+
+#define MATCHING_RATIO_THRESHOLD 1.1f
+#define MATCHING_RATIO_K 2
+#define MATCHING_CLUSTER_THRESHOLD 0.95f
+#define MATCHING_CLUSTER_K 40
 
 #define SPARSE_POINTS_FRACTION 0.01
 #define FEATURE_NR_POINTS 352
 #define NORMAL_NR_POINTS 30
 #define SPARSE_POINTS_FRACTION 0.01
-#define FINE_VOXEL_SIZE_COEFFICIENT 10
+#define FINE_VOXEL_SIZE_COEFFICIENT 5
 
 // Types
 typedef pcl::PointXYZ Point;
@@ -95,6 +104,7 @@ extern const std::string METRIC_COMBINATION;
 extern const std::string MATCHING_LEFT_TO_RIGHT;
 extern const std::string MATCHING_RATIO;
 extern const std::string MATCHING_CLUSTER;
+extern const std::string MATCHING_ONE_SIDED;
 extern const std::string METRIC_WEIGHT_CONSTANT;
 extern const std::string METRIC_WEIGHT_EXP_CURVATURE;
 extern const std::string METRIC_WEIGHT_CURVEDNESS;
@@ -107,24 +117,22 @@ extern const std::string METRIC_SCORE_MAE;
 extern const std::string METRIC_SCORE_MSE;
 extern const std::string METRIC_SCORE_EXP;
 
-using CorrespondenceWithFlag = std::pair<pcl::Correspondence, bool>;
-using CorrespondencesWithFlags = std::vector<CorrespondenceWithFlag>;
-using CorrespondencesWithFlagsPtr = std::shared_ptr<CorrespondencesWithFlags>;
-
 struct InlierPair {
     int idx_src, idx_tgt;
     float dist;
 };
 
 struct AlignmentParameters {
-    bool reestimate_frames;
+    bool reestimate_frames{FEATURES_REESTIMATE_FRAMES};
     int feature_nr_points{FEATURE_NR_POINTS}, normal_nr_points{NORMAL_NR_POINTS};
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, iss_coef;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR}, iss_coef{KEYPOINTS_ISS_COEF};
     float distance_thr;
+    float scale_factor{FEATURES_SCALE_FACTOR};
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
-    int ratio_parameter{ALIGNMENT_RATIO_PARAMETER}, randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
+    int ratio_k{MATCHING_RATIO_K}, cluster_k{MATCHING_CLUSTER_K};
+    int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
     std::string alignment_id{ALIGNMENT_DEFAULT}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
     std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
     std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE}, func_id;
@@ -168,7 +176,6 @@ void loadViewpoint(const std::optional<std::string> &viewpoints_path,
                    const std::string &pcd_path, std::optional<Eigen::Vector3f> &viewpoint);
 
 struct MultivaluedCorrespondence {
-    int query_idx = -1;
     pcl::Indices match_indices;
     std::vector<float> distances;
 };
@@ -404,7 +411,7 @@ inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const Point
     pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
     shot.compute(*features);
     std::string volumes_path = constructPath(parameters, "volumes", "csv", true, false, false);
-    saveVectorOfArrays<int, 32>(shot.getVolumesDebugInfo(), volumes_path);
+//    saveVectorOfArrays<int, 32>(shot.getVolumesDebugInfo(), volumes_path);
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }
 
@@ -423,7 +430,7 @@ enum TemperatureType {
 };
 
 void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
-                         const std::string &name, const AlignmentParameters &parameters, float distance_thr,
+                         const std::string &name, const AlignmentParameters &params, float distance_thr,
                          const Eigen::Matrix4f &transformation, bool normals_available = true);
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,

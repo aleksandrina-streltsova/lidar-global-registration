@@ -12,7 +12,6 @@
 
 #include "config.h"
 #include "common.h"
-#include "keypoints.h"
 #include "matching.h"
 #include "downsample.h"
 #include "feature_analysis.h"
@@ -106,16 +105,16 @@ void analyzeKeyPoints(const YamlConfig &config) {
     loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
-        parameters.testname = testname;
-        parameters.ground_truth = std::optional<Eigen::Matrix4f>{transformation_gt};
-        std::string kps_path = constructPath(parameters, "kps", "csv", true, false, false, false);
+    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+        params.testname = testname;
+        params.ground_truth = std::optional<Eigen::Matrix4f>{transformation_gt};
+        std::string kps_path = constructPath(params, "kps", "csv", true, false, false, false);
         bool exists = fs::exists(kps_path);
         if (!exists) {
             pcl::IndicesPtr indices_src(new pcl::Indices);
-            estimateNormalsPoints(parameters.normal_nr_points, src, {nullptr}, parameters.normals_available);
-            estimateNormalsPoints(parameters.normal_nr_points, tgt, {nullptr}, parameters.normals_available);
-            indices_src = detectKeyPoints(src, parameters);
+            estimateNormalsPoints(params.normal_nr_points, src, {nullptr}, params.vp_src, params.normals_available);
+            estimateNormalsPoints(params.normal_nr_points, tgt, {nullptr}, params.vp_tgt, params.normals_available);
+            indices_src = detectKeyPoints(src, params);
             pcl::KdTreeFLANN<PointN> tree;
             pcl::transformPointCloudWithNormals(*src, *src_gt, transformation_gt.value());
             tree.setInputCloud(tgt);
@@ -130,14 +129,14 @@ void analyzeKeyPoints(const YamlConfig &config) {
             }
             saveCorrespondencesToCSV(kps_path, src, tgt, correspondences);
         }
-        downsamplePointCloud(src, src_ds, parameters.distance_thr);
-        downsamplePointCloud(tgt, tgt_ds, parameters.distance_thr);
+        downsamplePointCloud(src, src_ds, params.distance_thr);
+        downsamplePointCloud(tgt, tgt_ds, params.distance_thr);
         {
             pcl::ScopeTime t("Normal estimation");
-            estimateNormalsPoints(parameters.normal_nr_points, src_ds, {nullptr}, parameters.normals_available);
-            estimateNormalsPoints(parameters.normal_nr_points, tgt_ds, {nullptr}, parameters.normals_available);
+            estimateNormalsPoints(params.normal_nr_points, src_ds, {nullptr}, params.vp_src, params.normals_available);
+            estimateNormalsPoints(params.normal_nr_points, tgt_ds, {nullptr}, params.vp_tgt, params.normals_available);
         }
-        saveDebugFeatures(kps_path, src_ds, tgt_ds, parameters);
+        saveDebugFeatures(kps_path, src_ds, tgt_ds, params);
     }
 }
 

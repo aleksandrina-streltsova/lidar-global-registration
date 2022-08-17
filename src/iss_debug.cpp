@@ -1,4 +1,4 @@
-#include "keypoints.h"
+#include "iss_debug.h"
 
 bool ISSKeypoint3DDebug::initCompute() {
     if (!PCLBase<PointN>::initCompute())
@@ -35,13 +35,21 @@ bool ISSKeypoint3DDebug::initCompute() {
             // Declare the search locator definition
             this->search_method_ = [this](pcl::index_t index, double radius, pcl::Indices &k_indices,
                                           std::vector<float> &k_distances) {
-                return this->tree_->radiusSearch(index, radius, k_indices, k_distances, max_neighbors_);
+                int nr_neighbors = this->tree_->radiusSearch(index, radius, k_indices, k_distances, max_neighbors_);
+                if (nr_neighbors < min_required_neighbors_) {
+                    return this->tree_->nearestKSearch(index, min_required_neighbors_, k_indices, k_distances);
+                }
+                return nr_neighbors;
             };
         } else {
             // Declare the search locator definition
             this->search_method_surface_ = [this](const PointCloudIn &cloud, pcl::index_t index, double radius,
                                                   pcl::Indices &k_indices, std::vector<float> &k_distances) {
-                return this->tree_->radiusSearch(cloud, index, radius, k_indices, k_distances, max_neighbors_);
+                int nr_neighbors = this->tree_->radiusSearch(cloud, index, radius, k_indices, k_distances, max_neighbors_);
+                if (nr_neighbors < min_required_neighbors_) {
+                    return this->tree_->nearestKSearch(cloud, index, min_required_neighbors_, k_indices, k_distances);
+                }
+                return nr_neighbors;
             };
         }
     } else {
@@ -106,18 +114,44 @@ bool ISSKeypoint3DDebug::initCompute() {
     this->third_eigen_value_ = new double[this->input_->size()];
     memset(this->third_eigen_value_, 0, sizeof(double) * input_->size());
 
-std::vector<float> ISSKeypoint3DDebug::getThirdEigenValuesDebug() {
-    int n = this->input_->size();
-    std::vector<float> weights;
-    std::copy(this->third_eigen_value_, this->third_eigen_value_ + n, std::back_inserter(weights));
-    return weights;
-}
+    delete[] this->edge_points_;
 
-std::vector<float> HarrisKeypoint3DDebug::getResponseHarrisDebug() {
-    pcl::PointCloud<pcl::PointXYZI> output;
-    this->responseHarris(output);
-    std::vector<float> weights;
-    std::transform(output.begin(), output.end(), std::back_inserter(weights),
-                   [](const pcl::PointXYZI &point) { return point.intensity; });
-    return weights;
+    if (this->border_radius_ > 0.0) {
+        if (this->normals_->empty()) {
+            if (this->normal_radius_ <= 0.) {
+                PCL_ERROR (
+                        "[pcl::%s::initCompute] : the radius used to estimate surface normals (%f) must be positive!\n",
+                        this->name_.c_str(), this->normal_radius_);
+                return (false);
+            }
+
+            PointCloudNPtr normal_ptr(new PointCloudN());
+            if (this->input_->height == 1) {
+                pcl::NormalEstimation<PointN, PointN> normal_estimation;
+                normal_estimation.setInputCloud(this->surface_);
+                normal_estimation.setRadiusSearch(this->normal_radius_);
+                normal_estimation.compute(*normal_ptr);
+            } else {
+                pcl::IntegralImageNormalEstimation<PointN, PointN> normal_estimation;
+                normal_estimation.setNormalEstimationMethod(
+                        pcl::IntegralImageNormalEstimation<PointN, PointN>::SIMPLE_3D_GRADIENT);
+                normal_estimation.setInputCloud(this->surface_);
+                normal_estimation.setNormalSmoothingSize(5.0);
+                normal_estimation.compute(*normal_ptr);
+            }
+            this->normals_ = normal_ptr;
+        }
+        if (this->normals_->size() != this->surface_->size()) {
+            PCL_ERROR (
+                    "[pcl::%s::initCompute] normals given, but the number of normals does not match the number of input points!\n",
+                    this->name_.c_str());
+            return (false);
+        }
+    } else if (this->border_radius_ < 0.0) {
+        PCL_ERROR (
+                "[pcl::%s::initCompute] : the border radius used to estimate boundary points (%f) must be positive!\n",
+                this->name_.c_str(), this->border_radius_);
+        return (false);
+    }
+    return (true);
 }

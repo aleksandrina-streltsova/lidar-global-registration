@@ -1,5 +1,5 @@
-#ifndef REGISTRATION_KEYPOINTS_H
-#define REGISTRATION_KEYPOINTS_H
+#ifndef REGISTRATION_ISS_DEBUG_H
+#define REGISTRATION_ISS_DEBUG_H
 
 #include <vector>
 
@@ -17,7 +17,7 @@ public:
     }
 
 protected:
-    int max_neighbors_ = 0;
+    int max_neighbors_ = 0, min_required_neighbors_ = 10;
 };
 
 #endif

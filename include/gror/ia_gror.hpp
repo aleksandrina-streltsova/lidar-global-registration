@@ -378,7 +378,7 @@ inline void pcl::registration::GRORInitialAlignment<PointSource, PointTarget, Sc
 	{
 		input_transformed->resize(input_->size());
 		// Apply guessed transformation prior to search for neighbours
-		pcl::transformPointCloud(*input_, *input_transformed, guess);
+		pcl::transformPointCloudWithNormals(*input_, *input_transformed, guess);
 	}
 	else
 		*input_transformed = *input_;
@@ -637,8 +637,8 @@ inline std::tuple<float, int> pcl::registration::GRORInitialAlignment<PointSourc
 	Eigen::Matrix4f local_tm_t = IdM_2*IdM_1;
 	Eigen::Matrix4f local_tm_s = local_tm_t*transform.matrix();
 
-	pcl::transformPointCloud(*key_source_, *source_local, local_tm_s);
-	pcl::transformPointCloud(*key_target_, *target_local, local_tm_t);
+	pcl::transformPointCloudWithNormals(*key_source_, *source_local, local_tm_s);
+	pcl::transformPointCloudWithNormals(*key_target_, *target_local, local_tm_t);
 
 	const size_t msize_total = source_local->size();
 	const size_t bsize_total = target_local->size();

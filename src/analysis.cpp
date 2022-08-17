@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 #include <utility>
 
+#include <pcl/common/time.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
@@ -55,20 +56,27 @@ float calculateOverlapRmse(const PointNCloud::ConstPtr &src, const PointNCloud::
     pcl::KdTreeFLANN<PointN> tree_tgt;
     tree_tgt.setInputCloud(tgt);
 
+    float rmse = 0.f;
     int overlap_size = 0;
-    float rmse = 0.f, dist_to_plane;
-    PointN nearest_point;
-    pcl::Indices nn_indices;
-    std::vector<float> nn_sqr_dists;
-    for (int i = 0; i < src->size(); ++i) {
-        tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_sqr_dists);
-        if (nn_sqr_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
-            nearest_point = tgt->points[nn_indices[0]];
-            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
-                                      (nearest_point.getVector3fMap() - src_aligned[i].getVector3fMap()));
-            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
-            rmse += dist_to_plane * dist_to_plane;
-            overlap_size++;
+#pragma omp parallel default(none) firstprivate(inlier_threshold) \
+    shared(src_aligned_gt, src_aligned, tgt, tree_tgt) \
+    reduction(+:overlap_size, rmse)
+    {
+        float dist_to_plane;
+        PointN nearest_point;
+        pcl::Indices nn_indices;
+        std::vector<float> nn_sqr_dists;
+#pragma omp for
+        for (int i = 0; i < src_aligned_gt.size(); ++i) {
+            tree_tgt.nearestKSearch(src_aligned_gt[i], 1, nn_indices, nn_sqr_dists);
+            if (nn_sqr_dists[0] < inlier_threshold * inlier_threshold) {    // ith point in overlap
+                nearest_point = tgt->points[nn_indices[0]];
+                dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                          (nearest_point.getVector3fMap() - src_aligned[i].getVector3fMap()));
+                dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+                rmse += dist_to_plane * dist_to_plane;
+                overlap_size++;
+            }
         }
     }
     if (overlap_size != 0) {
@@ -142,25 +150,37 @@ float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCl
     pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
     tree->setInputCloud(tgt);
 
-    pcl::Indices indices;
-    std::vector<float> distances;
-    std::vector<float> differences;
+    std::vector<float> differences(src_aligned->size(), -1);
+#pragma omp parallel default(none) firstprivate(distance_thr) \
+    shared(src_aligned, tgt, tree, differences)
+    {
+        pcl::Indices nn_indices;
+        std::vector<float> nn_sqr_distances;
+#pragma omp for
+        for (int i = 0; i < src_aligned->size(); ++i) {
+            (float) tree->nearestKSearch(*src_aligned, i, 1, nn_indices, nn_sqr_distances);
+            const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[nn_indices[0]]);
+            if (std::sqrt(nn_sqr_distances[0]) < distance_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
+                float cos = std::clamp(p_src.normal_x * p_tgt.normal_x + p_src.normal_y * p_tgt.normal_y +
+                                       p_src.normal_z * p_tgt.normal_z, -1.f, 1.f);
+                differences[i] = std::abs(std::acos(cos));
+            }
+        }
+    }
     int n_points_overlap = 0;
-    for (int i = 0; i < src_aligned->size(); ++i) {
-        (float) tree->nearestKSearch(*src_aligned, i, 1, indices, distances);
-        const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[indices[0]]);
-        if (std::sqrt(distances[0]) < distance_thr && std::isfinite(p_src.normal_x) && std::isfinite(p_tgt.normal_x)) {
-            float cos = std::clamp(p_src.normal_x * p_tgt.normal_x + p_src.normal_y * p_tgt.normal_y +
-                                   p_src.normal_z * p_tgt.normal_z, -1.f, 1.f);
-            differences.push_back(std::abs(std::acos(cos)));
+    std::vector<float> differences_filtered;
+    for (float diff: differences) {
+        if (diff >= 0.f) {
+            differences_filtered.push_back(diff);
             n_points_overlap++;
         }
     }
     if (n_points_overlap == 0) return M_PI;
-    std::nth_element(differences.begin(), differences.begin() + n_points_overlap / 2, differences.end());
-    float result = differences[n_points_overlap / 2];
-    PCL_DEBUG("[calculateNormalDifference] median of normal differences (deg): %0.7f [distance threshold = %0.7f]\n",
-              180 * result / M_PI, distance_thr);
+    std::nth_element(differences_filtered.begin(), differences_filtered.begin() + n_points_overlap / 2, differences_filtered.end());
+    float result = differences_filtered[n_points_overlap / 2];
+    PCL_DEBUG("[calculateNormalDifference] median of normal differences (deg): %0.7f "
+              "[distance threshold = %0.7f, points in overlap: %i (%i, %i)]\n",
+              180 * result / M_PI, distance_thr, n_points_overlap, src->size(), tgt->size());
     return result;
 }
 
@@ -197,6 +217,7 @@ AlignmentAnalysis::AlignmentAnalysis(AlignmentResult result, AlignmentParameters
 }
 
 void AlignmentAnalysis::start(const std::optional<Eigen::Matrix4f> &transformation_gt, const std::string &testname) {
+    pcl::ScopeTime t("Analysis");
     testname_ = testname;
     UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
     float error_thr = parameters_.distance_thr;
@@ -269,12 +290,12 @@ void printAnalysisHeader(std::ostream &out) {
     out << "voxel_size,nr_points,distance_thr,edge_thr,";
     out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,";
     out << "normal_diff,corr_uniformity,lrf,metric,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score,iss_coef,";
-    out << "normal_nr_points,reestimate\n";
+    out << "normal_nr_points,reestimate,scale,cluster_k\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
     std::string matching_id = analysis.parameters_.matching_id;
-    if (matching_id == MATCHING_RATIO) matching_id += std::to_string(analysis.parameters_.ratio_parameter);
+    if (matching_id == MATCHING_RATIO) matching_id += std::to_string(analysis.parameters_.ratio_k);
     stream << VERSION << "," << analysis.parameters_.descriptor_id << "," << analysis.testname_ << ","
            << analysis.fitness_ << "," << analysis.rmse_ << ",";
     stream << analysis.correspondences_.size() << "," << analysis.correct_correspondences_.size() << ",";
@@ -299,6 +320,7 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
     stream << analysis.parameters_.alignment_id << "," << analysis.parameters_.keypoint_id << ",";
     stream << analysis.result_.time_cs << "," << analysis.result_.time_te << ",";
     stream << analysis.parameters_.score_id << "," << analysis.parameters_.iss_coef << ",";
-    stream << analysis.parameters_.normal_nr_points << "," << analysis.parameters_.reestimate_frames << "\n";
+    stream << analysis.parameters_.normal_nr_points << "," << analysis.parameters_.reestimate_frames << ",";
+    stream << analysis.parameters_.scale_factor << "," << analysis.parameters_.cluster_k << "\n";
     return stream;
 }

@@ -4,7 +4,7 @@ void FeatureBasedMatcher::printDebugInfo(const std::vector<MultivaluedCorrespond
     float dists_sum = 0.f;
     int n_dists = 0;
     for (int i = 0; i < mv_correspondences.size(); i++) {
-        if (mv_correspondences[i].query_idx >= 0) {
+        if (!mv_correspondences[i].match_indices.empty()) {
             dists_sum += mv_correspondences[i].distances[0];
             n_dists++;
         }
@@ -24,6 +24,7 @@ FeatureBasedMatcher::Ptr getFeatureBasedMatcherFromParameters(const PointNCloud:
                                                               const pcl::IndicesConstPtr &indices_tgt,
                                                               const AlignmentParameters &parameters) {
     if (parameters.matching_id == MATCHING_RATIO) {
+        PCL_ERROR("Ratio filtering currently isn't supported!\n");
         if (parameters.descriptor_id == DESCRIPTOR_FPFH) {
             auto ptr = std::make_shared<RatioMatcher<FPFH>>(src, tgt, indices_src, indices_tgt, parameters);
             return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
@@ -43,6 +44,17 @@ FeatureBasedMatcher::Ptr getFeatureBasedMatcherFromParameters(const PointNCloud:
             return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
         } else if (parameters.descriptor_id == DESCRIPTOR_SHOT) {
             auto ptr = std::make_shared<ClusterMatcher<SHOT>>(src, tgt, indices_src, indices_tgt, parameters);
+            return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
+        } else pcl::console::print_error("Descriptor %s isn't supported!\n", parameters.descriptor_id.c_str());
+    } else if (parameters.matching_id == MATCHING_ONE_SIDED) {
+        if (parameters.descriptor_id == DESCRIPTOR_FPFH) {
+            auto ptr = std::make_shared<OneSidedMatcher<FPFH>>(src, tgt, indices_src, indices_tgt, parameters);
+            return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
+        } else if (parameters.descriptor_id == DESCRIPTOR_ROPS) {
+            auto ptr = std::make_shared<OneSidedMatcher<RoPS135>>(src, tgt, indices_src, indices_tgt, parameters);
+            return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
+        } else if (parameters.descriptor_id == DESCRIPTOR_SHOT) {
+            auto ptr = std::make_shared<OneSidedMatcher<SHOT>>(src, tgt, indices_src, indices_tgt, parameters);
             return std::static_pointer_cast<FeatureBasedMatcher>(ptr);
         } else pcl::console::print_error("Descriptor %s isn't supported!\n", parameters.descriptor_id.c_str());
     } else if (parameters.matching_id != MATCHING_LEFT_TO_RIGHT) {
