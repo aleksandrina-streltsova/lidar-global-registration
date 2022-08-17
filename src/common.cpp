@@ -205,6 +205,12 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
 
     bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
     parameters.normals_available = normals_available;
+
+    std::string src_path = config.get<std::string>("source").value();
+    std::string tgt_path = config.get<std::string>("target").value();
+    loadViewpoint(config.get<std::string>("viewpoints"), src_path, parameters.vp_src);
+    loadViewpoint(config.get<std::string>("viewpoints"), tgt_path, parameters.vp_tgt);
+
     parameters_container.push_back(parameters);
 
     auto alignment_ids = config.getVector<std::string>("alignment", ALIGNMENT_DEFAULT);
@@ -377,6 +383,33 @@ void loadTransformationGt(const std::string &src_path, const std::string &tgt_pa
     transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
 }
 
+void loadViewpoint(const std::optional<std::string> &viewpoints_path,
+                   const std::string &pcd_path, std::optional<Eigen::Vector3f> &viewpoint) {
+    if (!viewpoints_path.has_value()) {
+        viewpoint = std::nullopt;
+        return;
+    }
+    std::string pcd_filename = pcd_path.substr(pcd_path.find_last_of("/\\") + 1);
+    std::ifstream file(viewpoints_path.value());
+    Eigen::Vector3f viewpoint_vector;
+    bool success = false;
+    CSVRow row;
+    while (file >> row) {
+        if (row[0] == pcd_filename) {
+            for (int i = 0; i < 3; ++i) {
+                viewpoint_vector(i) = std::stof(row[i + 1]);
+            }
+            success = true;
+            pcl::console::print_debug("Using vp from %s\n", viewpoints_path.value().c_str());
+            viewpoint = std::optional<Eigen::Vector3f>(viewpoint_vector);
+            break;
+        }
+    }
+    if (!success) {
+        pcl::console::print_warn("Failed to get view for %s!\n", pcd_filename.c_str());
+    }
+}
+
 std::ostream &operator<<(std::ostream &out, const MultivaluedCorrespondence &corr) {
     out << corr.query_idx;
     for (int i = 0; i < corr.match_indices.size(); ++i) {
@@ -449,24 +482,26 @@ void postprocessNormals(PointNCloud::Ptr &pcd, bool normals_available) {
 }
 
 void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
-                           bool normals_available) {
+                           const std::optional<Eigen::Vector3f> &vp, bool normals_available) {
     pcl::console::print_highlight("Estimating normals..\n");
     pcl::NormalEstimationOMP<PointN, PointN> normal_est;
     normal_est.setRadiusSearch(radius_search);
     normal_est.setInputCloud(pcd);
     if (surface) normal_est.setSearchSurface(surface);
+    if (vp.has_value()) normal_est.setViewPoint(vp.value().x(), vp.value().y(), vp.value().z());
     pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*pcd);
-    postprocessNormals(pcd,normals_available);
+    postprocessNormals(pcd, normals_available);
 }
 
 void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
-                           bool normals_available) {
+                           const std::optional<Eigen::Vector3f> &vp, bool normals_available) {
     pcl::NormalEstimationOMP<PointN, PointN> normal_est;
     normal_est.setKSearch(k_points);
     normal_est.setInputCloud(pcd);
     if (surface) normal_est.setSearchSurface(surface);
+    if (vp.has_value()) normal_est.setViewPoint(vp.value().x(), vp.value().y(), vp.value().z());
     pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
     normal_est.setSearchMethod(tree);
     normal_est.compute(*pcd);

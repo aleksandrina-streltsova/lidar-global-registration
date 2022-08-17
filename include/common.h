@@ -139,6 +139,7 @@ struct AlignmentParameters {
     float match_search_radius = 0;
     std::optional<Eigen::Matrix4f> guess{std::nullopt};
     std::string dir_path{DATA_DEBUG_PATH};
+    std::optional<Eigen::Vector3f> vp_src, vp_tgt;
 };
 
 struct AlignmentResult {
@@ -162,6 +163,9 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
 
 void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
                           const std::string &csv_path, std::optional<Eigen::Matrix4f> &transformation_gt);
+
+void loadViewpoint(const std::optional<std::string> &viewpoints_path,
+                   const std::string &pcd_path, std::optional<Eigen::Vector3f> &viewpoint);
 
 struct MultivaluedCorrespondence {
     int query_idx = -1;
@@ -291,10 +295,10 @@ float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::ConstPt
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
 
 void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
-                           bool normals_available);
+                           const std::optional<Eigen::Vector3f> &vp, bool normals_available);
 
 void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
-                           bool normals_available);
+                           const std::optional<Eigen::Vector3f> &vp, bool normals_available);
 
 pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters);
 

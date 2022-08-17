@@ -17,6 +17,6 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
 
 AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
                                  const PointNCloud::Ptr &tgt_fullsize,
-                                 const AlignmentParameters &parameters);
+                                 const AlignmentParameters &params);
 
 #endif

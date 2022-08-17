@@ -35,21 +35,29 @@ MIN_OVERLAP = 0.2
 #                     file.write(f'        target: {os.path.join(DIRPATH, f2)}\n')
 
 @click.command()
+@click.argument('config-path', type=click.Path(dir_okay=False))
+@click.option('--selected/--all', type=bool, default=False)
 @click.option('-l', '--level', default=2)
-def generate_config(level):
+def generate_config(config_path, selected, level):
     df = pd.read_csv(DIFFICULTY_LEVELS_PATH)
-    df = df[df['level'] == level]
-    with open(CONFIG_PATH, 'a') as file:
+    df = df[df['level'] >= level]
+    df = df.fillna(0)
+    df['selected'] = df['selected'].astype(bool)
+    with open(config_path, 'a') as file:
         file.write('tests:\n')
-        for f1, f2, gror_iss_coef in df[['source', 'target', 'gror_iss_coef']].values:
+        for f1, f2, feature_radius, s, with_vp in df[['source', 'target', 'feature_radius', 'selected', 'with_vp']].values:
+            if not s and selected:
+                continue
             for dirpath in DIRPATHS:
                 if os.path.exists(os.path.join(dirpath, f1)):
                     file.write('    - test:')
                     file.write(PARAMETERS)
-                    file.write(f'        gror_iss_coef: {gror_iss_coef}\n')
+                    file.write(f'        distance_thr: {feature_radius / 7.5}\n')
                     file.write(f'        ground_truth: ' + os.path.join(dirpath, 'ground_truth.csv') + '\n')
                     file.write(f'        source: {os.path.join(dirpath, f1)}\n')
                     file.write(f'        target: {os.path.join(dirpath, f2)}\n')
+                    if with_vp == 1:
+                        file.write(f'        viewpoints: ' + os.path.join(dirpath, 'viewpoints.csv') + '\n')
     # filenames = list(sorted(filter(lambda s: s.endswith('.ply'), os.listdir(DIRPATH))))
     # with open(CONFIG_PATH, 'a') as file:
     #     for i, f1 in enumerate(filenames):

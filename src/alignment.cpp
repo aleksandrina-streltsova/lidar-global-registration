@@ -70,7 +70,7 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
 
 AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
                                  const PointNCloud::Ptr &tgt_fullsize,
-                                 const AlignmentParameters &parameters) {
+                                 const AlignmentParameters &params) {
     pcl::ScopeTime t_alignment("Alignment");
     double time_correspondence_search = 0.0, time_downsampling_and_normals = 0.0;
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
@@ -84,43 +84,43 @@ AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
 
         // Estimate normals
         pcl::console::print_highlight("Estimating normals...\n");
-        estimateNormalsPoints(parameters.normal_nr_points, src, {nullptr}, parameters.normals_available);
-        estimateNormalsPoints(parameters.normal_nr_points, tgt, {nullptr}, parameters.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, src, {nullptr}, params.vp_src, params.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, tgt, {nullptr}, params.vp_tgt, params.normals_available);
         time_downsampling_and_normals = t.getTimeSeconds();
     }
 
     bool success = false;
-    std::string filepath = constructPath(parameters, "correspondences", "csv", true, false, false);
+    std::string filepath = constructPath(params, "correspondences", "csv", true, false, false);
     pcl::CorrespondencesPtr correspondences;
 //    correspondences = readCorrespondencesFromCSV(filepath, success);
     if (success) {
         PCL_DEBUG("[alignPointClouds] read correspondences from file\n");
     } else {
         pcl::ScopeTime t("Correspondence search");
-        FeatureBasedCorrespondenceSearch corr_search(src, tgt, parameters);
+        FeatureBasedCorrespondenceSearch corr_search(src, tgt, params);
         correspondences = corr_search.calculateCorrespondences();
         saveCorrespondencesToCSV(filepath, src, tgt, correspondences);
         time_correspondence_search = t.getTimeSeconds();
     }
     AlignmentResult alignment_result;
-    if (parameters.alignment_id == ALIGNMENT_GROR) {
-        alignment_result = alignGror(src, tgt, correspondences, parameters);
-    } else if (parameters.alignment_id == ALIGNMENT_TEASER) {
-        alignment_result = alignTeaser(src, tgt, correspondences, parameters);
+    if (params.alignment_id == ALIGNMENT_GROR) {
+        alignment_result = alignGror(src, tgt, correspondences, params);
+    } else if (params.alignment_id == ALIGNMENT_TEASER) {
+        alignment_result = alignTeaser(src, tgt, correspondences, params);
     } else {
-        if (parameters.alignment_id != ALIGNMENT_DEFAULT) {
+        if (params.alignment_id != ALIGNMENT_DEFAULT) {
             PCL_WARN("[alignPointClouds] Transformation estimation method %s isn't supported,"
-                     " default LRF will be used.\n", parameters.alignment_id.c_str());
+                     " default LRF will be used.\n", params.alignment_id.c_str());
         }
-        alignment_result = alignRansac(src, tgt, correspondences, parameters);
+        alignment_result = alignRansac(src, tgt, correspondences, params);
     }
     alignment_result.time_cs = time_correspondence_search;
     alignment_result.time_ds_ne = time_downsampling_and_normals;
-    if (parameters.ground_truth.has_value()) {
+    if (params.ground_truth.has_value()) {
         saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                           constructName(parameters, "transformation_gt"), parameters.ground_truth.value());
+                           constructName(params, "transformation_gt"), params.ground_truth.value());
     }
     saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                       constructName(parameters, "transformation"), alignment_result.transformation);
+                       constructName(params, "transformation"), alignment_result.transformation);
     return alignment_result;
 }
