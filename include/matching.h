@@ -18,6 +18,7 @@
 #include "common.h"
 #include "downsample.h"
 #include "analysis.h"
+#include "feature_analysis.h"
 
 #define DEBUG_NORMAL_DIFFERENCE false
 
@@ -26,7 +27,7 @@ public:
     using Ptr = std::shared_ptr<FeatureBasedMatcher>;
     using ConstPtr = std::shared_ptr<const FeatureBasedMatcher>;
 
-    virtual pcl::CorrespondencesPtr match() = 0;
+    virtual CorrespondencesPtr match() = 0;
 
     inline float getAverageDistance() const {
         return average_distance_;
@@ -104,7 +105,7 @@ public:
         st_tgt_.kps_indices = indices_tgt;
     }
 
-    pcl::CorrespondencesPtr match() override;
+    CorrespondencesPtr match() override;
 
 protected:
     using FeatureCloud = pcl::PointCloud<FeatureT>;
@@ -115,26 +116,27 @@ protected:
         PointNCloud::ConstPtr pcd;
         PointNCloud::Ptr kps{new PointNCloud};
         typename KdTree::Ptr kps_tree{new KdTree};
-        std::vector<PointNCloud::Ptr> pcds_ds;
         typename pcl::IndicesConstPtr kps_indices; // indices in pcd
+        std::vector<PointNCloud::Ptr> pcds_ds;
         std::vector<pcl::Indices> kps_indices_multiscale; // indices in kps_indices
         std::vector<PointNCloud::Ptr> kps_multiscale;
         std::vector<typename FeatureCloud::Ptr> kps_features_multiscale;
         std::vector<typename KdTree::Ptr> kps_tree_multiscale;
+        float iss_radius;
     };
 
     // estimate features on different scales and initialize k-d trees
     void initialize(Storage &storage, const AlignmentParameters &parameters,
-                    const std::optional<Eigen::Vector3f> &viewpoint);
+                    const std::optional<Eigen::Vector3f> &viewpoint, float iss_radius);
 
     // get correspondences from features calculated on different scales (this function should be used in match_impl)
     // query and match indices are local, use finalize to get global
-    std::vector<MultivaluedCorrespondence> match_multiscale(const Storage &st_query,
-                                                            const Storage &st_train);
+    std::vector<MultivaluedCorrespondence> match_multiscale(const Storage &st_query, const Storage &st_train,
+                                                            bool inverse_tn = false);
 
-    virtual pcl::CorrespondencesPtr match_impl() = 0;
+    virtual CorrespondencesPtr match_impl() = 0;
 
-    void finalize(const pcl::CorrespondencesPtr &correspondences);
+    void finalize(const CorrespondencesPtr &correspondences);
 
     // downsampling and normal estimation time, feature estimation time
     double time_ds_ne_{0.0}, time_fe_{0.0};
@@ -144,13 +146,13 @@ protected:
 };
 
 template<typename FeatureT>
-pcl::CorrespondencesPtr FeatureBasedMatcherImpl<FeatureT>::match() {
+CorrespondencesPtr FeatureBasedMatcherImpl<FeatureT>::match() {
     // temporary parameters
     AlignmentParameters parameters(parameters_);
-    initialize(st_src_, parameters, parameters.vp_src);
+    initialize(st_src_, parameters, parameters.vp_src, parameters.iss_radius_src);
     // need to set gt to id in case lrf == 'gt' in estimateReferenceFrames
     parameters.ground_truth = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
-    initialize(st_tgt_, parameters, parameters.vp_tgt);
+    initialize(st_tgt_, parameters, parameters.vp_tgt, parameters.iss_radius_tgt);
     std::cerr << "Downsampling and normal estimation took " << 1000.0 * time_ds_ne_ << "ms.\n";
     std::cerr << "Feature estimation took " << 1000.0 * time_fe_ << "ms.\n";
     auto correspondences = match_impl();
@@ -160,45 +162,58 @@ pcl::CorrespondencesPtr FeatureBasedMatcherImpl<FeatureT>::match() {
 
 template<typename FeatureT>
 void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const AlignmentParameters &parameters,
-                                                   const std::optional<Eigen::Vector3f> &viewpoint) {
+                                                   const std::optional<Eigen::Vector3f> &viewpoint, float iss_radius) {
+    storage.iss_radius = iss_radius;
     pcl::copyPointCloud(*storage.pcd, *storage.kps_indices, *storage.kps);
     storage.kps_tree->setInputCloud(storage.kps);
-    KdTree tree(true);
-    tree.setInputCloud(storage.pcd);
     std::vector<int> log2_radii(storage.kps->size());
-    pcl::Indices nn_indices;
-    std::vector<float> nn_sqr_dists;
-    int k = 5;
-    for (int i = 0; i < storage.kps->size(); ++i) {
-        tree.nearestKSearch(*storage.pcd, storage.kps_indices->operator[](i), k, nn_indices, nn_sqr_dists);
-        float density = sqrtf(nn_sqr_dists[k - 1]);
-        float feature_radius = sqrtf((float) parameters.feature_nr_points * density * density / M_PI);
-        log2_radii[i] = (int) std::floor(std::log2(feature_radius) / std::log2(parameters_.scale_factor));
-        storage.min_log2_radius = std::min(log2_radii[i], storage.min_log2_radius);
-        storage.max_log2_radius = std::max(log2_radii[i], storage.max_log2_radius);
-    }
-    // how many points on each level?
-    std::deque<int> count_nr_points(storage.max_log2_radius - (storage.min_log2_radius - 1), 0);
-    for (int i = 0; i < log2_radii.size(); ++i) {
-        for (int j = log2_radii[i]; j <= storage.max_log2_radius; j++) {
-            count_nr_points[j - storage.min_log2_radius]++;
+    if (parameters.feature_radius.has_value()) {
+        float feature_radius = parameters.feature_radius.value();
+        int log2_radius = (int) std::floor(std::log2(feature_radius) / std::log2(parameters_.scale_factor));
+        storage.min_log2_radius = log2_radius;
+        storage.max_log2_radius = log2_radius;
+        std::fill(log2_radii.begin(), log2_radii.end(), log2_radius);
+    } else {
+        KdTree tree(true);
+        tree.setInputCloud(storage.pcd);
+        pcl::Indices nn_indices;
+        std::vector<float> nn_sqr_dists;
+        int k = 5;
+        for (int i = 0; i < storage.kps->size(); ++i) {
+            tree.nearestKSearch(*storage.pcd, storage.kps_indices->operator[](i), k, nn_indices, nn_sqr_dists);
+            float density = sqrtf(nn_sqr_dists[k - 1]);
+            float feature_radius = sqrtf((float) parameters.feature_nr_points * density * density / M_PI);
+            log2_radii[i] = (int) std::floor(std::log2(feature_radius) / std::log2(parameters_.scale_factor));
+            storage.min_log2_radius = std::min(log2_radii[i], storage.min_log2_radius);
+            storage.max_log2_radius = std::max(log2_radii[i], storage.max_log2_radius);
+        }
+        // how many points on each level?
+        std::deque<int> count_nr_points(storage.max_log2_radius - (storage.min_log2_radius - 1), 0);
+        for (int i = 0; i < log2_radii.size(); ++i) {
+            count_nr_points[log2_radii[i] - storage.min_log2_radius]++;
+        }
+        int max_nr_points = *std::max_element(count_nr_points.begin(), count_nr_points.end());
+        // remove levels with too little points
+        while (10 * count_nr_points.front() < max_nr_points) {
+            count_nr_points.pop_front();
+            storage.min_log2_radius++;
+        }
+        while (1000 * count_nr_points.back() < max_nr_points) {
+            count_nr_points.pop_back();
+            storage.max_log2_radius--;
+        }
+        for (int &log2_radius: log2_radii) {
+            log2_radius = std::min(std::max(log2_radius, storage.min_log2_radius), storage.max_log2_radius);
         }
     }
-    // remove levels with too little points
-    while (3 * count_nr_points.front() < count_nr_points.back()) {
-        count_nr_points.pop_front();
-        storage.min_log2_radius++;
-    }
-    for (int i = 0; i < log2_radii.size(); ++i) {
-        log2_radii[i] = std::max(log2_radii[i], storage.min_log2_radius);
-    }
-
     int nr_scales = storage.max_log2_radius - (storage.min_log2_radius - 1);
+    storage.pcds_ds.resize(nr_scales);
     storage.kps_multiscale.resize(nr_scales);
     storage.kps_indices_multiscale.resize(nr_scales);
     storage.kps_tree_multiscale.resize(nr_scales);
     storage.kps_features_multiscale.resize(nr_scales);
     for (int i = 0; i < nr_scales; ++i) {
+        storage.pcds_ds[i] = std::make_shared<PointNCloud>();
         storage.kps_multiscale[i] = std::make_shared<PointNCloud>();
         storage.kps_indices_multiscale[i].reserve(storage.kps_indices->size());
         storage.kps_tree_multiscale[i] = std::make_shared<KdTree>();
@@ -212,15 +227,13 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const Align
     }
     // for each scale estimate features
     for (int i = 0; i < nr_scales; i++) {
-        PointNCloud::Ptr pcd_ds(new PointNCloud);
         float search_radius = powf(parameters.scale_factor, (float) (storage.min_log2_radius + i));
         float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters.feature_nr_points);
         {
             auto t1 = std::chrono::system_clock::now();
-            downsamplePointCloud(storage.pcd, pcd_ds, voxel_size);
-            estimateNormalsPoints(parameters_.normal_nr_points, pcd_ds, {nullptr}, viewpoint,
+            downsamplePointCloud(i == 0 ? storage.pcd : storage.pcds_ds[i - 1], storage.pcds_ds[i], voxel_size);
+            estimateNormalsPoints(parameters_.normal_nr_points, storage.pcds_ds[i], {nullptr}, viewpoint,
                                   parameters_.normals_available);
-            storage.pcds_ds.push_back(pcd_ds);
             auto t2 = std::chrono::system_clock::now();
             time_ds_ne_ += double(std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000.0;
         }
@@ -228,11 +241,12 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const Align
             auto t1 = std::chrono::system_clock::now();
             pcl::copyPointCloud(*storage.kps, storage.kps_indices_multiscale[i], *storage.kps_multiscale[i]);
             if (parameters.reestimate_frames) {
-                estimateNormalsPoints(parameters_.normal_nr_points, storage.kps_multiscale[i], pcd_ds, viewpoint, true);
+                estimateNormalsPoints(parameters_.normal_nr_points, storage.kps_multiscale[i], storage.pcds_ds[i],
+                                      viewpoint, true);
             }
             pcl::console::print_highlight("Estimating features  [search_radius = %.5f]...\n", search_radius);
-            estimateFeatures<FeatureT>(storage.kps_multiscale[i], pcd_ds, storage.kps_features_multiscale[i],
-                                       search_radius, parameters);
+            estimateFeatures<FeatureT>(storage.kps_multiscale[i], storage.pcds_ds[i],
+                                       storage.kps_features_multiscale[i], search_radius, parameters);
             int count_invalid = 0;
             for (int j = 0; j < storage.kps_features_multiscale[i]->size(); ++j) {
                 if (!point_representation_.isValid(storage.kps_features_multiscale[i]->points[j]))
@@ -249,31 +263,44 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const Align
 
 template<typename FeatureT>
 std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_multiscale(const Storage &st_query,
-                                                                                           const Storage &st_train) {
+                                                                                           const Storage &st_train,
+                                                                                           bool inverse_tn) {
     std::vector<MultivaluedCorrespondence> mv_correspondences(st_query.kps->size());
     std::vector<float> norm_diffs_pcd, norm_diffs_kps;
     int min_log2_radius = std::max(st_query.min_log2_radius, st_train.min_log2_radius);
     int max_log2_radius = std::min(st_query.max_log2_radius, st_train.max_log2_radius);
     for (int log2_radius = min_log2_radius; log2_radius <= max_log2_radius; ++log2_radius) {
+        if (parameters_.save_features && !inverse_tn) {
+            saveFeatures<FeatureT>(st_query.kps_features_multiscale[log2_radius - st_query.min_log2_radius], {},
+                                   parameters_, true, std::to_string(log2_radius));
+            saveFeatures<FeatureT>(st_train.kps_features_multiscale[log2_radius - st_train.min_log2_radius], {},
+                                   parameters_, false, std::to_string(log2_radius));
+        }
         int idx_query = log2_radius - st_query.min_log2_radius, idx_train = log2_radius - st_train.min_log2_radius;
         int nr_kps_query = st_query.kps_multiscale[idx_query]->size();
         float search_radius = powf(2.0, (float) log2_radius);
         float voxel_size = sqrtf(M_PI * search_radius * search_radius / (float) parameters_.feature_nr_points);
-        if (parameters_.ground_truth.has_value() && DEBUG_NORMAL_DIFFERENCE) {
+#if DEBUG_NORMAL_DIFFERENCE
+        if (parameters_.ground_truth.has_value() ) {
+            Eigen::Matrix4f gt = parameters_.ground_truth.value();
+            if (inverse_tn) gt = gt.inverse();
             norm_diffs_pcd.push_back(calculateNormalDifference(st_query.pcds_ds[idx_query], st_train.pcds_ds[idx_train],
-                                                               voxel_size, parameters_.ground_truth.value()));
+                                                               voxel_size, gt));
             norm_diffs_kps.push_back(calculateNormalDifference(st_query.kps_multiscale[idx_query],
                                                                st_train.kps_multiscale[idx_train],
-                                                               parameters_.distance_thr,
-                                                               parameters_.ground_truth.value()));
+                                                               parameters_.distance_thr, gt));
         }
+#endif
         // correspondences calculated on one level
         std::vector<MultivaluedCorrespondence> mv_corrs_fixed_level;
         if (parameters_.guess.has_value()) {
+            Eigen::Matrix4f guess = parameters_.guess.value();
+            if (inverse_tn) guess = guess.inverse();
             mv_corrs_fixed_level = matchLocal<FeatureT>(st_query.kps_multiscale[idx_query],
                                                         st_train.kps_tree_multiscale[idx_train],
                                                         st_query.kps_features_multiscale[idx_query],
-                                                        st_train.kps_features_multiscale[idx_train], parameters_);
+                                                        st_train.kps_features_multiscale[idx_train],
+                                                        parameters_, guess);
         } else if (this->parameters_.use_bfmatcher) {
             mv_corrs_fixed_level = matchBF<FeatureT>(st_query.kps_features_multiscale[idx_query],
                                                      st_train.kps_features_multiscale[idx_train], parameters_);
@@ -303,10 +330,10 @@ std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_
             counter.emplace_back(0.f, mv_corr.distances[m1]);
             for (int m2 = m1; m2 < mv_corr.match_indices.size(); ++m2) {
                 if (mv_corr.match_indices[m1] < 0 || mv_corr.match_indices[m2] < 0) continue;
-                float dist_l2 = (st_tgt_.kps->points[mv_corr.match_indices[m1]].getVector3fMap() -
-                                 st_tgt_.kps->points[mv_corr.match_indices[m2]].getVector3fMap()).norm();
-                if (dist_l2 < 32 * parameters_.distance_thr) {
-                    counter[m1].first += parameters_.distance_thr / std::max(dist_l2, parameters_.distance_thr);
+                float dist_l2 = (st_train.kps->points[mv_corr.match_indices[m1]].getVector3fMap() -
+                                 st_train.kps->points[mv_corr.match_indices[m2]].getVector3fMap()).norm();
+                if (dist_l2 < 32 * st_train.iss_radius) {
+                    counter[m1].first += st_train.iss_radius / std::max(dist_l2, st_train.iss_radius);
                 }
             }
         }
@@ -326,7 +353,7 @@ std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_
 }
 
 template<typename FeatureT>
-void FeatureBasedMatcherImpl<FeatureT>::finalize(const pcl::CorrespondencesPtr &correspondences) {
+void FeatureBasedMatcherImpl<FeatureT>::finalize(const CorrespondencesPtr &correspondences) {
     for (auto &corr: *correspondences) {
         corr.index_query = st_src_.kps_indices->operator[](corr.index_query);
         corr.index_match = st_tgt_.kps_indices->operator[](corr.index_match);
@@ -352,7 +379,7 @@ std::vector<MultivaluedCorrespondence> matchLocal(const PointNCloud::ConstPtr &q
                                                   const typename pcl::search::KdTree<PointN>::ConstPtr &train_tree,
                                                   const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
                                                   const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
-                                                  const AlignmentParameters &parameters);
+                                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &guess);
 
 template<typename FeatureT>
 class OneSidedMatcher : public FeatureBasedMatcherImpl<FeatureT> {
@@ -364,15 +391,19 @@ public:
                     AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                         indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesPtr match_impl() override {
+        std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
+        std::vector<float> thresholds_tgt = calculateSmoothedDensities(this->st_tgt_.kps);
         std::vector<MultivaluedCorrespondence> mv_corrs_ij = this->match_multiscale(this->st_src_, this->st_tgt_);
         this->printDebugInfo(mv_corrs_ij);
-        pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
+        CorrespondencesPtr correspondences(new Correspondences);
         int nr_kps = this->st_src_.kps_indices->size();
         correspondences->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
             if (mv_corrs_ij[i].match_indices.empty()) continue;
-            correspondences->emplace_back(i, mv_corrs_ij[i].match_indices[0], mv_corrs_ij[i].distances[0]);
+            float threshold = std::min(std::max(thresholds_src[i], thresholds_tgt[mv_corrs_ij[i].match_indices[0]]),
+                                       this->parameters_.distance_thr);
+            correspondences->emplace_back(i, mv_corrs_ij[i].match_indices[0], mv_corrs_ij[i].distances[0], threshold);
         }
         PCL_DEBUG("[%s::match] %i correspondences.\n", getClassName().c_str(), correspondences->size());
         return correspondences;
@@ -393,11 +424,13 @@ public:
                        AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                            indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesPtr match_impl() override {
+        std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
+        std::vector<float> thresholds_tgt = calculateSmoothedDensities(this->st_tgt_.kps);
         std::vector<MultivaluedCorrespondence> mv_corrs_ij = this->match_multiscale(this->st_src_, this->st_tgt_);
-        std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_);
+        std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_, true);
         this->printDebugInfo(mv_corrs_ij);
-        pcl::CorrespondencesPtr correspondences_mutual(new pcl::Correspondences);
+        CorrespondencesPtr correspondences_mutual(new Correspondences);
         int nr_kps = this->st_src_.kps_indices->size();
         correspondences_mutual->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
@@ -405,7 +438,9 @@ public:
                 auto &corr_j = mv_corrs_ji[j];
                 for (int k = 0; k < corr_j.match_indices.size(); ++k) {
                     if (corr_j.match_indices[k] == i) {
-                        correspondences_mutual->emplace_back(i, j, corr_j.distances[k]);
+                        float threshold = std::min(std::max(thresholds_src[i], thresholds_tgt[j]),
+                                                   this->parameters_.distance_thr);
+                        correspondences_mutual->emplace_back(i, j, corr_j.distances[k], threshold);
                         break;
                     }
                 }
@@ -431,45 +466,8 @@ public:
                  AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                      indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
-//        if (this->parameters_.randomness != 1) {
-//            PCL_WARN("[%s::match] k_corrs different from 1 cannot be used with ratio filtering, using k_corrs = 1.\n",
-//                     getClassName().c_str());
-//        }
-//        std::vector<MultivaluedCorrespondence> mv_correspondences_ij;
-//        if (this->parameters_.guess.has_value()) {
-//            mv_correspondences_ij = matchLocal<FeatureT>(kps_src, kps_tree_tgt, kps_features_src, kps_features_tgt,
-//                                                         this->parameters_);
-//        } else if (this->parameters_.use_bfmatcher) {
-//            mv_correspondences_ij = matchBF<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
-//        } else {
-//            mv_correspondences_ij = matchFLANN<FeatureT>(kps_features_src, kps_features_tgt, this->parameters_);
-//        }
-//        this->printDebugInfo(mv_correspondences_ij);
-//        float dist1, dist2, ratio;
-//        int n = kps_features_src->size(), count_successful = 0, match_idx;
-//        pcl::CorrespondencesPtr correspondences_ratio(new CorrespondencesWithFlags);
-//        for (int i = 0; i < n; ++i) {
-//            const auto &mv_corr = mv_correspondences_ij[i];
-//            if (mv_corr.match_indices.size() != this->parameters_.ratio_k) {
-//                correspondences_ratio->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
-//                continue;
-//            }
-//            dist1 = mv_corr.distances[0];
-//            dist2 = mv_corr.distances[this->parameters_.ratio_k - 1];
-//            ratio = (dist2 == 0.f) ? 1.f : (dist1 / dist2);
-//            if (ratio < MATCHING_RATIO_THRESHOLD) {
-//                match_idx = mv_corr.match_indices[0];
-//                correspondences_ratio->emplace_back(pcl::Correspondence{i, match_idx, ratio}, true);
-//                count_successful++;
-//            } else {
-//                correspondences_ratio->emplace_back(pcl::Correspondence{i, -1, 1.f}, false);
-//            }
-//        }
-//        PCL_DEBUG("[%s::match] %i correspondences remain after ratio filtering.\n",
-//                  getClassName().c_str(),
-//                  correspondences_ratio->size());
-//        return correspondences_ratio;
+    CorrespondencesPtr match_impl() override {
+        // TODO: implement
         return {};
     }
 
@@ -490,11 +488,13 @@ public:
                    AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
                                                                                        indices_tgt, parameters) {}
 
-    pcl::CorrespondencesPtr match_impl() override {
+    CorrespondencesPtr match_impl() override {
+        std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
+        std::vector<float> thresholds_tgt = calculateSmoothedDensities(this->st_tgt_.kps);
         std::vector<MultivaluedCorrespondence> mv_corrs_ij = this->match_multiscale(this->st_src_, this->st_tgt_);
-        std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_);
+        std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_, true);
         this->printDebugInfo(mv_corrs_ij);
-        pcl::CorrespondencesPtr correspondences_cluster(new pcl::Correspondences);
+        CorrespondencesPtr correspondences_cluster(new Correspondences);
         int nr_kps = this->st_src_.kps_indices->size();
         correspondences_cluster->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
@@ -504,7 +504,9 @@ public:
                 float distance_j = calculateCorrespondenceDistance(j, i, this->parameters_.cluster_k, mv_corrs_ji,
                                                                    this->st_tgt_.kps_tree, this->st_src_.kps_tree);
                 if (distance_i < MATCHING_CLUSTER_THRESHOLD && distance_j < MATCHING_CLUSTER_THRESHOLD) {
-                    correspondences_cluster->emplace_back(i, j, std::max(distance_i, distance_j));
+                    float threshold = std::min(std::max(thresholds_src[i], thresholds_tgt[j]),
+                                               this->parameters_.distance_thr);
+                    correspondences_cluster->emplace_back(i, j, std::max(distance_i, distance_j), threshold);
                 }
             }
         }
@@ -636,9 +638,9 @@ std::vector<MultivaluedCorrespondence> matchLocal(const PointNCloud::ConstPtr &q
                                                   const typename pcl::search::KdTree<PointN>::ConstPtr &train_tree,
                                                   const typename pcl::PointCloud<FeatureT>::ConstPtr &query_features,
                                                   const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
-                                                  const AlignmentParameters &parameters) {
+                                                  const AlignmentParameters &parameters, const Eigen::Matrix4f &guess) {
     PointNCloud transformed_query_pcd;
-    pcl::transformPointCloudWithNormals(*query_pcd, transformed_query_pcd, parameters.guess.value());
+    pcl::transformPointCloudWithNormals(*query_pcd, transformed_query_pcd, guess);
     auto n = transformed_query_pcd.size();
     std::vector<MultivaluedCorrespondence> mv_correspondences(query_features->size(), MultivaluedCorrespondence{});
 

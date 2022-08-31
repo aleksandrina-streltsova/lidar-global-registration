@@ -11,15 +11,15 @@
 
 namespace fs = std::filesystem;
 
-AlignmentResult alignRansac(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                            const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignRansac(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                            const CorrespondencesPtr &correspondences,
                             const AlignmentParameters &parameters) {
     SampleConsensusPrerejectiveOMP ransac(src, tgt, correspondences, parameters);
     return ransac.align();
 }
 
-AlignmentResult alignGror(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                          const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignGror(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                          const CorrespondencesPtr &correspondences,
                           const AlignmentParameters &parameters) {
     pcl::ScopeTime t("GROR");
     pcl::registration::GRORInitialAlignment<PointN, PointN, float> gror;
@@ -29,13 +29,13 @@ AlignmentResult alignGror(const PointNCloud::Ptr &src, const PointNCloud::Ptr &t
     gror.setResolution(parameters.distance_thr);
     gror.setOptimalSelectionNumber(800);
     gror.setNumberOfThreads(omp_get_num_procs());
-    gror.setInputCorrespondences(correspondences);
+    gror.setInputCorrespondences(std::make_shared<pcl::Correspondences>(correspondencesToPCL(*correspondences)));
     gror.align(*pcs);
     return AlignmentResult{src, tgt, gror.getFinalTransformation(), correspondences, 1, true, t.getTimeSeconds()};
 }
 
-AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                            const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignTeaser(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                            const CorrespondencesPtr &correspondences,
                             const AlignmentParameters &parameters) {
     pcl::ScopeTime t("TEASER");
 
@@ -46,7 +46,7 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
 
     std::vector<std::pair<int, int>> corrs_teaser;
     std::transform(correspondences->begin(), correspondences->end(), std::back_inserter(corrs_teaser),
-                   [](const pcl::Correspondence &corr) {
+                   [](const Correspondence &corr) {
                        return std::pair<int, int>{corr.index_query, corr.index_match};
                    });
 
@@ -68,30 +68,14 @@ AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr 
     return AlignmentResult{src, tgt, transformation, correspondences, 1, true, t.getTimeSeconds()};
 }
 
-AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
-                                 const PointNCloud::Ptr &tgt_fullsize,
+AlignmentResult alignPointClouds(const PointNCloud::ConstPtr &src,
+                                 const PointNCloud::ConstPtr &tgt,
                                  const AlignmentParameters &params) {
     pcl::ScopeTime t_alignment("Alignment");
-    double time_correspondence_search = 0.0, time_downsampling_and_normals = 0.0;
-    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    {
-        pcl::ScopeTime t("Downsampling and normal estimation");
-        // Downsample
-        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src_fullsize);
-        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt_fullsize);
-        downsamplePointCloud(src_fullsize, src, voxel_size_src);
-        downsamplePointCloud(tgt_fullsize, tgt, voxel_size_tgt);
-
-        // Estimate normals
-        pcl::console::print_highlight("Estimating normals...\n");
-        estimateNormalsPoints(params.normal_nr_points, src, {nullptr}, params.vp_src, params.normals_available);
-        estimateNormalsPoints(params.normal_nr_points, tgt, {nullptr}, params.vp_tgt, params.normals_available);
-        time_downsampling_and_normals = t.getTimeSeconds();
-    }
-
+    double time_correspondence_search = 0.0;
     bool success = false;
     std::string filepath = constructPath(params, "correspondences", "csv", true, false, false);
-    pcl::CorrespondencesPtr correspondences;
+    CorrespondencesPtr correspondences;
 //    correspondences = readCorrespondencesFromCSV(filepath, success);
     if (success) {
         PCL_DEBUG("[alignPointClouds] read correspondences from file\n");
@@ -108,14 +92,13 @@ AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
     } else if (params.alignment_id == ALIGNMENT_TEASER) {
         alignment_result = alignTeaser(src, tgt, correspondences, params);
     } else {
-        if (params.alignment_id != ALIGNMENT_DEFAULT) {
+        if (params.alignment_id != ALIGNMENT_RANSAC) {
             PCL_WARN("[alignPointClouds] Transformation estimation method %s isn't supported,"
-                     " default LRF will be used.\n", params.alignment_id.c_str());
+                     " RANSAC will be used.\n", params.alignment_id.c_str());
         }
         alignment_result = alignRansac(src, tgt, correspondences, params);
     }
     alignment_result.time_cs = time_correspondence_search;
-    alignment_result.time_ds_ne = time_downsampling_and_normals;
     if (params.ground_truth.has_value()) {
         saveTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                            constructName(params, "transformation_gt"), params.ground_truth.value());

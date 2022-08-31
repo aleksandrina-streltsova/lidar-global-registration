@@ -8,7 +8,7 @@
 
 class CorrespondenceSearch {
 public:
-    virtual pcl::CorrespondencesPtr calculateCorrespondences() = 0;
+    virtual CorrespondencesPtr calculateCorrespondences() = 0;
 };
 
 class FeatureBasedCorrespondenceSearch : CorrespondenceSearch {
@@ -19,7 +19,7 @@ public:
                                      AlignmentParameters parameters) :
             src_(std::move(src)), tgt_(std::move(tgt)), parameters_(std::move(parameters)) {}
 
-    pcl::CorrespondencesPtr calculateCorrespondences() override;
+    CorrespondencesPtr calculateCorrespondences() override;
 
 protected:
     PointNCloud::ConstPtr src_, tgt_;

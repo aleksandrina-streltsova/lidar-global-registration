@@ -2,12 +2,12 @@
 
 // http://nghiaho.com/?page_id=671
 void estimateOptimalRigidTransformation(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                        const std::vector<InlierPair> &inlier_pairs, Eigen::Matrix4f &transformation) {
+                                        const Correspondences &inliers, Eigen::Matrix4f &transformation) {
     Eigen::Vector3f centroid_src{0.0, 0.0, 0.0}, centroid_tgt{0.0, 0.0, 0.0};
-    int n = inlier_pairs.size();
-    for (const auto &ip: inlier_pairs) {
-        centroid_src += src->points[ip.idx_src].getVector3fMap();
-        centroid_tgt += tgt->points[ip.idx_tgt].getVector3fMap();
+    int n = inliers.size();
+    for (const auto &ip: inliers) {
+        centroid_src += src->points[ip.index_query].getVector3fMap();
+        centroid_tgt += tgt->points[ip.index_match].getVector3fMap();
     }
     centroid_src /= (float) n;
     centroid_tgt /= (float) n;
@@ -15,9 +15,9 @@ void estimateOptimalRigidTransformation(const PointNCloud::ConstPtr &src, const 
     Eigen::Matrix3f H = Eigen::Matrix3f::Zero();
 
     // H = (A - c_A) (B - c_B)^T, size of A and B -- (3 x N)
-    for (const auto &ip: inlier_pairs) {
-        const Eigen::Vector3f &p = src->points[ip.idx_src].getVector3fMap();
-        const Eigen::Vector3f &q = tgt->points[ip.idx_tgt].getVector3fMap();
+    for (const auto &ip: inliers) {
+        const Eigen::Vector3f &p = src->points[ip.index_query].getVector3fMap();
+        const Eigen::Vector3f &q = tgt->points[ip.index_match].getVector3fMap();
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
                 H(i, j) += (p(i) - centroid_src(i)) * (q(j) - centroid_tgt(j));

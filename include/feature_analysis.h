@@ -9,9 +9,10 @@
 #include "common.h"
 
 template <typename FeatureT>
-void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features, const pcl::IndicesConstPtr &indices, const AlignmentParameters &parameters, bool is_source) {
+void saveFeatures(const typename pcl::PointCloud<FeatureT>::Ptr &features, const pcl::IndicesConstPtr &indices,
+                  const AlignmentParameters &parameters, bool is_source, const std::string &scale = "") {
     pcl::console::print_highlight("Saving %s histograms...\n", is_source ? "source" : "target");
-    std::string filepath = constructPath(parameters,  std::string("histograms_") + (is_source ? "src" : "tgt"), "csv");
+    std::string filepath = constructPath(parameters,  "histograms" + scale + (is_source ? "_src" : "_tgt"), "csv");
     std::fstream fout(filepath, std::ios_base::out);
     int n = features->size(), m = features->points[0].descriptorSize();
     for (int i = 0; i < n; ++i) {

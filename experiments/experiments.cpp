@@ -105,7 +105,7 @@ void analyzeKeyPoints(const YamlConfig &config) {
     loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
 
-    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+    for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         params.testname = testname;
         params.ground_truth = std::optional<Eigen::Matrix4f>{transformation_gt};
         std::string kps_path = constructPath(params, "kps", "csv", true, false, false, false);

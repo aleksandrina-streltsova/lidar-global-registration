@@ -77,7 +77,7 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
 
     mv_correspondences_bf = matchBF<FeatureT>(features_src, features_tgt, params);
     mv_correspondences_flann = matchFLANN<FeatureT>(features_src, features_tgt, params);
-    mv_correspondences_local = matchLocal<FeatureT>(src, tree_tgt, features_src, features_tgt, params_local);
+    mv_correspondences_local = matchLocal<FeatureT>(src, tree_tgt, features_src, features_tgt, params_local, params_local.guess.value());
     for (int i = 0; i < features_src->size(); ++i) {
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);
@@ -89,7 +89,7 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
 
     mv_correspondences_bf = matchBF<FeatureT>(features_tgt, features_src, params);
     mv_correspondences_flann = matchFLANN<FeatureT>(features_tgt, features_src, params);
-    mv_correspondences_local = matchLocal<FeatureT>(tgt, tree_src, features_tgt, features_src, params_local);
+    mv_correspondences_local = matchLocal<FeatureT>(tgt, tree_src, features_tgt, features_src, params_local, params_local.guess.value().inverse());
     for (int i = 0; i < features_tgt->size(); ++i) {
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);

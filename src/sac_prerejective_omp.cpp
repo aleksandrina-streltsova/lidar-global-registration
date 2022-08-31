@@ -1,7 +1,18 @@
 #include <pcl/common/time.h>
+#include <unordered_set>
 
 #include "sac_prerejective_omp.h"
 #include "transformation.h"
+#include "analysis.h"
+
+#define MIN_NR_INLIERS 10
+#define MIN_NR_FINAL_INLIERS 20
+#define MIN_INLIER_RATE 0.15
+#define SAVE_MULTIPLE_HYPOTHESES false
+
+#if SAVE_MULTIPLE_HYPOTHESES
+#include "hypotheses.h"
+#endif
 
 void SampleConsensusPrerejectiveOMP::buildIndices(const pcl::Indices &sample_indices,
                                                   pcl::Indices &source_indices,
@@ -80,7 +91,7 @@ unsigned int SampleConsensusPrerejectiveOMP::getNumberOfThreads() const {
 }
 
 SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                                                               pcl::CorrespondencesConstPtr correspondences,
+                                                               CorrespondencesConstPtr correspondences,
                                                                AlignmentParameters parameters)
         : src_(std::move(src)), tgt_(std::move(tgt)),
           correspondences_(std::move(correspondences)),
@@ -105,7 +116,6 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
     metric_estimator_->setSourceCloud(src_);
     metric_estimator_->setTargetCloud(tgt_);
     metric_estimator_->setCorrespondences(correspondences_);
-    metric_estimator_->setInlierThreshold(parameters_.distance_thr);
 }
 
 AlignmentResult SampleConsensusPrerejectiveOMP::align() {
@@ -114,60 +124,81 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
     int ransac_iterations = 0;
 
     // Initialize results
-    Eigen::Matrix4f final_transformation = Eigen::Matrix4f::Identity();
-    std::shared_ptr<std::vector<InlierPair>> final_inlier_pairs(new std::vector<InlierPair>);
-    float final_rmse = std::numeric_limits<float>::max();
-    float final_metric = metric_estimator_->getInitialMetric();
-    bool converged = false;
-    int max_iterations = std::min(calculate_combination_or_max<int>(correspondences_->size(), parameters_.n_samples),
+    Correspondences largest_inlier_set;
+#if SAVE_MULTIPLE_HYPOTHESES
+    std::vector<Eigen::Matrix4f> final_tns;
+    std::vector<float> final_metrics;
+#else
+    Eigen::Matrix4f final_tn = Eigen::Matrix4f::Identity();
+    float final_metric = 0;
+#endif
+
+    int max_iterations = std::min(calculateCombinationOrMax<int>(correspondences_->size(), parameters_.n_samples),
                                   parameters_.max_iterations);
     int estimated_iters = max_iterations; // For debugging
 
     // If guess is available we check it
     if (parameters_.guess.has_value()) {
-        std::vector<InlierPair> inlier_pairs;
+        Correspondences inliers;
         float metric, error;
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
         Eigen::Matrix4f guess = parameters_.guess.value();
-        metric_estimator_->buildInlierPairsAndEstimateMetric(guess, inlier_pairs, error, metric, rand);
-        if (metric_estimator_->isBetter(metric, final_metric)) {
-            *final_inlier_pairs = inlier_pairs;
-            final_rmse = error;
-            final_metric = metric;
-            converged = true;
-            final_transformation = parameters_.guess.value();
-        }
+        metric_estimator_->buildInliersAndEstimateMetric(guess, inliers, error, metric, rand);
+        largest_inlier_set = inliers;
+#if SAVE_MULTIPLE_HYPOTHESES
+        updateHypotheses(final_tns, final_metrics, guess, metric, parameters_);
+#else
+        final_tn = guess;
+        final_metric = metric;
+#endif
     }
 
     // Start
     int threads = getNumberOfThreads();
+#if SAVE_MULTIPLE_HYPOTHESES
+    std::vector<std::vector<Eigen::Matrix4f>> tns_local_all(threads);
+    std::vector<std::vector<float>> metrics_local_all(threads);
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
 #pragma omp parallel \
     num_threads(threads) \
     default(none) \
     firstprivate(max_iterations) \
-    shared(final_transformation, final_inlier_pairs, final_rmse, final_metric, converged, estimated_iters) \
-    reduction(+:num_rejections, ransac_iterations)
+    reduction(+:num_rejections, ransac_iterations) \
+    shared(tns_local_all, metrics_local_all, estimated_iters, largest_inlier_set)
+#endif
+#else
+#if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
+#pragma omp parallel \
+    num_threads(threads) \
+    default(none) \
+    firstprivate(max_iterations) \
+    reduction(+:num_rejections, ransac_iterations) \
+    shared(final_tn, final_metric, estimated_iters, largest_inlier_set)
+#endif
 #endif
     {
         int omp_num_threads = omp_get_num_threads();
 
         // Local best results
-        std::vector<InlierPair> best_inlier_pairs_local;
-        float min_error_local = std::numeric_limits<float>::max();
+        Correspondences largest_inlier_set_local;
+#if SAVE_MULTIPLE_HYPOTHESES
+        std::vector<Eigen::Matrix4f> tns_local;
+        std::vector<float> metrics_local;
+#else
+        Eigen::Matrix4f best_tn_local = Eigen::Matrix4f::Identity();
         float best_metric_local = metric_estimator_->getInitialMetric();
+#endif
         int iters_local = max_iterations;
-        Eigen::Matrix4f best_transformation_local;
 
         // Temporaries
-        std::vector<InlierPair> inlier_pairs;
+        Correspondences inliers;
         float metric, error;
-        Eigen::Matrix4f transformation;
+        Eigen::Matrix4f tn;
 
-        int seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
+        unsigned long seed = parameters_.fix_seed ? SEED + omp_get_thread_num() : std::random_device{}();
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), seed);
 
-#pragma omp for nowait
+#pragma omp for
         for (int i = 0; i < max_iterations; ++i) {
             if (ransac_iterations * omp_num_threads >= iters_local) {
                 continue;
@@ -191,61 +222,99 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
                 continue;
             }
 
-
             // Estimate the transform from the correspondences, write to transformation_
-            transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices,
-                                                                   transformation);
-            // If the new fit is better, update results
-            metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric, rand);
-            if (metric_estimator_->isBetter(metric, best_metric_local)) {
-                min_error_local = error;
-                best_metric_local = metric;
-                best_inlier_pairs_local = inlier_pairs;
-                best_transformation_local = transformation;
-                iters_local = std::min(metric_estimator_->estimateMaxIterations(
-                        transformation, parameters_.confidence, parameters_.n_samples), iters_local);
+            transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices, tn);
+            // If the new fit is better, update hypotheses, re-estimate number of required iterations
+            metric_estimator_->buildInliersAndEstimateMetric(tn, inliers, error, metric, rand);
+            if (inliers.size() < MIN_NR_INLIERS) continue;
+            if (largest_inlier_set_local.size() < inliers.size()) {
+                largest_inlier_set_local = inliers;
+                iters_local = std::min(metric_estimator_->estimateMaxIterations(tn, parameters_.confidence,
+                                                                                parameters_.n_samples), iters_local);
             }
+#if SAVE_MULTIPLE_HYPOTHESES
+            updateHypotheses(tns_local, metrics_local, tn, metric, parameters_);
+#else
+            if (best_metric_local < metric) {
+                best_tn_local = tn;
+                best_metric_local = metric;
+            }
+#endif
         } // for
+#if SAVE_MULTIPLE_HYPOTHESES
+        tns_local_all[omp_get_thread_num()] = tns_local;
+        metrics_local_all[omp_get_thread_num()] = metrics_local;
+#endif
 #pragma omp critical(registration_result)
         {
-            if (metric_estimator_->isBetter(best_metric_local, final_metric)) {
-                *final_inlier_pairs = best_inlier_pairs_local;
-                final_rmse = min_error_local;
-                final_metric = best_metric_local;
-                converged = true;
-                final_transformation = best_transformation_local;
+            if (largest_inlier_set.size() < largest_inlier_set_local.size()) {
+                largest_inlier_set = largest_inlier_set_local;
             }
             if (iters_local < estimated_iters) {
                 estimated_iters = iters_local;
             }
+#if !SAVE_MULTIPLE_HYPOTHESES
+            if (final_metric < best_metric_local) {
+                final_metric = best_metric_local;
+                final_tn = best_tn_local;
+            }
+#endif
         }
     }
-
-    // Estimate optimal transformation using resulting inliers
-    if (converged) {
-        Eigen::Matrix4f transformation;
-        std::vector<InlierPair> inlier_pairs;
+#if SAVE_MULTIPLE_HYPOTHESES
+    for (int i = 0; i < tns_local_all.size(); ++i) {
+        for (int j = 0; j < tns_local_all[i].size(); ++j) {
+            updateHypotheses(final_tns, final_metrics, tns_local_all[i][j], metrics_local_all[i][j], parameters_);
+        }
+    }
+#endif
+    bool converged = false;
+#if !SAVE_MULTIPLE_HYPOTHESES
+    std::vector<Eigen::Matrix4f> final_tns = {final_tn};
+    std::vector<float> final_metrics = {final_metric};
+#endif
+    for (int i = 0; i < final_tns.size(); ++i) {
+        Eigen::Matrix4f tn;
+        Correspondences inliers;
         float metric, error;
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
-        estimateOptimalRigidTransformation(src_, tgt_, *final_inlier_pairs, transformation);
-        metric_estimator_->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric, rand);
-        if (metric_estimator_->isBetter(metric, final_metric)) {
+        // build inliers for best tn and then re-estimate optimal tn using these inliers
+        metric_estimator_->buildInliersAndEstimateMetric(final_tns[i], inliers, error, metric, rand);
+        bool enough_inliers = inliers.size() > MIN_NR_FINAL_INLIERS ||
+                              (float) inliers.size() > MIN_INLIER_RATE * (float) correspondences_->size();
+        if (enough_inliers && metric > metric_estimator_->getMinTolerableMetric()) {
+            converged = true;
+        }
+        estimateOptimalRigidTransformation(src_, tgt_, inliers, tn);
+        metric_estimator_->buildInliersAndEstimateMetric(tn, inliers, error, metric, rand);
+        if (metric < final_metrics[i]) {
             PCL_WARN("[%s::computeTransformation] number of inliers decreased "
                      "after estimating optimal rigid transformation.\n",
                      this->getClassName().c_str());
         }
-        final_transformation = transformation;
-        *final_inlier_pairs = inlier_pairs;
-        final_rmse = error;
-        final_metric = metric;
+        final_tns[i] = tn;
+        final_metrics[i] = metric;
     }
-
+#if SAVE_MULTIPLE_HYPOTHESES
+    Eigen::Matrix4f final_tn = chooseBestHypothesis(src_, tgt_, correspondences_, parameters_, final_tns);
+#else
+    final_tn = final_tns[0];
+#endif
     // Debug output
+    if (parameters_.ground_truth.has_value()) {
+        Correspondences correct_inliers;
+        metric_estimator_->buildCorrectInliers(largest_inlier_set, correct_inliers, parameters_.ground_truth.value());
+        PCL_DEBUG("[%s::computeTransformation] %i/%i correct inliers in largest set of inliers\n",
+                  this->getClassName().c_str(), correct_inliers.size(), largest_inlier_set.size());
+    } else {
+        PCL_DEBUG("[%s::computeTransformation] %i inliers in largest set of inliers\n",
+                  this->getClassName().c_str(), largest_inlier_set.size());
+    }
     PCL_DEBUG("[%s::computeTransformation] RANSAC exits at %i-th iteration: "
               "rejected %i out of %i generated pose hypotheses.\n",
               this->getClassName().c_str(), ransac_iterations, num_rejections, ransac_iterations);
     PCL_DEBUG("[%s::computeTransformation] Minimum of estimated iterations: %i\n",
               this->getClassName().c_str(), estimated_iters);
-    return AlignmentResult{src_, tgt_, final_transformation, correspondences_, ransac_iterations, converged,
-                           t.getTimeSeconds()};
+
+    return AlignmentResult{src_, tgt_, final_tn, correspondences_, ransac_iterations, converged, t.getTimeSeconds()};
 }

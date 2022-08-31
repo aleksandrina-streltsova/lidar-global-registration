@@ -4,6 +4,7 @@
 #include <array>
 #include <pcl/common/io.h>
 #include <pcl/common/transforms.h>
+#include <pcl/io/ply_io.h>
 
 #include "analysis.h"
 #include "feature_analysis.h"
@@ -20,26 +21,18 @@ const std::string DEBUG = "debug";
 std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-    std::optional<Eigen::Matrix4f> transformation_gt;
+    std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
-    std::string src_path = config.get<std::string>("source").value();
-    std::string tgt_path = config.get<std::string>("target").value();
-
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
     std::vector<AlignmentAnalysis> analyses;
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
+    for (auto &parameters: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         parameters.testname = testname;
-        parameters.ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt);
-        if (parameters.save_features && transformation_gt.has_value()) {
-            saveExtractedPointIds(src, tgt, transformation_gt.value(), parameters, tgt);
-        }
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(tn_gt);
         pcl::console::print_highlight("Starting alignment...\n");
         AlignmentResult result = alignPointClouds(src, tgt, parameters);
         AlignmentAnalysis analysis(result, parameters);
-        if (analysis.alignmentHasConverged()) {
-            analysis.start(transformation_gt, testname);
-        }
+        analysis.start(tn_gt, testname);
         analyses.push_back(analysis);
     }
     return analyses;
@@ -65,32 +58,19 @@ void estimateTestMetric(const YamlConfig &config) {
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-    std::optional<Eigen::Matrix4f> transformation_gt;
+    std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
     float min_voxel_size;
-    std::string src_path = config.get<std::string>("source").value();
-    std::string tgt_path = config.get<std::string>("target").value();
-
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
-    if (!transformation_gt) {
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    if (!tn_gt) {
         PCL_ERROR("Failed to read ground truth for %s!\n", testname.c_str());
     }
 
-    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+    for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         params.testname = testname;
-        std::vector<float> voxel_sizes;
-        std::vector<std::string> matching_ids;
-        PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
-        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src);
-        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt);
-        downsamplePointCloud(src, curr_src, voxel_size_src);
-        downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
         auto tn_name = config.get<std::string>("transformation", constructName(params, "transformation"));
-        auto transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
-
-        estimateNormalsPoints(params.normal_nr_points, curr_src, {nullptr}, params.vp_src, params.normals_available);
-        estimateNormalsPoints(params.normal_nr_points, curr_tgt, {nullptr}, params.vp_tgt, params.normals_available);
+        auto tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
         ScoreFunction score_function;
         if (params.score_id == METRIC_SCORE_MAE) {
             score_function = ScoreFunction::MAE;
@@ -103,8 +83,8 @@ void estimateTestMetric(const YamlConfig &config) {
         }
         CorrespondencesMetricEstimator estimator_corr(score_function);
         ClosestPlaneMetricEstimator estimator_icp(false, score_function);
-        pcl::CorrespondencesPtr correspondences;
-        std::vector<InlierPair> inlier_pairs_corr, inlier_pairs_icp;
+        CorrespondencesPtr correspondences;
+        Correspondences inliers_corr, inliers_icp;
         float error, metric_icp, metric_corr;
         bool success = false;
         std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
@@ -114,48 +94,153 @@ void estimateTestMetric(const YamlConfig &config) {
             exit(1);
         }
 
-        estimator_corr.setSourceCloud(curr_src);
-        estimator_corr.setTargetCloud(curr_tgt);
-        estimator_corr.setInlierThreshold(params.distance_thr);
+        estimator_corr.setSourceCloud(src);
+        estimator_corr.setTargetCloud(tgt);
         estimator_corr.setCorrespondences(correspondences);
 
-        estimator_icp.setSourceCloud(curr_src);
-        estimator_icp.setTargetCloud(curr_tgt);
-        estimator_icp.setInlierThreshold(params.distance_thr);
+        estimator_icp.setSourceCloud(src);
+        estimator_icp.setTargetCloud(tgt);
         estimator_icp.setCorrespondences(correspondences);
 
-
         fout << constructName(params, "metric", true, true, false);
-        std::array<Eigen::Matrix4f, 2> transformations{transformation, transformation_gt.value()};
+        std::array<Eigen::Matrix4f, 2> transformations{tn, tn_gt.value()};
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
-        for (auto &tn: transformations) {
-            estimator_corr.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_corr, error, metric_corr, rand);
-            estimator_icp.buildInlierPairsAndEstimateMetric(tn, inlier_pairs_icp, error, metric_icp, rand);
+        for (auto &transformation: transformations) {
+            estimator_corr.buildInliersAndEstimateMetric(transformation, inliers_corr, error, metric_corr, rand);
+            estimator_icp.buildInliersAndEstimateMetric(transformation, inliers_icp, error, metric_icp, rand);
             fout << "," << metric_corr << "," << metric_icp;
-            fout << "," << inlier_pairs_corr.size() << "," << inlier_pairs_icp.size();
+            fout << "," << inliers_corr.size() << "," << inliers_icp.size();
         }
         fout << "\n";
+    }
+}
+
+void calculateSurfaceArea(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                          const std::string &name) {
+
+    // Create search tree*
+    pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>);
+    tree->setInputCloud(pcd);
+
+    // Initialize objects
+    pcl::GreedyProjectionTriangulation<PointN> gp3;
+    pcl::PolygonMesh triangles;
+
+    // Set the maximum distance between connected points (maximum edge length)
+    gp3.setSearchRadius(5 * parameters.distance_thr);
+
+    // Set typical values for the parameters
+    gp3.setMu(2.5);
+    gp3.setMaximumNearestNeighbors(100);
+    gp3.setMaximumSurfaceAngle(M_PI / 4); // 45 degrees
+    gp3.setMinimumAngle(M_PI / 18); // 10 degrees
+    gp3.setMaximumAngle(2 * M_PI / 3); // 120 degrees
+    gp3.setNormalConsistency(false);
+
+    // Get result
+    gp3.setInputCloud(pcd);
+    gp3.setSearchMethod(tree);
+    gp3.reconstruct(triangles);
+
+    // Additional vertex information
+    std::vector<int> parts = gp3.getPartIDs();
+    std::vector<int> states = gp3.getPointStates();
+
+    pcl::io::savePLYFileBinary(constructPath(parameters.testname, name), triangles);
+}
+
+void compareOverlaps(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                     const Eigen::Matrix4f &transformation, const Eigen::Matrix4f &transformation_gt,
+                     const AlignmentParameters &parameters) {
+    std::vector<Eigen::Matrix4f> tns = {transformation, transformation_gt};
+    pcl::KdTreeFLANN<PointN> tree_tgt;
+    tree_tgt.setInputCloud(tgt);
+    int count[2] = {0, 0};
+    float weighted_count[2] = {0.f, 0.f};
+    for (int idx_tn = 0; idx_tn < 2; ++idx_tn) {
+        PointNCloud::Ptr src_aligned(new PointNCloud), overlap(new PointNCloud);
+        auto tn = tns[idx_tn];
+        pcl::transformPointCloudWithNormals(*src, *src_aligned, tn);
+        pcl::KdTreeFLANN<PointN> tree_src_aligned;
+        tree_src_aligned.setInputCloud(src_aligned);
+        pcl::Indices nn_indices;
+        std::vector<float> nn_sqr_dists;
+        for (int is_source = 1; is_source >= 0; --is_source) {
+            const auto &pcd1 = is_source ? src_aligned : tgt;
+            const auto &pcd2 = is_source ? tgt : src_aligned;
+            const auto &tree2 = is_source ? tree_tgt : tree_src_aligned;
+            std::vector<bool> is_in_overlap(pcd1->size(), false);
+            PointN nearest_point;
+#pragma omp parallel for default(none) firstprivate(idx_tn, nn_indices, nn_sqr_dists, parameters, nearest_point) shared(tree2, pcd1, pcd2, is_in_overlap)
+            for (int i = 0; i < pcd1->size(); ++i) {
+                tree2.nearestKSearch(*pcd1, i, 1, nn_indices, nn_sqr_dists);
+                nearest_point = pcd2->points[nn_indices[0]];
+                float dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                                (nearest_point.getVector3fMap() -
+                                                 pcd1->points[i].getVector3fMap()));
+                // normal can be invalid
+                dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+                if (dist_to_plane < parameters.distance_thr) {
+                    is_in_overlap[i] = true;
+                }
+            }
+            for (int i = 0; i < pcd1->size(); ++i) {
+                if (is_in_overlap[i]) {
+                    overlap->push_back(pcd1->points[i]);
+                }
+            }
+        }
+        count[idx_tn] = overlap->size();
+        auto densities = calculateSmoothedDensities(overlap);
+        for (int i = 0; i < densities.size(); ++i) {
+            weighted_count[idx_tn] += densities[i] * densities[i];
+        }
+        savePointCloudWithCorrespondences(overlap, {}, {}, {}, {}, parameters, Eigen::Matrix4f::Identity(),
+                                          idx_tn == 0);
+//        calculateSurfaceArea(overlap, parameters, idx_tn == 0 ? "incorrect" : "correct");
+    }
+
+    std::cerr << "\tincorrect hypothesis: " << count[0] << " points, " << weighted_count[0] << "weighted points\n";
+    std::cerr << "\t  correct hypothesis: " << count[1] << " points, " << weighted_count[1] << "weighted points\n";
+}
+
+void compareHypotheses(const YamlConfig &config) {
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
+    std::optional<Eigen::Matrix4f> tn_gt;
+    std::string testname;
+    float min_voxel_size;
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    if (!tn_gt) {
+        PCL_ERROR("Failed to read ground truth for %s!\n", testname.c_str());
+    }
+
+    for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
+        params.testname = testname;
+        auto tn_name = constructName(params, "tn");
+        auto tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
+        saveTemperatureMaps(src, tgt, "temperature_gt", params, params.distance_thr, tn_gt.value());
+        saveTemperatureMaps(src, tgt, "temperature", params, params.distance_thr, tn);
+        compareOverlaps(src, tgt, tn, tn_gt.value(), params);
     }
 }
 
 void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_aligned(new PointNCloud), src_aligned_gt(new PointNCloud);
-    pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
-    pcl::CorrespondencesPtr correct_correspondences(new pcl::Correspondences);
-    std::vector<InlierPair> inlier_pairs;
+    CorrespondencesPtr correspondences(new Correspondences);
+    CorrespondencesPtr correct_correspondences(new Correspondences);
+    Correspondences inliers;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-    Eigen::Matrix4f transformation;
-    std::optional<Eigen::Matrix4f> transformation_gt;
+    Eigen::Matrix4f tn;
+    std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
     float min_voxel_size, error;
-    std::string src_path = config.get<std::string>("source").value();
-    std::string tgt_path = config.get<std::string>("target").value();
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
 
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
-
-    for (auto &params: getParametersFromConfig(config, fields_src, fields_tgt)) {
+    for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         params.testname = testname;
         bool success = false;
         std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
@@ -164,49 +249,63 @@ void generateDebugFiles(const YamlConfig &config) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", params.testname.c_str());
             exit(1);
         }
-        PointNCloud::Ptr curr_src(new PointNCloud), curr_tgt(new PointNCloud);
         pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
-        float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src);
-        float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt);
-        downsamplePointCloud(src, curr_src, voxel_size_src);
-        downsamplePointCloud(tgt, curr_tgt, voxel_size_tgt);
-        transformation = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                                           constructName(params, "transformation"));
+        tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
+                               constructName(params, "tn"));
         float error_thr = params.distance_thr;
-        estimateNormalsPoints(params.normal_nr_points, curr_src, {nullptr}, params.vp_src, params.normals_available);
-        estimateNormalsPoints(params.normal_nr_points, curr_tgt, {nullptr}, params.vp_tgt, params.normals_available);
-
-        indices_src = detectKeyPoints(curr_src, params);
-        indices_tgt = detectKeyPoints(curr_tgt, params);
+        indices_src = detectKeyPoints(src, params, params.iss_radius_src);
+        indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
 
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
         auto metric_estimator = getMetricEstimatorFromParameters(params);
-        metric_estimator->setSourceCloud(curr_src);
-        metric_estimator->setTargetCloud(curr_tgt);
-        metric_estimator->setInlierThreshold(params.distance_thr);
+        metric_estimator->setSourceCloud(src);
+        metric_estimator->setTargetCloud(tgt);
         metric_estimator->setCorrespondences(correspondences);
-        metric_estimator->buildInlierPairs(transformation, inlier_pairs, error, rand);
-        if (transformation_gt.has_value()) {
-            buildCorrectCorrespondences(curr_src, curr_tgt, *correspondences, *correct_correspondences,
-                                        transformation_gt.value(), error_thr);
-            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params);
-            saveCorrespondences(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params, true);
-            saveCorrespondenceDistances(curr_src, curr_tgt, *correspondences, transformation_gt.value(), params);
-            saveColorizedPointCloud(curr_src, indices_src, *correspondences, *correct_correspondences, inlier_pairs,
-                                    params, transformation_gt.value(), true);
-            saveTemperatureMaps(curr_src, curr_tgt, "temperature_gt", params, error_thr, transformation_gt.value());
-            saveTemperatureMaps(src, tgt, "temperature_gt_fullsize", params, error_thr, transformation_gt.value(), params.normals_available);
+        metric_estimator->buildInliers(tn, inliers, error, rand);
+        if (tn_gt.has_value()) {
+            buildCorrectCorrespondences(src, tgt, *correspondences, *correct_correspondences, tn_gt.value());
+//            saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params);
+//            saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params, true);
+//            saveCorrespondenceDistances(src, tgt, *correspondences, tn_gt.value(), params);
+            savePointCloudWithCorrespondences(src, indices_src, *correspondences, *correct_correspondences,
+                                              inliers, params, tn_gt.value(), true);
+//            saveTemperatureMaps(src, tgt, "temperature_gt", params, error_thr, tn_gt.value());
         }
-        saveColorizedPointCloud(curr_tgt, indices_tgt, *correspondences, *correct_correspondences, inlier_pairs,
-                                params, Eigen::Matrix4f::Identity(), false);
+        savePointCloudWithCorrespondences(tgt, indices_tgt, *correspondences, *correct_correspondences,
+                                          inliers, params, Eigen::Matrix4f::Identity(), false);
 
         if (params.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
             WeightFunction weight_function = getWeightFunction(params.weight_id);
-            auto weights = weight_function(NORMAL_NR_POINTS, curr_src);
-            saveColorizedWeights(curr_src, weights, "weights", params, transformation);
+            auto weights = weight_function(NORMAL_NR_POINTS, src);
+            saveColorizedWeights(src, weights, "weights", params, tn);
         }
-        saveTemperatureMaps(curr_src, curr_tgt, "temperature", params, error_thr, transformation);
-        saveTemperatureMaps(src, tgt, "temperature_fullsize", params, error_thr, transformation, params.normals_available);
+        saveTemperatureMaps(src, tgt, "temperature", params, error_thr, tn);
+    }
+}
+
+void analyzeKeyPoints(const YamlConfig &config) {
+    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    PointNCloud::Ptr subvoxel_kps_src(new PointNCloud), subvoxel_kps_tgt(new PointNCloud);
+    std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
+    std::optional<Eigen::Matrix4f> tn_gt;
+    std::string testname;
+    float min_voxel_size;
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    if (!tn_gt) {
+        PCL_ERROR("Failed to read ground truth for %s!\n", testname.c_str());
+    }
+    for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
+        params.testname = testname;
+        estimateNormalsPoints(params.normal_nr_points, src, {nullptr}, params.vp_src, params.normals_available);
+        estimateNormalsPoints(params.normal_nr_points, tgt, {nullptr}, params.vp_tgt, params.normals_available);
+        auto indices_src = detectKeyPoints(src, params, params.iss_radius_src, subvoxel_kps_src, true);
+        auto indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt, subvoxel_kps_tgt, true);
+        saveColorizedPointCloud(subvoxel_kps_src, tn_gt.value(), COLOR_RED, constructPath(params, "subvoxel_kps_src"));
+        saveColorizedPointCloud(subvoxel_kps_tgt, Eigen::Matrix4f::Identity(), COLOR_RED,
+                                constructPath(params, "subvoxel_kps_tgt"));
+        savePointCloudWithCorrespondences(src, indices_src, {}, {}, {}, params, tn_gt.value(), true);
+        savePointCloudWithCorrespondences(tgt, indices_tgt, {}, {}, {}, params, Eigen::Matrix4f::Identity(), false);
     }
 }
 
@@ -230,106 +329,55 @@ void measureTestResults(const YamlConfig &config) {
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-    std::optional<Eigen::Matrix4f> transformation_gt;
+    std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
     float min_voxel_size;
     int n_times = config.get<int>("n_times", 10);
-    std::string src_path = config.get<std::string>("source").value();
-    std::string tgt_path = config.get<std::string>("target").value();
-
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(), transformation_gt);
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt)) {
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    for (auto &parameters: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         parameters.fix_seed = false;
         parameters.testname = testname;
-        parameters.ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt);
-        if (parameters.save_features && transformation_gt.has_value()) {
-            saveExtractedPointIds(src, tgt, transformation_gt.value(), parameters, tgt);
+        parameters.ground_truth = std::optional<Eigen::Matrix4f>(tn_gt);
+        if (parameters.save_features && tn_gt.has_value()) {
+            saveExtractedPointIds(src, tgt, tn_gt.value(), parameters, tgt);
         }
         std::vector<float> rotation_errors;
         std::vector<float> translation_errors;
         std::vector<float> overlap_errors;
         std::vector<float> runtimes;
         int n_successful_times = 0;
-        if (parameters.alignment_id != ALIGNMENT_DEFAULT) n_times = 1;
+        if (parameters.alignment_id != ALIGNMENT_RANSAC) n_times = 1;
         for (int i = 0; i < n_times; ++i) {
             pcl::console::print_highlight("Starting alignment...\n");
             AlignmentResult result = alignPointClouds(src, tgt, parameters);
             AlignmentAnalysis analysis(result, parameters);
-            if (analysis.alignmentHasConverged()) {
-                analysis.start(transformation_gt, testname);
-                bool success = analysis.getOverlapError() < parameters.distance_thr;
-                if (success) {
-                    rotation_errors.push_back(analysis.getRotationError());
-                    translation_errors.push_back(analysis.getTranslationError());
-                    overlap_errors.push_back(analysis.getOverlapError());
-                    n_successful_times++;
-                }
+            analysis.start(tn_gt, testname);
+            bool success = analysis.alignmentHasConverged() && analysis.getOverlapError() < parameters.distance_thr;
+            if (success) {
+                rotation_errors.push_back(analysis.getRotationError());
+                translation_errors.push_back(analysis.getTranslationError());
+                overlap_errors.push_back(analysis.getOverlapError());
+                n_successful_times++;
+
             }
             runtimes.push_back(analysis.getRunningTime());
         }
         float success_rate = (float) n_successful_times / (float) n_times;
-        auto mean_rotation_error = calculate_mean<float>(rotation_errors);
-        auto std_rotation_error = calculate_standard_deviation<float>(rotation_errors);
-        auto mean_translation_error = calculate_mean<float>(translation_errors);
-        auto std_translation_error = calculate_standard_deviation<float>(translation_errors);
-        auto mean_overlap_error = calculate_mean<float>(overlap_errors);
-        auto std_overlap_error = calculate_standard_deviation<float>(overlap_errors);
-        auto mean_running_time = calculate_mean<float>(runtimes);
-        auto std_running_time = calculate_standard_deviation<float>(runtimes);
+        auto mean_rotation_error = calculateMean<float>(rotation_errors);
+        auto std_rotation_error = calculateStandardDeviation<float>(rotation_errors);
+        auto mean_translation_error = calculateMean<float>(translation_errors);
+        auto std_translation_error = calculateStandardDeviation<float>(translation_errors);
+        auto mean_overlap_error = calculateMean<float>(overlap_errors);
+        auto std_overlap_error = calculateStandardDeviation<float>(overlap_errors);
+        auto mean_running_time = calculateMean<float>(runtimes);
+        auto std_running_time = calculateStandardDeviation<float>(runtimes);
 
         fout << constructName(parameters, "measure") << "," << success_rate << ","
              << mean_rotation_error << "," << std_rotation_error << ","
              << mean_translation_error << "," << std_translation_error << ","
              << mean_overlap_error << "," << std_overlap_error << ","
              << mean_running_time << "," << std_running_time << "\n";
-    }
-}
-
-void runLoopTest(const YamlConfig &config) {
-    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
-    std::string filepath = constructPath("loop_test", "results", "csv", false);
-    bool file_exists = std::filesystem::exists(filepath);
-    std::fstream fout;
-    if (!file_exists) {
-        fout.open(filepath, std::ios_base::out);
-    } else {
-        fout.open(filepath, std::ios_base::app);
-    }
-    if (fout.is_open()) {
-        if (!file_exists) {
-            fout << "testname,r_err,t_err,pcd_err\n";
-        }
-    } else {
-        perror(("error while opening file " + filepath).c_str());
-    }
-    for (auto &parameters: getParametersFromConfig(config, {}, {})) {
-        PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-        std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
-        std::string testname;
-        Eigen::Matrix4f transformation_diff = Eigen::Matrix4f::Identity();
-        std::vector<std::string> pcd_paths = config.getVector<std::string>("clouds").value();
-        for (int i = 0; i < pcd_paths.size(); ++i) {
-            pcl::console::print_highlight("Loop test %u/%u...\n", i + 1, pcd_paths.size());
-            std::string src_path = pcd_paths[i];
-            std::string tgt_path = pcd_paths[(i + 1) % pcd_paths.size()];
-            std::optional<Eigen::Matrix4f> transformation_gt;
-            loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt);
-            loadTransformationGt(src_path, tgt_path, config.get<std::string>("ground_truth").value(),
-                                 transformation_gt);
-            parameters.testname = testname;
-            pcl::console::print_highlight("Starting alignment...\n");
-            AlignmentResult result = alignPointClouds(src, tgt, parameters);
-            AlignmentAnalysis analysis(result, parameters);
-            if (analysis.alignmentHasConverged()) {
-                analysis.start(transformation_gt, testname);
-            }
-            transformation_diff = analysis.getTransformation() * transformation_diff;
-        }
-        auto[r_err, t_err] = calculate_rotation_and_translation_errors(transformation_diff,
-                                                                       Eigen::Matrix4f::Identity());
-        float pcd_err = calculatePointCloudRmse(tgt, transformation_diff, Eigen::Matrix4f::Identity());
-        fout << constructName(parameters, testname) << "," << r_err << "," << t_err << "," << pcd_err << "\n";
     }
 }
 
@@ -346,10 +394,12 @@ void processTests(const std::vector<YAML::Node> &tests, const std::string &comma
             } else if (command == DEBUG) {
                 generateDebugFiles(config);
             }
+        } else if (test_type == "compare") {
+            compareHypotheses(config);
+        } else if (test_type == "keypoint") {
+            analyzeKeyPoints(config);
         } else if (test_type == "measure") {
             measureTestResults(config);
-        } else if (test_type == "loop") {
-            runLoopTest(config);
         } else {
             pcl::console::print_error("Test type %s isn't supported!\n", test_type.c_str());
         }

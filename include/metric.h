@@ -26,22 +26,22 @@ public:
 
     virtual float getInitialMetric() const = 0;
 
-    virtual bool isBetter(float new_value, float old_value) const = 0;
+    virtual float getMinTolerableMetric() const = 0;
 
-    virtual void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                                  float &rmse, UniformRandIntGenerator &rand) const = 0;
+    virtual void buildInliers(const Eigen::Matrix4f &transformation, Correspondences &inliers,
+                              float &rmse, UniformRandIntGenerator &rand) const = 0;
 
-    virtual void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                                   std::vector<InlierPair> &inlier_pairs,
-                                                   float &rmse, float &metric, UniformRandIntGenerator &rand) const = 0;
+    virtual void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                               Correspondences &inliers,
+                                               float &rmse, float &metric, UniformRandIntGenerator &rand) const = 0;
 
     virtual int estimateMaxIterations(const Eigen::Matrix4f &transformation, float confidence, int nr_samples) const;
 
-    virtual void buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
-                                         std::vector<InlierPair> &correct_inlier_pairs,
-                                         const Eigen::Matrix4f &transformation_gt) const;
+    virtual void buildCorrectInliers(const Correspondences &inliers,
+                                     Correspondences &correct_inliers,
+                                     const Eigen::Matrix4f &transformation_gt) const;
 
-    virtual inline void setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) {
+    virtual inline void setCorrespondences(const CorrespondencesConstPtr &correspondences) {
         correspondences_ = correspondences;
     }
 
@@ -53,16 +53,11 @@ public:
         tgt_ = tgt;
     }
 
-    virtual inline void setInlierThreshold(float inlier_threshold) {
-        inlier_threshold_ = inlier_threshold;
-    }
-
     virtual std::string getClassName() const = 0;
 
 protected:
-    pcl::CorrespondencesConstPtr correspondences_;
+    CorrespondencesConstPtr correspondences_;
     PointNCloud::ConstPtr src_, tgt_;
-    float inlier_threshold_;
     ScoreFunction score_function_;
 };
 
@@ -75,20 +70,46 @@ public:
         return 0.0;
     }
 
-    inline bool isBetter(float new_value, float old_value) const override {
-        return new_value > old_value;
+    inline float getMinTolerableMetric() const override {
+        return 0.0;
     }
 
-    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse, UniformRandIntGenerator &rand) const override;
+    void buildInliers(const Eigen::Matrix4f &transformation, Correspondences &inliers,
+                      float &rmse, UniformRandIntGenerator &rand) const override;
 
-    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                           std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
+    void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                       Correspondences &inliers,
+                                       float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     inline std::string getClassName() const override {
         return "CorrespondencesMetricEstimator";
     }
+};
+
+class UniformityMetricEstimator : public CorrespondencesMetricEstimator {
+public:
+    UniformityMetricEstimator() : CorrespondencesMetricEstimator(ScoreFunction::Constant) {};
+
+    inline float getInitialMetric() const override {
+        return 0.0;
+    }
+
+    inline float getMinTolerableMetric() const override {
+        return 0.3;
+    }
+
+    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+
+    void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                       Correspondences &inliers,
+                                       float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
+
+    inline std::string getClassName() const override {
+        return "CorrespondencesMetricEstimator";
+    }
+
+protected:
+    std::pair<PointN, PointN> bbox_;
 };
 
 class ClosestPlaneMetricEstimator : public MetricEstimator {
@@ -100,16 +121,16 @@ public:
         return 0.0;
     }
 
-    inline bool isBetter(float new_value, float old_value) const override {
-        return new_value > old_value;
+    inline float getMinTolerableMetric() const override {
+        return 0.0;
     }
 
-    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse, UniformRandIntGenerator &rand) const override;
+    void buildInliers(const Eigen::Matrix4f &transformation, Correspondences &inliers,
+                      float &rmse, UniformRandIntGenerator &rand) const override;
 
-    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                           std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
+    void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                       Correspondences &inliers,
+                                       float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
 
@@ -120,6 +141,7 @@ public:
 protected:
     pcl::KdTreeFLANN<PointN> tree_tgt_;
     bool sparse_;
+    float inlier_threshold_;
 };
 
 class WeightedClosestPlaneMetricEstimator : public MetricEstimator {
@@ -136,16 +158,16 @@ public:
         return 0.0;
     }
 
-    inline bool isBetter(float new_value, float old_value) const override {
-        return new_value > old_value;
+    inline float getMinTolerableMetric() const override {
+        return 0.0;
     }
 
-    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse, UniformRandIntGenerator &rand) const override;
+    void buildInliers(const Eigen::Matrix4f &transformation, Correspondences &inliers,
+                      float &rmse, UniformRandIntGenerator &rand) const override;
 
-    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                           std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
+    void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                       Correspondences &inliers,
+                                       float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 
@@ -160,7 +182,7 @@ protected:
     std::string weight_id_;
     std::vector<float> weights_;
     int nr_points_;
-    float weights_sum_ = 0.f;
+    float weights_sum_ = 0.f, inlier_threshold_;
     bool sparse_;
 };
 
@@ -173,24 +195,22 @@ public:
         return 0.0;
     }
 
-    inline bool isBetter(float new_value, float old_value) const override {
-        return new_value > old_value;
+    inline float getMinTolerableMetric() const override {
+        return 0.0;
     }
 
-    void buildInlierPairs(const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
-                          float &rmse, UniformRandIntGenerator &rand) const override;
+    void buildInliers(const Eigen::Matrix4f &transformation, Correspondences &inliers,
+                      float &rmse, UniformRandIntGenerator &rand) const override;
 
-    void buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                           std::vector<InlierPair> &inlier_pairs,
-                                           float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
+    void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                       Correspondences &inliers,
+                                       float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
-    void setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) override;
+    void setCorrespondences(const CorrespondencesConstPtr &correspondences) override;
 
     void setSourceCloud(const PointNCloud::ConstPtr &src) override;
 
     void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
-
-    void setInlierThreshold(float inlier_threshold) override;
 
     inline std::string getClassName() const override {
         return "CombinationMetricEstimator";

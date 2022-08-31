@@ -57,9 +57,8 @@ int main(int argc, char **argv) {
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
 
-    loadPointClouds(src_path, tgt_path, testname, src, tgt, fields_src, fields_tgt,
-                    config.get<float>("density"), min_voxel_size);
-    auto parameters = getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)[0];
+    loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
+    auto parameters = getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)[0];
     parameters.testname = testname;
     parameters.dir_path = TMP_DIR;
     fs::create_directory(TMP_DIR);

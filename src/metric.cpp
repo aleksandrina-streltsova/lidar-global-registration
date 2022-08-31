@@ -5,17 +5,18 @@
 
 #include "metric.h"
 #include "weights.h"
+#include "analysis.h"
 
 void buildClosestPlaneInliers(const PointNCloud &src,
                               const pcl::KdTreeFLANN<PointN> &tree_tgt,
-                              const Eigen::Matrix4f &transformation, std::vector<InlierPair> &inlier_pairs,
+                              const Eigen::Matrix4f &transformation, Correspondences &inliers,
                               float inlier_threshold, float &rmse, bool sparse, UniformRandIntGenerator &rand) {
-    inlier_pairs.clear();
-    inlier_pairs.reserve(src.size());
+    inliers.clear();
+    inliers.reserve(src.size());
     rmse = 0.0f;
     const PointNCloud &tgt = *tree_tgt.getInputCloud();
     int n = (int) ((sparse ? SPARSE_POINTS_FRACTION : 1.f) * (float) src.size());
-    float search_radius = 2.f * inlier_threshold;
+    float search_radius = DIST_TO_PLANE_COEFFICIENT * inlier_threshold;
     float dist_to_plane;
     Eigen::Vector3f point_transformed, nearest_point, normal;
     std::vector<bool> visited(src.size(), false);
@@ -30,69 +31,71 @@ void buildClosestPlaneInliers(const PointNCloud &src,
         // Find its nearest neighbor in the target
         pcl::Indices nn_indices(1);
         std::vector<float> nn_sqr_dists(1);
-        tree_tgt.nearestKSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
-                                1, nn_indices, nn_sqr_dists);
+        tree_tgt.radiusSearch(PointN(point_transformed.x(), point_transformed.y(), point_transformed.z()),
+                                search_radius, nn_indices, nn_sqr_dists, 1);
+        if (nn_indices.empty()) continue;
         nearest_point = tgt[nn_indices[0]].getVector3fMap();
         normal = tgt[nn_indices[0]].getNormalVector3fMap();
         dist_to_plane = std::fabs(normal.transpose() * (nearest_point - point_transformed));
         // Check if point is an inlier
         if (dist_to_plane < inlier_threshold) {
             // Update inliers and rmse
-            inlier_pairs.push_back({(int) idx, nn_indices[0], dist_to_plane});
+            inliers.push_back({(int) idx, nn_indices[0], dist_to_plane, inlier_threshold});
             rmse += dist_to_plane * dist_to_plane;
         }
     }
 
     // Calculate RMSE
-    if (!inlier_pairs.empty())
-        rmse = std::sqrt(rmse / static_cast<float>(inlier_pairs.size()));
+    if (!inliers.empty())
+        rmse = std::sqrt(rmse / static_cast<float>(inliers.size()));
     else
         rmse = std::numeric_limits<float>::max();
 }
 
-float calculateScore(const std::vector<InlierPair> &inlier_pairs, float threshold, ScoreFunction score_function,
+float calculateScore(const Correspondences &inliers, ScoreFunction score_function,
                      const std::vector<float> &weights = {}) {
     bool with_weights = !weights.empty();
     float score = 0.f, value;
-    for (const auto &ip: inlier_pairs) {
+    for (const auto &inlier: inliers) {
         switch (score_function) {
             case Constant:
                 value = 1.f;
                 break;
             case MAE:
-                value = std::fabs(ip.dist - threshold) / threshold;
+                value = std::fabs(inlier.distance - inlier.threshold) / inlier.threshold;
                 break;
             case MSE:
-                value = (ip.dist - threshold) * (ip.dist - threshold) / (threshold * threshold);
+                value = (inlier.distance - inlier.threshold) * (inlier.distance - inlier.threshold) /
+                        (inlier.threshold * inlier.threshold);
                 break;
             case EXP:
-                value = (std::exp(-ip.dist * ip.dist / (2 * threshold * threshold)));
+                value = (std::exp(-inlier.distance * inlier.distance / (2 * inlier.threshold * inlier.threshold)));
                 break;
         }
         if (with_weights) {
-            value *= weights[ip.idx_src];
+            value *= weights[inlier.index_query];
         }
         score += value;
     }
     return score;
 }
 
-void MetricEstimator::buildCorrectInlierPairs(const std::vector<InlierPair> &inlier_pairs,
-                                              std::vector<InlierPair> &correct_inlier_pairs,
-                                              const Eigen::Matrix4f &transformation_gt) const {
-    correct_inlier_pairs.clear();
-    correct_inlier_pairs.reserve(inlier_pairs.size());
+void MetricEstimator::buildCorrectInliers(const Correspondences &inliers,
+                                          Correspondences &correct_inliers,
+                                          const Eigen::Matrix4f &transformation_gt) const {
+    correct_inliers.clear();
+    correct_inliers.reserve(inliers.size());
 
     PointNCloud src_transformed;
     src_transformed.resize(src_->size());
     pcl::transformPointCloudWithNormals(*src_, src_transformed, transformation_gt);
 
-    for (const auto &ip: inlier_pairs) {
-        PointN source_point(src_transformed.points[ip.idx_src]);
-        PointN target_point(tgt_->points[ip.idx_tgt]);
+    for (const auto &inlier: inliers) {
+        PointN source_point(src_transformed.points[inlier.index_query]);
+        PointN target_point(tgt_->points[inlier.index_match]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
-        if (e < inlier_threshold_) {
-            correct_inlier_pairs.push_back(ip);
+        if (e < inlier.threshold) {
+            correct_inliers.push_back(inlier);
         }
     }
 }
@@ -106,7 +109,7 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
         Eigen::Vector4f target_point(0, 0, 0, 1);
         target_point.block(0, 0, 3, 1) = tgt_->points[corr.index_match].getArray3fMap();
         float e = (transformation * source_point - target_point).block(0, 0, 3, 1).norm();
-        if (e < inlier_threshold_) {
+        if (e < corr.threshold) {
             count_supporting_corrs++;
         }
     }
@@ -119,18 +122,18 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
     return static_cast<int>(std::min((double) std::numeric_limits<int>::max(), iterations));
 }
 
-void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
-                                                      std::vector<InlierPair> &inlier_pairs,
-                                                      float &rmse, UniformRandIntGenerator &) const {
-    inlier_pairs.clear();
-    inlier_pairs.reserve(correspondences_->size());
+void CorrespondencesMetricEstimator::buildInliers(const Eigen::Matrix4f &transformation,
+                                                  Correspondences &inliers,
+                                                  float &rmse, UniformRandIntGenerator &rand) const {
+    inliers.clear();
+    inliers.reserve(correspondences_->size());
     rmse = 0.0f;
 
     // For each point from correspondences in the source dataset
     Eigen::Vector4f source_point, target_point;
-    for (int i = 0; i < correspondences_->size(); ++i) {
-        int query_idx = correspondences_->operator[](i).index_query;
-        int match_idx = correspondences_->operator[](i).index_match;
+    for (const auto &corr: *correspondences_) {
+        int query_idx = corr.index_query;
+        int match_idx = corr.index_match;
         source_point = transformation * src_->points[query_idx].getVector4fMap();
         target_point = tgt_->points[match_idx].getVector4fMap();
 
@@ -138,61 +141,76 @@ void CorrespondencesMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &tra
         float dist = (source_point - target_point).norm();
 
         // Check if correspondence is an inlier
-        if (dist < inlier_threshold_) {
+        if (dist < corr.threshold) {
             // Update inliers and rmse
-            inlier_pairs.push_back({query_idx, match_idx, dist});
+            inliers.push_back({query_idx, match_idx, dist, corr.threshold});
             rmse += dist * dist;
         }
     }
 
     // Calculate RMSE
-    if (!inlier_pairs.empty())
-        rmse = std::sqrt(rmse / static_cast<float>(inlier_pairs.size()));
+    if (!inliers.empty())
+        rmse = std::sqrt(rmse / static_cast<float>(inliers.size()));
     else
         rmse = std::numeric_limits<float>::max();
 }
 
-void CorrespondencesMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                                                       std::vector<InlierPair> &inlier_pairs,
-                                                                       float &rmse, float &metric,
-                                                                       UniformRandIntGenerator &rand) const {
-    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_);
+void CorrespondencesMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                   Correspondences &inliers,
+                                                                   float &rmse, float &metric,
+                                                                   UniformRandIntGenerator &rand) const {
+    buildInliers(transformation, inliers, rmse, rand);
+    float score = calculateScore(inliers, this->score_function_);
     metric = score / (float) correspondences_->size();
+}
+
+void UniformityMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
+    src_ = src;
+    bbox_ = calculateBoundingBox<PointN>(src_);
+}
+
+void UniformityMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                              Correspondences &inliers,
+                                                              float &rmse, float &metric,
+                                                              UniformRandIntGenerator &rand) const {
+    buildInliers(transformation, inliers, rmse, rand);
+    if (inliers.empty()) metric = 0.0;
+    else metric = calculateCorrespondenceUniformity(src_, bbox_, inliers);
 }
 
 void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
     tgt_ = tgt;
     tree_tgt_.setInputCloud(tgt);
+    inlier_threshold_ = calculatePointCloudDensity(tgt_);
 }
 
-void ClosestPlaneMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
-                                                   std::vector<InlierPair> &inlier_pairs,
-                                                   float &rmse, UniformRandIntGenerator &rand) const {
-    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand);
+void ClosestPlaneMetricEstimator::buildInliers(const Eigen::Matrix4f &transformation,
+                                               Correspondences &inliers,
+                                               float &rmse, UniformRandIntGenerator &rand) const {
+    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inliers, inlier_threshold_, rmse, sparse_, rand);
 }
 
-void ClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                                                    std::vector<InlierPair> &inlier_pairs,
-                                                                    float &rmse, float &metric,
-                                                                    UniformRandIntGenerator &rand) const {
-    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_);
+void ClosestPlaneMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                Correspondences &inliers,
+                                                                float &rmse, float &metric,
+                                                                UniformRandIntGenerator &rand) const {
+    buildInliers(transformation, inliers, rmse, rand);
+    float score = calculateScore(inliers, this->score_function_);
     metric = score / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * (float) src_->size());
 }
 
-void WeightedClosestPlaneMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
-                                                           std::vector<InlierPair> &inlier_pairs,
-                                                           float &rmse, UniformRandIntGenerator &rand) const {
-    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inlier_pairs, inlier_threshold_, rmse, sparse_, rand);
+void WeightedClosestPlaneMetricEstimator::buildInliers(const Eigen::Matrix4f &transformation,
+                                                       Correspondences &inliers,
+                                                       float &rmse, UniformRandIntGenerator &rand) const {
+    buildClosestPlaneInliers(*src_, tree_tgt_, transformation, inliers, inlier_threshold_, rmse, sparse_, rand);
 }
 
-void WeightedClosestPlaneMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                                                            std::vector<InlierPair> &inlier_pairs,
-                                                                            float &rmse, float &metric,
-                                                                            UniformRandIntGenerator &rand) const {
-    buildInlierPairs(transformation, inlier_pairs, rmse, rand);
-    float score = calculateScore(inlier_pairs, inlier_threshold_, this->score_function_, weights_);
+void WeightedClosestPlaneMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                                        Correspondences &inliers,
+                                                                        float &rmse, float &metric,
+                                                                        UniformRandIntGenerator &rand) const {
+    buildInliers(transformation, inliers, rmse, rand);
+    float score = calculateScore(inliers, this->score_function_, weights_);
     metric = score / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * weights_sum_);
 }
 
@@ -209,28 +227,29 @@ void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::Cons
 void WeightedClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
     tgt_ = tgt;
     tree_tgt_.setInputCloud(tgt);
+    inlier_threshold_ = calculatePointCloudDensity(tgt_);
 }
 
-void CombinationMetricEstimator::buildInlierPairs(const Eigen::Matrix4f &transformation,
-                                                  std::vector<InlierPair> &inlier_pairs, float &rmse,
-                                                  UniformRandIntGenerator &rand) const {
-    correspondences_estimator.buildInlierPairs(transformation, inlier_pairs, rmse, rand);
+void CombinationMetricEstimator::buildInliers(const Eigen::Matrix4f &transformation,
+                                              Correspondences &inliers, float &rmse,
+                                              UniformRandIntGenerator &rand) const {
+    correspondences_estimator.buildInliers(transformation, inliers, rmse, rand);
 }
 
-void CombinationMetricEstimator::buildInlierPairsAndEstimateMetric(const Eigen::Matrix4f &transformation,
-                                                                   std::vector<InlierPair> &inlier_pairs,
-                                                                   float &rmse, float &metric,
-                                                                   UniformRandIntGenerator &rand) const {
+void CombinationMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
+                                                               Correspondences &inliers,
+                                                               float &rmse, float &metric,
+                                                               UniformRandIntGenerator &rand) const {
     float metric_cs, metric_cp;
     float rmse_cp;
-    std::vector<InlierPair> inlier_pairs_cp;
-    correspondences_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, rmse, metric_cs, rand);
-    closest_plane_estimator.buildInlierPairsAndEstimateMetric(transformation, inlier_pairs_cp, rmse_cp, metric_cp,
-                                                              rand);
+    Correspondences inliers_cp;
+    correspondences_estimator.buildInliersAndEstimateMetric(transformation, inliers, rmse, metric_cs, rand);
+    closest_plane_estimator.buildInliersAndEstimateMetric(transformation, inliers_cp, rmse_cp, metric_cp,
+                                                          rand);
     metric = metric_cs * metric_cp;
 }
 
-void CombinationMetricEstimator::setCorrespondences(const pcl::CorrespondencesConstPtr &correspondences) {
+void CombinationMetricEstimator::setCorrespondences(const CorrespondencesConstPtr &correspondences) {
     correspondences_ = correspondences;
     correspondences_estimator.setCorrespondences(correspondences);
     closest_plane_estimator.setCorrespondences(correspondences);
@@ -246,12 +265,6 @@ void CombinationMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt
     tgt_ = tgt;
     correspondences_estimator.setTargetCloud(tgt);
     closest_plane_estimator.setTargetCloud(tgt);
-}
-
-void CombinationMetricEstimator::setInlierThreshold(float inlier_threshold) {
-    inlier_threshold_ = inlier_threshold;
-    correspondences_estimator.setInlierThreshold(inlier_threshold);
-    closest_plane_estimator.setInlierThreshold(inlier_threshold);
 }
 
 // if sparse is true then only fixed percentage of points from source point cloud will be used
@@ -271,7 +284,9 @@ MetricEstimator::Ptr getMetricEstimatorFromParameters(const AlignmentParameters 
         }
         score_function = ScoreFunction::Constant;
     }
-    if (parameters.metric_id == METRIC_CLOSEST_PLANE) {
+    if (parameters.metric_id == METRIC_UNIFORMITY) {
+        return std::make_shared<UniformityMetricEstimator>();
+    } else if (parameters.metric_id == METRIC_CLOSEST_PLANE) {
         return std::make_shared<ClosestPlaneMetricEstimator>(sparse, score_function);
     } else if (parameters.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
         return std::make_shared<WeightedClosestPlaneMetricEstimator>(parameters.weight_id, NORMAL_NR_POINTS, sparse,

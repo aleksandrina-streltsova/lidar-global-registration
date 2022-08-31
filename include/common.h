@@ -20,8 +20,9 @@
 #include "config.h"
 #include "utils.h"
 #include "rops_custom_lrf.h"
+#include "shot_debug.h"
 
-#define SEED 566
+#define SEED 566ul
 #define COLOR_BEIGE 0xf8c471
 #define COLOR_BROWN 0xd68910
 #define COLOR_PURPLE 0xaf7ac5
@@ -43,8 +44,6 @@
 #define ALIGNMENT_SAVE_FEATURES false
 #define ALIGNMENT_BLOCK_SIZE 10000
 
-#define KEYPOINTS_ISS_COEF 0.5
-
 #define FEATURES_SCALE_FACTOR 2.0
 #define FEATURES_REESTIMATE_FRAMES true
 
@@ -57,11 +56,11 @@
 #define FEATURE_NR_POINTS 352
 #define NORMAL_NR_POINTS 30
 #define SPARSE_POINTS_FRACTION 0.01
-#define FINE_VOXEL_SIZE_COEFFICIENT 5
-
+#define FINE_VOXEL_SIZE_COEFFICIENT 2
+#define DIST_TO_PLANE_COEFFICIENT 2
 // Types
-typedef pcl::PointXYZ Point;
-typedef pcl::PointNormal PointN;
+typedef pcl::PointXYZI Point;
+typedef pcl::PointXYZINormal PointN;
 typedef pcl::ReferenceFrame PointRF;
 typedef pcl::PointXYZRGBNormal PointColoredN;
 typedef pcl::PointCloud<Point> PointCloud;
@@ -87,7 +86,7 @@ extern const std::string TRANSFORMATIONS_CSV;
 extern const std::string ITERATIONS_CSV;
 extern const std::string VERSION;
 extern const std::string SUBVERSION;
-extern const std::string ALIGNMENT_DEFAULT;
+extern const std::string ALIGNMENT_RANSAC;
 extern const std::string ALIGNMENT_GROR;
 extern const std::string ALIGNMENT_TEASER;
 extern const std::string KEYPOINT_ANY;
@@ -98,6 +97,7 @@ extern const std::string DESCRIPTOR_ROPS;
 extern const std::string DESCRIPTOR_USC;
 extern const std::string DEFAULT_LRF;
 extern const std::string METRIC_CORRESPONDENCES;
+extern const std::string METRIC_UNIFORMITY;
 extern const std::string METRIC_CLOSEST_PLANE;
 extern const std::string METRIC_WEIGHTED_CLOSEST_PLANE;
 extern const std::string METRIC_COMBINATION;
@@ -117,23 +117,35 @@ extern const std::string METRIC_SCORE_MAE;
 extern const std::string METRIC_SCORE_MSE;
 extern const std::string METRIC_SCORE_EXP;
 
-struct InlierPair {
-    int idx_src, idx_tgt;
-    float dist;
+struct Correspondence : pcl::Correspondence {
+    Correspondence() : pcl::Correspondence(), threshold(0.f) {}
+
+    Correspondence(int index_query, int index_match, float distance, float thr) :
+            pcl::Correspondence(index_query, index_match, distance), threshold(thr) {}
+
+    float threshold;
 };
+
+typedef std::vector<Correspondence> Correspondences;
+typedef std::shared_ptr<std::vector<Correspondence>> CorrespondencesPtr;
+typedef std::shared_ptr<const std::vector<Correspondence>> CorrespondencesConstPtr;
+
+pcl::Correspondences correspondencesToPCL(const Correspondences &correspondences);
 
 struct AlignmentParameters {
     bool reestimate_frames{FEATURES_REESTIMATE_FRAMES};
     int feature_nr_points{FEATURE_NR_POINTS}, normal_nr_points{NORMAL_NR_POINTS};
-    float edge_thr_coef{ALIGNMENT_EDGE_THR}, iss_coef{KEYPOINTS_ISS_COEF};
-    float distance_thr;
+    float edge_thr_coef{ALIGNMENT_EDGE_THR};
+    float distance_thr, iss_radius_src, iss_radius_tgt;
+    // optional parameter, if radius isn't set multi-scale matching is used
+    std::optional<float> feature_radius;
     float scale_factor{FEATURES_SCALE_FACTOR};
     float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
     int ratio_k{MATCHING_RATIO_K}, cluster_k{MATCHING_CLUSTER_K};
     int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
-    std::string alignment_id{ALIGNMENT_DEFAULT}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
+    std::string alignment_id{ALIGNMENT_RANSAC}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
     std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
     std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE}, func_id;
     int max_iterations;
@@ -153,24 +165,24 @@ struct AlignmentParameters {
 struct AlignmentResult {
     PointNCloud::ConstPtr src, tgt;
     Eigen::Matrix4f transformation;
-    pcl::CorrespondencesConstPtr correspondences;
+    CorrespondencesConstPtr correspondences;
     int iterations;
     bool converged;
 
-    // transformation estimation time, downsampling and normal estimation time, correspondence search time
-    double time_te, time_ds_ne{0.0}, time_cs{0.0};
+    // transformation estimation time, correspondence search time
+    double time_te, time_cs{0.0};
 };
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
+                                                         const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt);
 
-void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
-                     std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+void loadPointClouds(const YamlConfig &config, std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt);
 
-void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
-                          const std::string &csv_path, std::optional<Eigen::Matrix4f> &transformation_gt);
+void loadTransformationGt(const YamlConfig &config, const std::string &csv_path,
+                          std::optional<Eigen::Matrix4f> &transformation_gt);
 
 void loadViewpoint(const std::optional<std::string> &viewpoints_path,
                    const std::string &pcd_path, std::optional<Eigen::Vector3f> &viewpoint);
@@ -271,35 +283,14 @@ bool pointInBoundingBox(PointT point, PointT min_point, PointT max_point) {
            min_point.z < point.z && point.z < max_point.z;
 }
 
-template<typename PointT>
-float calculatePointCloudDensity(const typename pcl::PointCloud<PointT>::ConstPtr &pcd) {
-    pcl::KdTreeFLANN<PointT> tree;
-    tree.setInputCloud(pcd);
+float calculatePointCloudDensity(const typename pcl::PointCloud<PointN>::ConstPtr &pcd, float quantile = 0.8);
 
-    int n = (int) (SPARSE_POINTS_FRACTION * (float) pcd->size());
-    UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
-    std::vector<bool> visited(pcd->size(), false);
-
-    int k_neighbours = 8;
-    pcl::Indices match_indices;
-    std::vector<float> match_distances, distances(n);
-    for (int i = 0; i < n; ++i) {
-        int idx = rand() % (int) pcd->size();
-        while (visited[idx]) idx = (idx + 1) % (int) pcd->size();
-        visited[idx] = true;
-        tree.nearestKSearch(*pcd,
-                            idx,
-                            k_neighbours,
-                            match_indices,
-                            match_distances);
-        std::nth_element(match_distances.begin(), match_distances.begin() + k_neighbours / 2, match_distances.end());
-        distances[i] = std::sqrt(match_distances[k_neighbours / 2]);
-    }
-    std::nth_element(distances.begin(), distances.begin() + n / 2, distances.end());
-    return distances[n / 2];
-}
+std::vector<float> calculateSmoothedDensities(const PointNCloud::ConstPtr &pcd, int k = 2);
 
 float getAABBDiagonal(const PointNCloud::Ptr &pcd);
+
+void mergeOverlaps(const PointNCloud::ConstPtr &pcd1, const PointNCloud::ConstPtr &pcd2, PointNCloud::Ptr &dst,
+                   float distance_thr);
 
 void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            const std::optional<Eigen::Vector3f> &vp, bool normals_available);
@@ -307,7 +298,14 @@ void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const Poi
 void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            const std::optional<Eigen::Vector3f> &vp, bool normals_available);
 
-pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters);
+pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                                float iss_radius, PointNCloud::Ptr &subvoxel_kps, bool debug = false);
+
+inline pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                                       float iss_radius, bool debug = false) {
+    PointNCloud::Ptr subvoxel_kps{nullptr};
+    return detectKeyPoints(pcd, parameters, iss_radius, subvoxel_kps, debug);
+}
 
 void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
                              PointRFCloud::Ptr &frames, float radius_search, const AlignmentParameters &parameters);
@@ -318,7 +316,6 @@ void estimateFeatures(const PointNCloud::ConstPtr &pcd, const PointNCloud::Const
                       float radius_search, const AlignmentParameters &parameters) {
     throw std::runtime_error("Feature with proposed reference frame isn't supported!");
 }
-
 
 template<>
 inline void estimateFeatures<FPFH>(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
@@ -397,7 +394,7 @@ inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const Point
                                    pcl::PointCloud<SHOT>::Ptr &features,
                                    float radius_search, const AlignmentParameters &parameters) {
     // SHOT estimation object.
-    pcl::SHOTEstimationOMP<PointN, PointN, SHOT> shot;
+    SHOTEstimationDebug shot;
     shot.setInputCloud(pcd);
     shot.setSearchSurface(surface);
     shot.setInputNormals(surface);
@@ -415,12 +412,16 @@ inline void estimateFeatures<SHOT>(const PointNCloud::ConstPtr &pcd, const Point
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
 }
 
-void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
-                             const pcl::IndicesConstPtr &key_point_indices,
-                             const pcl::Correspondences &correspondences,
-                             const pcl::Correspondences &correct_correspondences,
-                             const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
-                             const Eigen::Matrix4f &transformation_gt, bool is_source);
+void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd, const Eigen::Matrix4f &transformation_gt,
+                             int color, const std::string &filepath);
+
+void savePointCloudWithCorrespondences(const PointNCloud::ConstPtr &pcd,
+                                       const pcl::IndicesConstPtr &key_point_indices,
+                                       const Correspondences &correspondences,
+                                       const Correspondences &correct_correspondences,
+                                       const Correspondences &inliers,
+                                       const AlignmentParameters &parameters,
+                                       const Eigen::Matrix4f &transformation_gt, bool is_source);
 
 void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &weights, const std::string &name,
                           const AlignmentParameters &parameters, const Eigen::Matrix4f &transformation_gt);
@@ -434,23 +435,23 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                          const Eigen::Matrix4f &transformation, bool normals_available = true);
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                         const pcl::Correspondences &correspondences,
+                         const Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse = false);
 
 void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                const pcl::Correspondences &correspondences,
-                                const pcl::Correspondences &correct_correspondences,
+                                const Correspondences &correspondences,
+                                const Correspondences &correct_correspondences,
                                 const Eigen::Matrix4f &transformation_gt,
                                 const AlignmentParameters &parameters, bool sparse = false);
 
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                 const pcl::Correspondences &correspondences,
+                                 const Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt,
                                  const AlignmentParameters &parameters);
 
-void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
-                              const pcl::Correspondences &correct_correspondences,
+void saveCorrespondencesDebug(const Correspondences &correspondences,
+                              const Correspondences &correct_correspondences,
                               const AlignmentParameters &parameters);
 
 void setPointColor(PointColoredN &point, int color);
@@ -476,10 +477,10 @@ bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
     return normal_x && normal_y && normal_z;
 }
 
-pcl::CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success);
+CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success);
 
 void saveCorrespondencesToCSV(const std::string &filepath,
                               const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                              const pcl::CorrespondencesConstPtr &correspondences);
+                              const CorrespondencesConstPtr &correspondences);
 
 #endif

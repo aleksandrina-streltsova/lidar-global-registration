@@ -3,20 +3,19 @@
 
 #include "common.h"
 
-AlignmentResult alignRansac(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                            const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignRansac(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                            const CorrespondencesPtr &correspondences,
                             const AlignmentParameters &parameters);
 
-AlignmentResult alignGror(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                          const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignGror(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                          const CorrespondencesPtr &correspondences,
                           const AlignmentParameters &parameters);
 
-AlignmentResult alignTeaser(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
-                            const pcl::CorrespondencesPtr &correspondences,
+AlignmentResult alignTeaser(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                            const CorrespondencesPtr &correspondences,
                             const AlignmentParameters &parameters);
 
-AlignmentResult alignPointClouds(const PointNCloud::Ptr &src_fullsize,
-                                 const PointNCloud::Ptr &tgt_fullsize,
+AlignmentResult alignPointClouds(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                  const AlignmentParameters &params);
 
 #endif

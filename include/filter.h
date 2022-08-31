@@ -16,6 +16,6 @@ void filterPointCloud(UniquenessFunction func, const std::string &func_identifie
                       const Eigen::Matrix4f &transformation_gt,
                       const AlignmentParameters &parameters, bool is_source);
 
-void filter_duplicate_points(PointNCloud::Ptr &pcd);
+void filterDuplicatePoints(PointNCloud::Ptr &pcd);
 
 #endif

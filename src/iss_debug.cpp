@@ -1,4 +1,15 @@
 #include "iss_debug.h"
+#include "quadric.h"
+
+void ISSKeypoint3DDebug::saveEigenValues(const AlignmentParameters &parameters) {
+    int n = this->input_->size();
+    std::vector<float> eigen_values(n);
+    for (int i = 0; i < n; ++i) {
+        eigen_values[i] = this->third_eigen_value_[i];
+    }
+    // TODO: use correct transformation
+    saveColorizedWeights(this->input_, eigen_values, "weights", parameters, Eigen::Matrix4f::Identity());
+}
 
 bool ISSKeypoint3DDebug::initCompute() {
     if (!PCLBase<PointN>::initCompute())
@@ -45,7 +56,8 @@ bool ISSKeypoint3DDebug::initCompute() {
             // Declare the search locator definition
             this->search_method_surface_ = [this](const PointCloudIn &cloud, pcl::index_t index, double radius,
                                                   pcl::Indices &k_indices, std::vector<float> &k_distances) {
-                int nr_neighbors = this->tree_->radiusSearch(cloud, index, radius, k_indices, k_distances, max_neighbors_);
+                int nr_neighbors = this->tree_->radiusSearch(cloud, index, radius, k_indices, k_distances,
+                                                             max_neighbors_);
                 if (nr_neighbors < min_required_neighbors_) {
                     return this->tree_->nearestKSearch(cloud, index, min_required_neighbors_, k_indices, k_distances);
                 }
@@ -154,4 +166,52 @@ bool ISSKeypoint3DDebug::initCompute() {
         return (false);
     }
     return (true);
+}
+
+void ISSKeypoint3DDebug::estimateSubVoxelKeyPoints(PointNCloud::Ptr &subvoxel_kps) {
+    rassert(subvoxel_kps, 2730954205409203)
+    pcl::NormalEstimation<PointN, PointN> normal_estimation;
+    if (!this->surface_) {  // in method compute surface_.reset is called, we need to set it again
+        this->surface_ = this->input_;
+    }
+    const auto &indices = this->keypoints_indices_->indices;
+    subvoxel_kps->resize(indices.size());
+    pcl::Indices nn_indices;
+    std::vector<float> nn_sqr_dists;
+    int count = 0;
+    for (int i = 0; i < std::min(10, (int) indices.size()); ++i) {
+//        this->searchForNeighbors(indices[i], this->salient_radius_, nn_indices, nn_sqr_dists);
+//        if (nn_indices.size() < 6) {
+//            PCL_DEBUG("[%s::estimateSubVoxelKeyPoints] key point has %i neighbors, "
+//                      "quadric coefficients can't be calculated",
+//                      this->getClassName().c_str(), nn_indices.size());
+//            subvoxel_kps->operator[](i) = this->input_->points[indices[i]];
+//        }
+        this->tree_->nearestKSearch(*this->input_, indices[i], 6, nn_indices, nn_sqr_dists);
+        Eigen::Vector3f normal;
+        float curvature;
+        normal_estimation.computePointNormal(*this->input_, nn_indices, normal.x(), normal.y(), normal.z(), curvature);
+        Eigen::MatrixX3d points;
+        Eigen::VectorXd values;
+        points.resize(nn_indices.size(), 3);
+        values.resize(nn_indices.size(), 1);
+        for (int j = 0; j < nn_indices.size(); ++j) {
+            points(j, 0) = this->input_->points[nn_indices[j]].x;
+            points(j, 1) = this->input_->points[nn_indices[j]].y;
+            points(j, 2) = this->input_->points[nn_indices[j]].z;
+            values(j) = this->third_eigen_value_[nn_indices[j]];
+        }
+        Eigen::Vector3f kp = estimateMaximumPoint(points, normal.cast<double>(), values, i).cast<float>();
+        if ((kp - this->input_->points[indices[i]].getVector3fMap()).norm() < this->salient_radius_) {
+            subvoxel_kps->operator[](i) = PointN{kp.x(), kp.y(), kp.z()};
+        } else {
+            subvoxel_kps->operator[](i) = PointN{1.0, 1.0, 1.0};
+            count++;
+        }
+        // TODO: normal estimation?
+    }
+    PCL_DEBUG("%i/%i unsuccessful attempts!!\n", count, indices.size());
+    if (this->input_ == this->surface_) {
+        this->surface_.reset();
+    }
 }

@@ -26,7 +26,7 @@ public:
     SampleConsensusPrerejectiveOMP() = delete;
 
     SampleConsensusPrerejectiveOMP(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                                   pcl::CorrespondencesConstPtr correspondences, AlignmentParameters parameters);
+                                   CorrespondencesConstPtr correspondences, AlignmentParameters parameters);
 
     AlignmentResult align();
 
@@ -36,7 +36,7 @@ public:
 
 protected:
     PointNCloud::ConstPtr src_, tgt_;
-    pcl::CorrespondencesConstPtr correspondences_;
+    CorrespondencesConstPtr correspondences_;
     AlignmentParameters parameters_;
 
     CorrespondenceRejectorPoly correspondence_rejector_poly_{};

@@ -1,7 +1,7 @@
 #ifndef REGISTRATION_UTILS_H
 #define REGISTRATION_UTILS_H
 
-#include <iostream>
+#include <fstream>
 #include <random>
 #include <functional>
 #include <stdexcept>
@@ -15,11 +15,14 @@ public:
     UniformRandIntGenerator(const int min, const int max, std::mt19937::result_type seed = std::random_device{}())
             : distribution_(min, max), generator_(seed) {}
 
-    int operator()() { return distribution_(generator_); }
-
+    int operator()() {
+        return distribution_(generator_);
+    }
+    int count = 0;
 protected:
     std::uniform_int_distribution<int> distribution_;
     std::mt19937 generator_;
+
 };
 
 template<typename T>
@@ -29,7 +32,7 @@ inline void combineHash(std::size_t &seed, const T &val) {
 }
 
 template<typename T>
-T calculate_combination_or_max(T n, T k) {
+T calculateCombinationOrMax(T n, T k) {
     double result = 1.0;
     for (int i = 0; i < k; ++i) {
         result *= n - i;
@@ -63,7 +66,7 @@ T quantile(double q, const std::vector<T> &values) {
 }
 
 template<typename T>
-T calculate_mean(const std::vector<T> &v) {
+T calculateMean(const std::vector<T> &v) {
     if (v.empty()) {
         return std::numeric_limits<float>::quiet_NaN();
     }
@@ -71,11 +74,11 @@ T calculate_mean(const std::vector<T> &v) {
 }
 
 template<typename T>
-T calculate_standard_deviation(const std::vector<T> &v) {
+T calculateStandardDeviation(const std::vector<T> &v) {
     if (v.empty()) {
         return std::numeric_limits<float>::quiet_NaN();
     }
-    T mean = calculate_mean(v);
+    T mean = calculateMean(v);
     T deviation = 0.0;
     for (T x: v) {
         deviation += (x - mean) * (x - mean);
@@ -88,7 +91,7 @@ void split(const std::string &str, std::vector<std::string> &tokens, const std::
 
 template<typename T>
 void saveVector(const std::vector<T> &vs, const std::string &filepath) {
-    std::fstream fout(filepath, std::ios_base::out);
+    std::ofstream fout(filepath);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
 

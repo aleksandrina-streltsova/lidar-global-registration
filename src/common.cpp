@@ -17,6 +17,7 @@
 #include "csv_parser.h"
 #include "io.h"
 #include "filter.h"
+#include "downsample.h"
 
 #define RF_MIN_ANGLE_RAD 0.04f
 
@@ -25,9 +26,9 @@ namespace fs = std::filesystem;
 const std::string DATA_DEBUG_PATH = fs::path("data") / fs::path("debug");
 const std::string TRANSFORMATIONS_CSV = "transformations.csv";
 const std::string ITERATIONS_CSV = "iterations.csv";
-const std::string VERSION = "14";
+const std::string VERSION = "15";
 const std::string SUBVERSION = "";
-const std::string ALIGNMENT_DEFAULT = "default";
+const std::string ALIGNMENT_RANSAC = "ransac";
 const std::string ALIGNMENT_GROR = "gror";
 const std::string ALIGNMENT_TEASER = "teaser";
 const std::string KEYPOINT_ANY = "any";
@@ -38,6 +39,7 @@ const std::string DESCRIPTOR_ROPS = "rops";
 const std::string DESCRIPTOR_USC = "usc";
 const std::string DEFAULT_LRF = "default";
 const std::string METRIC_CORRESPONDENCES = "correspondences";
+const std::string METRIC_UNIFORMITY = "uniformity";
 const std::string METRIC_CLOSEST_PLANE = "closest_plane";
 const std::string METRIC_WEIGHTED_CLOSEST_PLANE = "weighted_closest_plane";
 const std::string METRIC_COMBINATION = "combination";
@@ -56,6 +58,15 @@ const std::string METRIC_SCORE_CONSTANT = "constant";
 const std::string METRIC_SCORE_MAE = "mae";
 const std::string METRIC_SCORE_MSE = "mse";
 const std::string METRIC_SCORE_EXP = "exp";
+
+pcl::Correspondences correspondencesToPCL(const Correspondences &correspondences) {
+    pcl::Correspondences correspondences_pcl;
+    correspondences_pcl.reserve(correspondences.size());
+    for (const auto &corr: correspondences) {
+        correspondences_pcl.push_back(pcl::Correspondence{corr.index_query, corr.index_match, corr.distance});
+    }
+    return correspondences_pcl;
+}
 
 void printTransformation(const Eigen::Matrix4f &transformation) {
     pcl::console::print_info("    | %6.3f %6.3f %6.3f | \n", transformation(0, 0), transformation(0, 1),
@@ -187,10 +198,18 @@ void saveIterationsInfo(const std::string &csv_path, const std::string &name,
     } else {
         perror(("error while opening file " + csv_path).c_str());
     }
+}
 
+float calculatePointCloudDensity(const typename pcl::PointCloud<PointN>::ConstPtr &pcd, float quantile) {
+    rassert(quantile >= 0.f && quantile <= 1.f, 3487234892347);
+    std::vector<float> densities = calculateSmoothedDensities(pcd, 8);
+    int k = std::max(std::min((int) (quantile * (float) densities.size() - 1), (int) densities.size() - 1), 0);
+    std::nth_element(densities.begin(), densities.begin() + k, densities.end());
+    return densities[k];
 }
 
 std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &config,
+                                                         const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt) {
     std::vector<AlignmentParameters> parameters_container, new_parameters_container;
@@ -205,6 +224,8 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.save_features = config.get<bool>("save_features", ALIGNMENT_SAVE_FEATURES);
     parameters.bf_block_size = config.get<int>("block_size", ALIGNMENT_BLOCK_SIZE);
 
+    float density_src = calculatePointCloudDensity(src);
+    float density_tgt = calculatePointCloudDensity(tgt);
     bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
     parameters.normals_available = normals_available;
 
@@ -215,7 +236,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
 
     parameters_container.push_back(parameters);
 
-    auto alignment_ids = config.getVector<std::string>("alignment", ALIGNMENT_DEFAULT);
+    auto alignment_ids = config.getVector<std::string>("alignment", ALIGNMENT_RANSAC);
     for (const auto &id: alignment_ids) {
         for (auto ps: parameters_container) {
             ps.alignment_id = id;
@@ -235,10 +256,28 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto distance_thrs = config.getVector<float>("distance_thr").value();
-    for (float thr: distance_thrs) {
+    auto distance_thrs = config.getVector<float>("distance_thr");
+    if (distance_thrs.has_value()) {
+        for (float thr: distance_thrs.value()) {
+            for (auto ps: parameters_container) {
+                ps.distance_thr = thr;
+                new_parameters_container.push_back(ps);
+            }
+        }
+        std::swap(parameters_container, new_parameters_container);
+        new_parameters_container.clear();
+    } else {
+        float distance_thr = 4 * std::max(density_src, density_tgt);
+        pcl::console::print_highlight("Automatic distance threshold requested, choosing %0.7f.\n", distance_thr);
+        for (auto &ps: parameters_container) {
+            ps.distance_thr = distance_thr;
+        }
+    }
+
+    auto feature_radii = config.getVector<float>("feature_radius", 0.f);
+    for (float fr: feature_radii) {
         for (auto ps: parameters_container) {
-            ps.distance_thr = thr;
+            ps.feature_radius = fr <= 0 ? std::nullopt : std::optional(fr);
             new_parameters_container.push_back(ps);
         }
     }
@@ -275,15 +314,25 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto iss_coefs = config.getVector<float>("iss_coef", KEYPOINTS_ISS_COEF);
-    for (float ic: iss_coefs) {
-        for (auto ps: parameters_container) {
-            ps.iss_coef = ic;
-            new_parameters_container.push_back(ps);
+    auto iss_radii = config.getVector<float>("iss_radius");
+    if (iss_radii.has_value()) {
+        for (float ir: iss_radii.value()) {
+            for (auto ps: parameters_container) {
+                ps.iss_radius_src = ir;
+                ps.iss_radius_tgt = ir;
+                new_parameters_container.push_back(ps);
+            }
+        }
+        std::swap(parameters_container, new_parameters_container);
+        new_parameters_container.clear();
+    } else {
+        for (auto &ps: parameters_container) {
+            ps.iss_radius_src = 2.f * density_src;
+            ps.iss_radius_tgt = 2.f * density_tgt;
+            pcl::console::print_highlight("Automatic ISS radius requested, choosing %0.7f.\n", ps.iss_radius_src);
+            pcl::console::print_highlight("Automatic ISS radius requested, choosing %0.7f.\n", ps.iss_radius_tgt);
         }
     }
-    std::swap(parameters_container, new_parameters_container);
-    new_parameters_container.clear();
 
     auto func_ids = config.getVector<std::string>("filter", "");
     for (const auto &id: func_ids) {
@@ -377,19 +426,42 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     return parameters_container;
 }
 
-void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
-                     std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
+void loadPointClouds(const YamlConfig &config, std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt) {
     pcl::console::print_highlight("Loading point clouds...\n");
 
+    std::string src_path = config.get<std::string>("source").value();
+    std::string tgt_path = config.get<std::string>("target").value();
     if (loadPLYFile<PointN>(src_path, *src, fields_src) < 0 ||
         loadPLYFile<PointN>(tgt_path, *tgt, fields_tgt) < 0) {
         pcl::console::print_error("Error loading src/tgt file!\n");
         exit(1);
     }
 
-    filter_duplicate_points(src);
-    filter_duplicate_points(tgt);
+    filterDuplicatePoints(src);
+    filterDuplicatePoints(tgt);
+
+    // store weight of each point in intensity field
+    // weights are re-calculated during downsampling
+    for (auto &p: src->points) {
+        p.intensity = 1.f;
+    }
+    for (auto &p: tgt->points) {
+        p.intensity = 1.f;
+    }
+
+    float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity(src);
+    float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity(tgt);
+    downsamplePointCloud(src, src, voxel_size_src);
+    downsamplePointCloud(tgt, tgt, voxel_size_tgt);
+
+    bool normals_available = pointCloudHasNormals<PointN>(fields_src) && pointCloudHasNormals<PointN>(fields_tgt);
+    std::optional<Eigen::Vector3f> vp_src, vp_tgt;
+    loadViewpoint(config.get<std::string>("viewpoints"), src_path, vp_src);
+    loadViewpoint(config.get<std::string>("viewpoints"), tgt_path, vp_tgt);
+    pcl::console::print_highlight("Estimating normals...\n");
+    estimateNormalsPoints(NORMAL_NR_POINTS, src, {nullptr}, vp_src, normals_available);
+    estimateNormalsPoints(NORMAL_NR_POINTS, tgt, {nullptr}, vp_tgt, normals_available);
 
     std::string src_filename = fs::path(src_path).filename();
     std::string tgt_filename = fs::path(tgt_path).filename();
@@ -397,8 +469,10 @@ void loadPointClouds(const std::string &src_path, const std::string &tgt_path,
                tgt_filename.substr(0, tgt_filename.find_last_of('.'));
 }
 
-void loadTransformationGt(const std::string &src_path, const std::string &tgt_path,
-                          const std::string &csv_path, std::optional<Eigen::Matrix4f> &transformation_gt) {
+void loadTransformationGt(const YamlConfig &config, const std::string &csv_path,
+                          std::optional<Eigen::Matrix4f> &transformation_gt) {
+    std::string src_path = config.get<std::string>("source").value();
+    std::string tgt_path = config.get<std::string>("target").value();
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
     transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
@@ -453,6 +527,24 @@ void updateMultivaluedCorrespondence(MultivaluedCorrespondence &corr, int query_
     }
 }
 
+std::vector<float> calculateSmoothedDensities(const PointNCloud::ConstPtr &pcd, int k) {
+    rassert(pcd->size() > 1 && k >= 2, 3458240390587502);
+    pcl::KdTreeFLANN<PointN> tree;
+    tree.setInputCloud(pcd);
+    std::vector<float> densities(pcd->size());
+
+    pcl::Indices nn_indices;
+    std::vector<float> nn_sqr_dists;
+#pragma omp parallel for default(none) firstprivate(nn_indices, nn_sqr_dists, k) shared(pcd, tree, densities)
+    for (int i = 0; i < pcd->size(); ++i) {
+        tree.nearestKSearch(*pcd, i, k, nn_indices, nn_sqr_dists);
+        densities[i] = std::sqrt(nn_sqr_dists[k - 1]);
+        tree.nearestKSearch(*pcd, nn_indices[1], k, nn_indices, nn_sqr_dists);
+        densities[i] = std::min(densities[i], std::sqrt(nn_sqr_dists[k - 1]));
+    }
+    return densities;
+}
+
 float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
     auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointN>(pcd);
 
@@ -460,6 +552,41 @@ float getAABBDiagonal(const PointNCloud::Ptr &pcd) {
     Eigen::Vector3f max_point(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
 
     return (max_point - min_point).norm();
+}
+
+void mergeOverlaps(const PointNCloud::ConstPtr &pcd1, const PointNCloud::ConstPtr &pcd2, PointNCloud::Ptr &dst,
+                   float distance_thr) {
+    pcl::Indices nn_indices;
+    std::vector<float> nn_sqr_dists;
+    dst->clear();
+    for (int first_is_reference = 0; first_is_reference < 2; ++first_is_reference) {
+        const auto &compared = first_is_reference ? pcd2 : pcd1;
+        const auto &reference = first_is_reference ? pcd1 : pcd2;
+        pcl::KdTreeFLANN<PointN> tree;
+        tree.setInputCloud(reference);
+        std::vector<bool> is_in_overlap(compared->size(), false);
+        PointN nearest_point;
+        float search_radius = DIST_TO_PLANE_COEFFICIENT * distance_thr;
+#pragma omp parallel for firstprivate(nn_indices, nn_sqr_dists, distance_thr, nearest_point, search_radius)\
+                         shared(tree, compared, reference, is_in_overlap) default(none)
+        for (int i = 0; i < compared->size(); ++i) {
+            tree.radiusSearch(*compared, i, search_radius, nn_indices, nn_sqr_dists, 1);
+            if (nn_indices.empty()) continue;
+            nearest_point = reference->points[nn_indices[0]];
+            float dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                            (nearest_point.getVector3fMap() - compared->points[i].getVector3fMap()));
+            // normal can be invalid
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+            if (dist_to_plane < distance_thr) {
+                is_in_overlap[i] = true;
+            }
+        }
+        for (int i = 0; i < compared->size(); ++i) {
+            if (is_in_overlap[i]) {
+                dst->push_back(compared->points[i]);
+            }
+        }
+    }
 }
 
 void postprocessNormals(PointNCloud::Ptr &pcd, bool normals_available) {
@@ -526,15 +653,16 @@ void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNClou
     postprocessNormals(pcd, normals_available);
 }
 
-pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters) {
+pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                                float iss_radius, PointNCloud::Ptr &subvoxel_kps, bool debug) {
     pcl::IndicesPtr indices(new pcl::Indices);
     if (parameters.keypoint_id == KEYPOINT_ISS) {
         PointNCloud key_points;
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         ISSKeypoint3DDebug iss_detector;
         iss_detector.setSearchMethod(tree);
-        iss_detector.setSalientRadius(parameters.iss_coef * parameters.distance_thr);
-        iss_detector.setNonMaxRadius(parameters.iss_coef * parameters.distance_thr);
+        iss_detector.setSalientRadius(iss_radius);
+        iss_detector.setNonMaxRadius(iss_radius);
         iss_detector.setThreshold21(0.975);
         iss_detector.setThreshold32(0.975);
         iss_detector.setMinNeighbors(4);
@@ -546,6 +674,8 @@ pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const Alignmen
             std::sort(indices->begin(), indices->end());
         }
         PCL_DEBUG("[detectKeyPoints] %d key points\n", indices->size());
+        if (debug) iss_detector.saveEigenValues(parameters);
+        if (subvoxel_kps) iss_detector.estimateSubVoxelKeyPoints(subvoxel_kps);
     } else {
         if (parameters.keypoint_id != KEYPOINT_ANY) {
             PCL_WARN("[detectKeyPoints] Detection method %s isn't supported, no detection method will be applied.\n",
@@ -623,12 +753,27 @@ void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud
     }
 }
 
-void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
-                             const pcl::IndicesConstPtr &key_point_indices,
-                             const pcl::Correspondences &correspondences,
-                             const pcl::Correspondences &correct_correspondences,
-                             const std::vector<InlierPair> &inlier_pairs, const AlignmentParameters &parameters,
-                             const Eigen::Matrix4f &transformation_gt, bool is_source) {
+void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd, const Eigen::Matrix4f &transformation_gt,
+                             int color, const std::string &filepath) {
+    PointNCloud pcd_aligned;
+    pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
+
+    PointColoredNCloud dst;
+    dst.resize(pcd->size());
+    for (int i = 0; i < pcd->size(); ++i) {
+        pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
+        setPointColor(dst.points[i], color);
+    }
+    pcl::io::savePLYFileBinary(filepath, dst);
+}
+
+void savePointCloudWithCorrespondences(const PointNCloud::ConstPtr &pcd,
+                                       const pcl::IndicesConstPtr &key_point_indices,
+                                       const Correspondences &correspondences,
+                                       const Correspondences &correct_correspondences,
+                                       const Correspondences &inliers,
+                                       const AlignmentParameters &parameters,
+                                       const Eigen::Matrix4f &transformation_gt, bool is_source) {
     PointNCloud pcd_aligned;
     pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
 
@@ -650,11 +795,11 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd,
             setPointColor(dst.points[correspondence.index_match], COLOR_RED);
         }
     }
-    for (const auto &ip: inlier_pairs) {
+    for (const auto &inlier: inliers) {
         if (is_source) {
-            setPointColor(dst.points[ip.idx_src], COLOR_BLUE);
+            setPointColor(dst.points[inlier.index_query], COLOR_BLUE);
         } else {
-            setPointColor(dst.points[ip.idx_tgt], COLOR_BLUE);
+            setPointColor(dst.points[inlier.index_match], COLOR_BLUE);
         }
     }
     for (const auto &correspondence: correct_correspondences) {
@@ -720,19 +865,23 @@ void calculateTemperatureMap(PointColoredNCloud::Ptr &compared,
     std::vector<float> nn_sqr_dists;
     float temperature;
     PointColoredN nearest_point;
+    float search_radius = DIST_TO_PLANE_COEFFICIENT * distance_max;
 
 #pragma omp parallel for default(none) \
     firstprivate(nn_indices, nn_sqr_dists, temperature, n, distance_max, nearest_point, \
-                 temperature_min, temperature_max, type) \
+                 temperature_min, temperature_max, type, search_radius) \
     shared(tree_reference, compared, reference, temperatures)
     for (int i = 0; i < n; ++i) {
-        tree_reference.nearestKSearch(*compared, i, 1, nn_indices, nn_sqr_dists);
-        nearest_point = reference->points[nn_indices[0]];
-        float dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
-                                        (nearest_point.getVector3fMap() -
-                                         compared->points[i].getVector3fMap()));
-        // normal can be invalid
-        dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+        tree_reference.radiusSearch(*compared, i, search_radius, nn_indices, nn_sqr_dists, 1);
+        float dist_to_plane = distance_max;
+        if (!nn_indices.empty()) {
+            nearest_point = reference->points[nn_indices[0]];
+            dist_to_plane = std::fabs(nearest_point.getNormalVector3fMap().transpose() *
+                                      (nearest_point.getVector3fMap() -
+                                       compared->points[i].getVector3fMap()));
+            // normal can be invalid
+            dist_to_plane = std::isfinite(dist_to_plane) ? dist_to_plane : nn_sqr_dists[0];
+        }
         if (dist_to_plane < distance_max) {
             if (type == TemperatureType::NormalDifference) {
                 float cos_normal_diff = nearest_point.getNormalVector3fMap().dot(
@@ -791,8 +940,9 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
     saveHistogram(distances_path_src, constructPath(params, name + "_histogram_src", "png"));
     saveHistogram(distances_path_tgt, constructPath(params, name + "_histogram_tgt", "png"));
 
-    pcl::io::savePLYFileBinary(constructPath(params, name + "_dists_src"), *src_colored);
-    pcl::io::savePLYFileBinary(constructPath(params, name + "_dists_tgt"), *tgt_colored);
+
+    pcl::io::savePLYFileASCII(constructPath(params, name + "_dists_src"), *src_colored);
+    pcl::io::savePLYFileASCII(constructPath(params, name + "_dists_tgt"), *tgt_colored);
 
     float normal_diff_min = 0;
     float normal_diff_max = M_PI / 2;
@@ -810,7 +960,7 @@ void saveTemperatureMaps(PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
 }
 
 void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t match_offset,
-                              const pcl::Correspondences &correspondences,
+                              const Correspondences &correspondences,
                               const std::string &filepath) {
     std::string filepath_tmp = filepath + "tmp";
     std::fstream fin(filepath, std::ios_base::in), fout(filepath_tmp, std::ios_base::out);
@@ -864,7 +1014,7 @@ void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t ma
 }
 
 void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                         const pcl::Correspondences &correspondences,
+                         const Correspondences &correspondences,
                          const Eigen::Matrix4f &transformation_gt,
                          const AlignmentParameters &parameters, bool sparse) {
     PointColoredNCloud::Ptr dst(new PointColoredNCloud);
@@ -907,8 +1057,8 @@ void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::Co
 }
 
 void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                const pcl::Correspondences &correspondences,
-                                const pcl::Correspondences &correct_correspondences,
+                                const Correspondences &correspondences,
+                                const Correspondences &correct_correspondences,
                                 const Eigen::Matrix4f &transformation_gt,
                                 const AlignmentParameters &parameters, bool sparse) {
     PointColoredNCloud::Ptr dst(new PointColoredNCloud);
@@ -954,7 +1104,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
 }
 
 void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                 const pcl::Correspondences &correspondences,
+                                 const Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "distances", "csv");
     std::fstream fout(filepath, std::ios_base::out);
@@ -973,8 +1123,8 @@ void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNC
     fout.close();
 }
 
-void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
-                              const pcl::Correspondences &correct_correspondences,
+void saveCorrespondencesDebug(const Correspondences &correspondences,
+                              const Correspondences &correct_correspondences,
                               const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "correspondences_debug", "csv");
     std::fstream fout(filepath, std::ios_base::out);
@@ -984,7 +1134,7 @@ void saveCorrespondencesDebug(const pcl::Correspondences &correspondences,
     std::unordered_set<int> correct_cs_set;
     std::transform(correct_correspondences.begin(), correct_correspondences.end(),
                    std::inserter(correct_cs_set, correct_cs_set.begin()),
-                   [](const pcl::Correspondence &corr) { return corr.index_query; });
+                   [](const Correspondence &corr) { return corr.index_query; });
     fout << "index_query,index_match,distance,is_correct\n";
     for (const auto &corr: correspondences) {
         fout << corr.index_query << "," << corr.index_match << "," << corr.distance << ",";
@@ -1044,15 +1194,20 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     std::string full_name = parameters.testname + "_" + name +
                             "_" + std::to_string(parameters.feature_nr_points) +
                             "_" + parameters.descriptor_id + "_" + (parameters.use_bfmatcher ? "bf" : "flann") +
-                            "_" + parameters.alignment_id + "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
+                            (with_metric ? "_" + parameters.alignment_id : "") +
+                            "_" + parameters.keypoint_id + "_" + parameters.lrf_id +
                             (with_metric ? "_" + parameters.metric_id + "_" + parameters.score_id : "") +
                             "_" + matching_id + "_" + std::to_string(parameters.randomness) +
                             (with_weights ? "_" + parameters.weight_id : "") +
                             "_" + std::to_string(parameters.normal_nr_points) +
                             "_" + std::to_string(parameters.reestimate_frames) +
-                            "_" + std::to_string(parameters.iss_coef) +
+                            "_" + std::to_string(parameters.iss_radius_src) +
+                            "_" + std::to_string(parameters.iss_radius_tgt) +
                             "_" + std::to_string(parameters.scale_factor) +
                             "_" + std::to_string(parameters.cluster_k);
+    if (parameters.feature_radius.has_value()) {
+        full_name += "_" + std::to_string(parameters.feature_radius.value());
+    }
     if (with_version) {
         full_name += "_" + VERSION;
     }
@@ -1062,9 +1217,9 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     return full_name;
 }
 
-pcl::CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success) {
+CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success) {
     bool file_exists = std::filesystem::exists(filepath);
-    pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
+    CorrespondencesPtr correspondences(new Correspondences);
     if (file_exists) {
         std::ifstream fin(filepath);
         if (fin.is_open()) {
@@ -1074,7 +1229,8 @@ pcl::CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, 
             while (std::getline(fin, line)) {
                 // query_idx, match_idx, distance, x_s, y_s, z_s, x_t, y_t, z_t
                 split(line, tokens, ",");
-                pcl::Correspondence corr{std::stoi(tokens[0]), std::stoi(tokens[1]), std::stof(tokens[2])};
+                Correspondence corr{std::stoi(tokens[0]), std::stoi(tokens[1]),
+                                    std::stof(tokens[2]), std::stof(tokens[3])};
                 correspondences->push_back(corr);
             }
             success = true;
@@ -1087,12 +1243,12 @@ pcl::CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, 
 
 void saveCorrespondencesToCSV(const std::string &filepath,
                               const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                              const pcl::CorrespondencesConstPtr &correspondences) {
+                              const CorrespondencesConstPtr &correspondences) {
     std::ofstream fout(filepath);
     if (fout.is_open()) {
-        fout << "query_idx,match_idx,distance,x_s,y_s,z_s,x_t,y_t,z_t\n";
+        fout << "query_idx,match_idx,distance,threshold,x_s,y_s,z_s,x_t,y_t,z_t\n";
         for (const auto &corr: *correspondences) {
-            fout << corr.index_query << "," << corr.index_match << "," << corr.distance << ",";
+            fout << corr.index_query << "," << corr.index_match << "," << corr.distance << "," << corr.threshold << ",";
             fout << src->points[corr.index_query].x << ","
                  << src->points[corr.index_query].y << ","
                  << src->points[corr.index_query].z << ",";

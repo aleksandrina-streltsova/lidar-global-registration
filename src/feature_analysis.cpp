@@ -33,17 +33,9 @@ std::vector<int> getPointIds(const PointNCloud::Ptr &all_points, const PointNClo
     return ids;
 }
 
-void saveExtractedPointIds(const PointNCloud::Ptr &src_fullsize, const PointNCloud::Ptr &tgt_fullsize,
+void saveExtractedPointIds(const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                            const Eigen::Matrix4f &transformation_gt,
                            const AlignmentParameters &parameters, const PointNCloud::Ptr &extracted_points) {
-    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
-    // Downsample
-    pcl::console::print_highlight("Downsampling...\n");
-    float voxel_size_src = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(src_fullsize);
-    float voxel_size_tgt = FINE_VOXEL_SIZE_COEFFICIENT * calculatePointCloudDensity<PointN>(tgt_fullsize);
-    downsamplePointCloud(src_fullsize, src, voxel_size_src);
-    downsamplePointCloud(tgt_fullsize, tgt, voxel_size_tgt);
-
     PointNCloud::Ptr src_aligned_gt(new PointNCloud);
 
     pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);

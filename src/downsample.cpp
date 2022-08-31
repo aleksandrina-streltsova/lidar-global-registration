@@ -8,10 +8,8 @@ void downsamplePointCloud(const PointNCloud::ConstPtr &pcd_fullsize, PointNCloud
     std::vector<PointN> points;
     Eigen::Vector3f voxel_size3 = Eigen::Vector3f(voxel_size, voxel_size, voxel_size);
     auto[min_point_AABB, max_point_AABB] = calculateBoundingBox<PointN>(pcd_fullsize);
-    Eigen::Vector3f voxel_min_bound =
-            Eigen::Vector3f(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z) - voxel_size3 * 0.5;
-    Eigen::Vector3f voxel_max_bound =
-            Eigen::Vector3f(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z) - voxel_size3 * 0.5;
+    Eigen::Vector3f voxel_min_bound = min_point_AABB.getVector3fMap() - voxel_size3 * 0.5;
+    Eigen::Vector3f voxel_max_bound = max_point_AABB.getVector3fMap() - voxel_size3 * 0.5;
     if (voxel_size * (float) std::numeric_limits<int>::max() < (voxel_max_bound - voxel_min_bound).maxCoeff()) {
         PCL_ERROR("[downsamplePointCloud] voxel_size is too small.");
     }

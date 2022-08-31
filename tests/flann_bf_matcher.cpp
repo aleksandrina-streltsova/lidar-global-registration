@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
 
-    for (auto &parameters: getParametersFromConfig(config, fields_src, fields_tgt, min_voxel_size)) {
+    for (auto &parameters: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt, min_voxel_size)) {
         std::cout << "descriptor id: " << parameters.descriptor_id << std::endl;
         auto descriptor_id = parameters.descriptor_id;
         if (descriptor_id == "fpfh") {

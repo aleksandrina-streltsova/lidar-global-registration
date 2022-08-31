@@ -53,9 +53,10 @@ int main() {
             0, 0, 0, 1;
     pcl::transformPointCloudWithNormals(*src, *src, transformation_gt.inverse());
     AlignmentParameters parameters{
-            .iss_coef = 1,
             .distance_thr = 0.1f,
+            .iss_radius = 0.1f,
             .bf_block_size = 200000,
+            .alignment_id = ALIGNMENT_GROR,
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
             .max_iterations = 1000,
@@ -66,9 +67,9 @@ int main() {
     };
     fs::create_directory(TMP_DIR);
 
-    std::vector<InlierPair> inlier_pairs;
+    pcl::Correspondences inliers;
     float metric, error;
-    auto alignment_result= alignPointClouds(src, tgt, parameters);
+    auto alignment_result = alignPointClouds(src, tgt, parameters);
     auto alignment_analysis = AlignmentAnalysis(alignment_result, parameters);
 
 //    PointNCloud src_aligned;
@@ -77,10 +78,11 @@ int main() {
 
     auto transformation = alignment_result.transformation;
     auto metric_estimator = alignment_analysis.getMetricEstimator();
-    metric_estimator->buildInlierPairsAndEstimateMetric(transformation, inlier_pairs, error, metric);
+    UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
+    metric_estimator->buildInliersAndEstimateMetric(transformation, inliers, error, metric, rand);
     alignment_analysis.start(transformation_gt, "corners");
 
-    assertClose("inlier ratio", 1.f, (float) inlier_pairs.size() / (float) src->size());
+    assertClose("inlier ratio", 1.f, (float) inliers.size() / (float) src->size());
     assertLess("metric error", error, 2.f / 3.f);
     assertLess("overlap rmse", alignment_analysis.getOverlapError(), 2.f / 3.f);
 //    assertClose("rotation error", 0.f, alignment_analysis.getRotationError());
