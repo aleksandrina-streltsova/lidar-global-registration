@@ -30,7 +30,7 @@ kig_011_10.ply,kig_001_0.ply,kig_011_10_kig_001_0,,,4,0.75,
 kig_012_11.ply,kig_011_10.ply,kig_012_11_kig_011_10,,,4,0.75,
 kig_013_12.ply,kig_011_10.ply,kig_013_12_kig_011_10,,,4,0.75,
 kig_015_14.ply,kig_014_13.ply,kig_015_14_kig_014_13,,,4,0.75,
-kig_016_15.ply,kig_014_13.ply,kig_016_15_kig_014_13,bells,2.0,4,0.75,1
+kig_016_15.ply,kig_014_13.ply,kig_016_15_kig_014_13,bells,3.0,4,0.75,1
 kig_016_15.ply,kig_015_14.ply,kig_016_15_kig_015_14,,,4,0.75,
 kig_017_16.ply,kig_014_13.ply,kig_017_16_kig_014_13,,,4,0.75,
 kig_017_16.ply,kig_015_14.ply,kig_017_16_kig_015_14,no,-1.0,4,0.75,
@@ -45,7 +45,7 @@ kig_021_20.ply,kig_019_18.ply,kig_021_20_kig_019_18,,,4,0.75,
 kig_021_20.ply,kig_020_19.ply,kig_021_20_kig_020_19,,,4,0.75,
 kig_022_21.ply,kig_020_19.ply,kig_022_21_kig_020_19,,,4,0.75,
 kig_022_21.ply,kig_021_20.ply,kig_022_21_kig_021_20,,,4,0.75,
-kig_023_22.ply,kig_022_21.ply,kig_023_22_kig_022_21,,2.0,4,0.75,1
+kig_023_22.ply,kig_022_21.ply,kig_023_22_kig_022_21,,3.0,4,0.75,1
 kig_024_23.ply,kig_020_19.ply,kig_024_23_kig_020_19,,,4,0.75,
 kig_024_23.ply,kig_022_21.ply,kig_024_23_kig_022_21,,,4,0.75,
 kig_024_23.ply,kig_023_22.ply,kig_024_23_kig_023_22,yes!!,2.0,4,0.75,1
@@ -153,7 +153,7 @@ kig_095_93.ply,kig_094_92.ply,kig_095_93_kig_094_92,chapel,2.0,4,0.75,
 kig_096_94.ply,kig_094_92.ply,kig_096_94_kig_094_92,fence fine,2.0,4,0.75,
 kig_096_94.ply,kig_095_93.ply,kig_096_94_kig_095_93,chapel,2.0,4,0.75,
 kig_097_95.ply,kig_094_92.ply,kig_097_95_kig_094_92,chapel,2.0,4,0.75,
-kig_097_95.ply,kig_095_93.ply,kig_097_95_kig_095_93,fence fine,2.0,4,0.75,1
+kig_097_95.ply,kig_095_93.ply,kig_097_95_kig_095_93,fence fine,3.0,4,0.75,1
 kig_097_95.ply,kig_096_94.ply,kig_097_95_kig_096_94,,,4,0.75,
 office2.ply,office1.ply,office2_office1,,3.0,2,0.75,
 office3.ply,office1.ply,office3_office1,,1.0,2,0.75,
@@ -180,29 +180,29 @@ trees3.ply,trees1.ply,trees3_trees1,,1.0,4,0.75,
 trees3.ply,trees2.ply,trees3_trees2,,1.0,4,0.75,
 trees4.ply,trees1.ply,trees4_trees1,,2.0,4,0.75,
 trees4.ply,trees2.ply,trees4_trees2,,2.0,4,0.75,1
-trees4.ply,trees3.ply,trees4_trees3,,2.0,4,0.75,
+trees4.ply,trees3.ply,trees4_trees3,,3.0,4,0.75,
 trees5.ply,trees1.ply,trees5_trees1,,3.0,4,0.75,
-trees5.ply,trees2.ply,trees5_trees2,,2.0,4,0.75,
+trees5.ply,trees2.ply,trees5_trees2,,3.0,4,0.75,
 trees5.ply,trees3.ply,trees5_trees3,,2.0,4,0.75,
 trees5.ply,trees4.ply,trees5_trees4,,1.0,4,0.75,
 trees6.ply,trees1.ply,trees6_trees1,,3.0,4,0.75,
-trees6.ply,trees2.ply,trees6_trees2,,2.0,4,0.75,1
-trees6.ply,trees3.ply,trees6_trees3,,2.0,4,0.75,
+trees6.ply,trees2.ply,trees6_trees2,,3.0,4,0.75,1
+trees6.ply,trees3.ply,trees6_trees3,,3.0,4,0.75,
 trees6.ply,trees4.ply,trees6_trees4,,1.0,4,0.75,
 trees6.ply,trees5.ply,trees6_trees5,,1.0,4,0.75,
-SubwayStation2.ply,SubwayStation4.ply,SubwayStation2_SubwayStation4,,2.0,4,1.5,0,1
-SubwayStation4.ply,SubwayStation5.ply,SubwayStation4_SubwayStation5,,2.0,4,1.5,0,1
-SubwayStation1.ply,SubwayStation3.ply,SubwayStation1_SubwayStation3,,1.0,4,1.5,0,1
-SubwayStation6.ply,SubwayStation5.ply,SubwayStation6_SubwayStation5,,2.0,4,1.5,0,1
-SubwayStation3.ply,SubwayStation5.ply,SubwayStation3_SubwayStation5,,2.0,4,1.5,1,1
-HighSpeedRailway7.ply,HighSpeedRailway6.ply,HighSpeedRailway7_HighSpeedRailway6,,2.0,9,1.5,
-HighSpeedRailway5.ply,HighSpeedRailway4.ply,HighSpeedRailway5_HighSpeedRailway4,,2.0,9,1.5,
-HighSpeedRailway4.ply,HighSpeedRailway3.ply,HighSpeedRailway4_HighSpeedRailway3,,2.0,9,1.5,
-HighSpeedRailway2.ply,HighSpeedRailway1.ply,HighSpeedRailway2_HighSpeedRailway1,,2.0,9,1.5,1
-HighSpeedRailway6.ply,HighSpeedRailway5.ply,HighSpeedRailway6_HighSpeedRailway5,,2.0,9,1.5,
-HighSpeedRailway3.ply,HighSpeedRailway2.ply,HighSpeedRailway3_HighSpeedRailway2,,2.0,9,1.5,
-HighSpeedRailway8.ply,HighSpeedRailway7.ply,HighSpeedRailway8_HighSpeedRailway7,,2.0,9,1.5,
-Mountain1.ply,Mountain2.ply,Mountain1_Mountain2,,2.0,4,1.5,
+SubwayStation2.ply,SubwayStation4.ply,SubwayStation2_SubwayStation4,,3.0,4,1.5,0,1
+SubwayStation4.ply,SubwayStation5.ply,SubwayStation4_SubwayStation5,,3.0,4,1.5,0,1
+SubwayStation1.ply,SubwayStation3.ply,SubwayStation1_SubwayStation3,,3.0,4,1.5,0,1
+SubwayStation6.ply,SubwayStation5.ply,SubwayStation6_SubwayStation5,,3.0,4,1.5,0,1
+SubwayStation3.ply,SubwayStation5.ply,SubwayStation3_SubwayStation5,,3.0,4,1.5,1,1
+HighSpeedRailway7.ply,HighSpeedRailway6.ply,HighSpeedRailway7_HighSpeedRailway6,,3.0,9,1.5,
+HighSpeedRailway5.ply,HighSpeedRailway4.ply,HighSpeedRailway5_HighSpeedRailway4,,3.0,9,1.5,
+HighSpeedRailway4.ply,HighSpeedRailway3.ply,HighSpeedRailway4_HighSpeedRailway3,,3.0,9,1.5,
+HighSpeedRailway2.ply,HighSpeedRailway1.ply,HighSpeedRailway2_HighSpeedRailway1,,3.0,9,1.5,1
+HighSpeedRailway6.ply,HighSpeedRailway5.ply,HighSpeedRailway6_HighSpeedRailway5,,3.0,9,1.5,
+HighSpeedRailway3.ply,HighSpeedRailway2.ply,HighSpeedRailway3_HighSpeedRailway2,,3.0,9,1.5,
+HighSpeedRailway8.ply,HighSpeedRailway7.ply,HighSpeedRailway8_HighSpeedRailway7,,3.0,9,1.5,
+Mountain1.ply,Mountain2.ply,Mountain1_Mountain2,,3.0,4,1.5,
 Mountain3.ply,Mountain4.ply,Mountain3_Mountain4,,2.0,4,1.5,
 Mountain5.ply,Mountain4.ply,Mountain5_Mountain4,,2.0,4,1.5,1
 Mountain6.ply,Mountain5.ply,Mountain6_Mountain5,,2.0,4,1.5,
@@ -246,7 +246,7 @@ Campus4.ply,Campus3.ply,Campus4_Campus3,,1.0,4,1.5,
 Campus6.ply,Campus5.ply,Campus6_Campus5,,1.0,4,1.5,
 Campus9.ply,Campus10.ply,Campus9_Campus10,,1.0,4,1.5,
 Campus2.ply,Campus3.ply,Campus2_Campus3,,1.0,4,1.5,
-Campus10.ply,Campus8.ply,Campus10_Campus8,,2.0,4,1.5,
+Campus10.ply,Campus8.ply,Campus10_Campus8,,3.0,4,1.5,
 Residence7.ply,Residence5.ply,Residence7_Residence5,,1.0,4,1.5,0,1
 Residence3.ply,Residence4.ply,Residence3_Residence4,,1.0,4,1.5,1,1
 Residence4.ply,Residence5.ply,Residence4_Residence5,,1.0,4,1.5,0,1

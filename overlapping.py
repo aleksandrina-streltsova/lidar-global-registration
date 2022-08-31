@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 from tqdm import tqdm
 from typing import List
-from open3d.cuda.pybind.geometry import PointCloud
+from open3d.cpu.pybind.geometry import PointCloud
 
 
 def calculate_overlap(pcd1: PointCloud, pcd2: PointCloud, voxel_size: float) -> float:

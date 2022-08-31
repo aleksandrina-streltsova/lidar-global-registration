@@ -2,20 +2,23 @@ import pandas as pd
 import os
 import click
 
-CONFIG_PATH = 'data/tests.yaml'
-OVERLAPPING_PATH = 'data/kizhi/downsampled/overlapping.csv'
+OVERLAPPING_PATH = '/media/agisoft/nas2_dataset/processing/polarnick/students/global_registration/potemkin/exported/downsampled_0.2/overlapping.csv'
 DIFFICULTY_LEVELS_PATH = 'data/test_levels.csv'
-# DIRPATHS = ['data/kizhi', 'data/office', 'data/arch', 'data/trees']
-DIRPATHS = ['data/1-SubwayStation', 'data/2-HighSpeedRailway', 'data/3-Mountain',
+
+DIRPATHS = ['data/kizhi', 'data/office', 'data/arch', 'data/trees',
+            'data/1-SubwayStation', 'data/2-HighSpeedRailway', 'data/3-Mountain',
             'data/5-Park', 'data/6-Campus', 'data/7-Residence', 'data/8-RiverBank',
-            'data/9-HeritageBuilding', 'data/10-UndergroundExcavation', 'data/11-Tunnel']
+            'data/9-HeritageBuilding', 'data/10-UndergroundExcavation', 'data/11-Tunnel',
+            '/media/agisoft/nas2_dataset/processing/polarnick/students/global_registration/potemkin/exported']
+
 PARAMETERS = '''
-        voxel_size: 0.04
-        keypoint: iss
-        density: 0.005
-        downsample: true
-        matching: lr
-        metric: correspondences
+        iteration: 1000000
+        metric: uniformity
+        lrf: gravity
+        bf: true
+        matching: cluster
+        alignment: ransac
+        block_size: 200000
 '''
 MIN_OVERLAP = 0.2
 
@@ -52,7 +55,6 @@ def generate_config(config_path, selected, level):
                 if os.path.exists(os.path.join(dirpath, f1)):
                     file.write('    - test:')
                     file.write(PARAMETERS)
-                    file.write(f'        distance_thr: {feature_radius / 7.5}\n')
                     file.write(f'        ground_truth: ' + os.path.join(dirpath, 'ground_truth.csv') + '\n')
                     file.write(f'        source: {os.path.join(dirpath, f1)}\n')
                     file.write(f'        target: {os.path.join(dirpath, f2)}\n')
