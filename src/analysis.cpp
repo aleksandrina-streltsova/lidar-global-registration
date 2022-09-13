@@ -107,9 +107,9 @@ float calculateCorrespondenceUniformity(const PointNCloud::ConstPtr &src, const 
     for (auto const &corr: correct_correspondences) {
         const auto &point = src->points[corr.index_query];
         int bin[3];
-        bin[0] = std::floor((point.x - min_point.x) / (max_point.x - min_point.x) * N_BINS);
-        bin[1] = std::floor((point.y - min_point.y) / (max_point.y - min_point.y) * N_BINS);
-        bin[2] = std::floor((point.z - min_point.z) / (max_point.z - min_point.z) * N_BINS);
+        bin[0] = std::min(std::floor((point.x - min_point.x) / (max_point.x - min_point.x) * N_BINS), N_BINS - 1.f);
+        bin[1] = std::min(std::floor((point.y - min_point.y) / (max_point.y - min_point.y) * N_BINS), N_BINS - 1.f);
+        bin[2] = std::min(std::floor((point.z - min_point.z) / (max_point.z - min_point.z) * N_BINS), N_BINS - 1.f);
         // count 3D points projected to YZ, ZX, XY and fallen in 2D bin
         for (int k = 0; k < 3; ++k) {
             count[k][bin[(k + 1) % 3]][bin[(k + 2) % 3]]++;

@@ -563,7 +563,7 @@ std::vector<MultivaluedCorrespondence> matchFLANN(const typename pcl::PointCloud
                                                   const typename pcl::PointCloud<FeatureT>::ConstPtr &train_features,
                                                   const AlignmentParameters &parameters) {
     auto point_representation = pcl::DefaultPointRepresentation<FeatureT>();
-    pcl::KdTreeFLANN<FeatureT> feature_tree(new pcl::KdTreeFLANN<FeatureT>);
+    pcl::KdTreeFLANN<FeatureT> feature_tree;
     feature_tree.setInputCloud(train_features);
     auto n = query_features->size();
     std::vector<MultivaluedCorrespondence> mv_correspondences(n, MultivaluedCorrespondence{});
