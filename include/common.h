@@ -140,14 +140,14 @@ struct AlignmentParameters {
     // optional parameter, if radius isn't set multi-scale matching is used
     std::optional<float> feature_radius;
     float scale_factor{FEATURES_SCALE_FACTOR};
-    float confidence{ALIGNMENT_CONFIDENCE}, inlier_fraction{ALIGNMENT_INLIER_FRACTION};
+    float confidence{ALIGNMENT_CONFIDENCE};
     bool use_bfmatcher{ALIGNMENT_USE_BFMATCHER};
     int bf_block_size{ALIGNMENT_BLOCK_SIZE};
     int ratio_k{MATCHING_RATIO_K}, cluster_k{MATCHING_CLUSTER_K};
     int randomness{ALIGNMENT_RANDOMNESS}, n_samples{ALIGNMENT_N_SAMPLES};
     std::string alignment_id{ALIGNMENT_RANSAC}, descriptor_id{DESCRIPTOR_SHOT}, keypoint_id{KEYPOINT_ISS};
     std::string metric_id{METRIC_COMBINATION}, matching_id{MATCHING_CLUSTER}, lrf_id{DEFAULT_LRF};
-    std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE}, func_id;
+    std::string weight_id{METRIC_WEIGHT_CONSTANT}, score_id{METRIC_SCORE_MSE};
     int max_iterations;
 
     bool save_features;
@@ -177,6 +177,8 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
                                                          const PointNCloud::Ptr &src, const PointNCloud::Ptr &tgt,
                                                          const std::vector<::pcl::PCLPointField> &fields_src,
                                                          const std::vector<::pcl::PCLPointField> &fields_tgt);
+
+void filterDuplicatePoints(PointNCloud::Ptr &pcd);
 
 void loadPointClouds(const YamlConfig &config, std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt);

@@ -174,12 +174,14 @@ void ISSKeypoint3DDebug::estimateSubVoxelKeyPoints(PointNCloud::Ptr &subvoxel_kp
     if (!this->surface_) {  // in method compute surface_.reset is called, we need to set it again
         this->surface_ = this->input_;
     }
-    const auto &indices = this->keypoints_indices_->indices;
+    auto &indices = this->keypoints_indices_->indices;
+    std::sort(indices.begin(), indices.end());
+    indices.resize(std::min(10, (int) indices.size()));
     subvoxel_kps->resize(indices.size());
     pcl::Indices nn_indices;
     std::vector<float> nn_sqr_dists;
     int count = 0;
-    for (int i = 0; i < std::min(10, (int) indices.size()); ++i) {
+    for (int i = 0; i < indices.size(); ++i) {
 //        this->searchForNeighbors(indices[i], this->salient_radius_, nn_indices, nn_sqr_dists);
 //        if (nn_indices.size() < 6) {
 //            PCL_DEBUG("[%s::estimateSubVoxelKeyPoints] key point has %i neighbors, "

@@ -29,48 +29,40 @@ void assertCorrespondencesEqual(int i,
 }
 
 template<typename FeatureT>
-void runTest(const PointNCloud::Ptr &src_fullsize,
-             const PointNCloud::Ptr &tgt_fullsize,
+void runTest(const PointNCloud::Ptr &src,
+             const PointNCloud::Ptr &tgt,
              const AlignmentParameters &params) {
-    PointNCloud::Ptr src_downsize(new PointNCloud), tgt_downsize(new PointNCloud);
-    // Downsample
-    pcl::console::print_highlight("Downsampling...\n");
-    float voxel_size = 0.05;
-    downsamplePointCloud(src_fullsize, src_downsize, voxel_size);
-    downsamplePointCloud(tgt_fullsize, tgt_downsize, voxel_size);
-
-    PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud), src_aligned(new PointNCloud);
+    PointNCloud::Ptr src_aligned(new PointNCloud);
+    PointNCloud::Ptr kps_src(new PointNCloud), kps_tgt(new PointNCloud);
     PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
     pcl::search::KdTree<PointN>::Ptr tree_src(new pcl::search::KdTree<PointN>), tree_tgt(new pcl::search::KdTree<PointN>);
 
-    estimateNormalsPoints(params.normal_nr_points, src_downsize, {nullptr}, params.vp_src, params.normals_available);
-    estimateNormalsPoints(params.normal_nr_points, tgt_downsize, {nullptr}, params.vp_tgt, params.normals_available);
-
     tree_src->setInputCloud(src);
     tree_tgt->setInputCloud(tgt);
 
     // Detect key points
-    auto indices_src = detectKeyPoints(src, params);
-    auto indices_tgt = detectKeyPoints(tgt, params);
+    auto indices_src = detectKeyPoints(src, params, params.iss_radius_src);
+    auto indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    estimateFeatures<FeatureT>(src, indices_src, features_src, params);
-    estimateFeatures<FeatureT>(tgt, indices_tgt, features_tgt, params);
+    pcl::copyPointCloud(*src, *indices_src, *kps_src);
+    pcl::copyPointCloud(*tgt, *indices_tgt, *kps_tgt);
+    rassert(params.feature_radius.has_value(), 237859320932);
+    estimateFeatures<FeatureT>(kps_src, src, features_src, params.feature_radius.value(), params);
+    estimateFeatures<FeatureT>(kps_tgt, tgt, features_tgt, params.feature_radius.value(), params);
 
     std::vector<MultivaluedCorrespondence> mv_correspondences_bf;
     std::vector<MultivaluedCorrespondence> mv_correspondences_flann;
     std::vector<MultivaluedCorrespondence> mv_correspondences_local;
 
     auto point_representation = std::shared_ptr<pcl::PointRepresentation<FeatureT>>(new pcl::DefaultPointRepresentation<FeatureT>);
-    int nr_dims = point_representation->getNumberOfDimensions();
     int threads = 1;
 #if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
     threads = omp_get_num_procs();
 #endif
-    int k_matches = params.randomness;
     AlignmentParameters params_local(params);
     params_local.guess = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
     params_local.match_search_radius = std::numeric_limits<float>::max();
@@ -94,6 +86,7 @@ void runTest(const PointNCloud::Ptr &src_fullsize,
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_flann[i]);
         assertCorrespondencesEqual(i, mv_correspondences_bf[i], mv_correspondences_local[i]);
     }
+    pcl::console::print_highlight("%d correspondences received after matching target features.\n", mv_correspondences_bf.size());
 }
 
 #endif

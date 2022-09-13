@@ -271,10 +271,11 @@ std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_
     int max_log2_radius = std::min(st_query.max_log2_radius, st_train.max_log2_radius);
     for (int log2_radius = min_log2_radius; log2_radius <= max_log2_radius; ++log2_radius) {
         if (parameters_.save_features && !inverse_tn) {
+            std::string scale = parameters_.feature_radius.has_value() ? "" : std::to_string(log2_radius);
             saveFeatures<FeatureT>(st_query.kps_features_multiscale[log2_radius - st_query.min_log2_radius], {},
-                                   parameters_, true, std::to_string(log2_radius));
+                                   parameters_, true, scale);
             saveFeatures<FeatureT>(st_train.kps_features_multiscale[log2_radius - st_train.min_log2_radius], {},
-                                   parameters_, false, std::to_string(log2_radius));
+                                   parameters_, false, scale);
         }
         int idx_query = log2_radius - st_query.min_log2_radius, idx_train = log2_radius - st_train.min_log2_radius;
         int nr_kps_query = st_query.kps_multiscale[idx_query]->size();

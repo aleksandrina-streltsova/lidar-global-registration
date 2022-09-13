@@ -16,7 +16,6 @@
 #include "iss_debug.h"
 #include "csv_parser.h"
 #include "io.h"
-#include "filter.h"
 #include "downsample.h"
 
 #define RF_MIN_ANGLE_RAD 0.04f
@@ -217,7 +216,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     parameters.edge_thr_coef = config.get<float>("edge_thr", ALIGNMENT_EDGE_THR);
     parameters.max_iterations = config.get<int>("iteration", std::numeric_limits<int>::max());
     parameters.confidence = config.get<float>("confidence", ALIGNMENT_CONFIDENCE);
-    parameters.inlier_fraction = config.get<float>("inlier_fraction", ALIGNMENT_INLIER_FRACTION);
     parameters.use_bfmatcher = config.get<bool>("bf", ALIGNMENT_USE_BFMATCHER);
     parameters.randomness = config.get<int>("randomness", ALIGNMENT_RANDOMNESS);
     parameters.n_samples = config.get<int>("n_samples", ALIGNMENT_N_SAMPLES);
@@ -334,16 +332,6 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
         }
     }
 
-    auto func_ids = config.getVector<std::string>("filter", "");
-    for (const auto &id: func_ids) {
-        for (auto ps: parameters_container) {
-            ps.func_id = id;
-            new_parameters_container.push_back(ps);
-        }
-    }
-    std::swap(parameters_container, new_parameters_container);
-    new_parameters_container.clear();
-
     auto descriptor_ids = config.getVector<std::string>("descriptor", DESCRIPTOR_SHOT);
     for (const auto &id: descriptor_ids) {
         for (auto ps: parameters_container) {
@@ -364,7 +352,7 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
 
-    auto metric_ids = config.getVector<std::string>("metric", METRIC_COMBINATION);
+    auto metric_ids = config.getVector<std::string>("metric", METRIC_UNIFORMITY);
     for (const auto &id: metric_ids) {
         for (auto ps: parameters_container) {
             ps.metric_id = id;
@@ -424,6 +412,18 @@ std::vector<AlignmentParameters> getParametersFromConfig(const YamlConfig &confi
     std::swap(parameters_container, new_parameters_container);
     new_parameters_container.clear();
     return parameters_container;
+}
+
+void filterDuplicatePoints(PointNCloud::Ptr &pcd) {
+    pcl::console::print_highlight("Point cloud size changed from %zu...", pcd->size());
+    std::unordered_set<PointN, PointHash, PointEqual<PointN>> unique_points;
+    unique_points.reserve(pcd->size());
+    std::copy(pcd->points.begin(), pcd->points.end(), std::inserter(unique_points, unique_points.begin()));
+    pcd->points.clear();
+    std::copy(unique_points.begin(), unique_points.end(), std::back_inserter(pcd->points));
+    pcd->width = unique_points.size();
+    pcd->height = 1;
+    pcl::console::print_highlight("to %zu\n", pcd->size());
 }
 
 void loadPointClouds(const YamlConfig &config, std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,

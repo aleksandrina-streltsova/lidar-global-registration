@@ -53,9 +53,6 @@ int main(int argc, char **argv) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     std::string testname;
-    float min_voxel_size;
-    std::string src_path = config.get<std::string>("source").value();
-    std::string tgt_path = config.get<std::string>("target").value();
 
     loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
     auto parameters = getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)[0];
@@ -63,28 +60,29 @@ int main(int argc, char **argv) {
     parameters.dir_path = TMP_DIR;
     fs::create_directory(TMP_DIR);
 
-    pcl::Indices key_point_indices_src, key_point_indices_tgt;
+    pcl::Indices indices_src, indices_tgt;
     Features features_src, features_tgt, key_point_features_src, key_point_features_tgt;
 
     parameters.keypoint_id = KEYPOINT_ANY;
     alignPointClouds(src, tgt, parameters);
-    readFeatures(features_src, key_point_indices_src, parameters, true);
-    readFeatures(features_tgt, key_point_indices_tgt, parameters, false);
+    readFeatures(features_src, indices_src, parameters, true);
+    readFeatures(features_tgt, indices_tgt, parameters, false);
 
     parameters.keypoint_id = KEYPOINT_ISS;
     alignPointClouds(src, tgt, parameters);
-    readFeatures(key_point_features_src, key_point_indices_src, parameters, true);
-    readFeatures(key_point_features_tgt, key_point_indices_tgt, parameters, false);
+    readFeatures(key_point_features_src, indices_src, parameters, true);
+    readFeatures(key_point_features_tgt, indices_tgt, parameters, false);
 
     fs::remove_all(TMP_DIR);
-
-    for (int i = 0; i < key_point_indices_src.size(); ++i) {
-        std::string prefix = "[" + std::to_string(i) + "/" + std::to_string(key_point_indices_src.size()) + "]";
-        assertFeaturesEqual(prefix,features_src[key_point_indices_src[i]], key_point_features_src[i]);
+    pcl::console::print_highlight("%d/%d and %d/%d key points extracted from source and target point clouds respectively.\n",
+                                  indices_src.size(), src->size(), indices_tgt.size(), tgt->size());
+    for (int i = 0; i < indices_src.size(); ++i) {
+        std::string prefix = "[" + std::to_string(i) + "/" + std::to_string(indices_src.size()) + "]";
+        assertFeaturesEqual(prefix, features_src[indices_src[i]], key_point_features_src[i]);
     }
-    for (int i = 0; i < key_point_indices_tgt.size(); ++i) {
-        std::string prefix = "[" + std::to_string(i) + "/" + std::to_string(key_point_indices_tgt.size()) + "]";
-        assertFeaturesEqual(prefix,features_tgt[key_point_indices_tgt[i]], key_point_features_tgt[i]);
+    for (int i = 0; i < indices_tgt.size(); ++i) {
+        std::string prefix = "[" + std::to_string(i) + "/" + std::to_string(indices_tgt.size()) + "]";
+        assertFeaturesEqual(prefix, features_tgt[indices_tgt[i]], key_point_features_tgt[i]);
     }
     return 0;
 }

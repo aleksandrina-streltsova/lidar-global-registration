@@ -30,12 +30,12 @@ int main() {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     for (int i = 0; i < CORNER_SIZE; ++i) {
         for (int j = 0; j < CORNER_SIZE; ++j) {
-            src->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i, 0 * SHIFT + 2.f * (float) j, 0.f});
-            src->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j});
-            src->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i, 2 * SHIFT + 2.f * (float) j});
-            tgt->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i + 1.f, 0 * SHIFT + 2.f * (float) j, 0.f});
-            tgt->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j + 1.f});
-            tgt->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i + 1.f, 2 * SHIFT + 2.f * (float) j});
+            src->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i, 0 * SHIFT + 2.f * (float) j, 0.f, 1.f});
+            src->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j, 1.f});
+            src->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i, 2 * SHIFT + 2.f * (float) j, 1.f});
+            tgt->points.emplace_back(PointN{0 * SHIFT + 2.f * (float) i + 1.f, 0 * SHIFT + 2.f * (float) j, 0.f, 1.f});
+            tgt->points.emplace_back(PointN{1 * SHIFT + 2.f * (float) i, 0.f, 1 * SHIFT + 2.f * (float) j + 1.f, 1.f});
+            tgt->points.emplace_back(PointN{0.f, 2 * SHIFT + 2.f * (float) i + 1.f, 2 * SHIFT + 2.f * (float) j, 1.f});
         }
     }
     src->width = src->points.size();
@@ -53,13 +53,14 @@ int main() {
             0, 0, 0, 1;
     pcl::transformPointCloudWithNormals(*src, *src, transformation_gt.inverse());
     AlignmentParameters parameters{
-            .distance_thr = 0.1f,
-            .iss_radius = 0.1f,
+            .distance_thr = 1.0f,
+            .iss_radius_src = 1.0f,
+            .iss_radius_tgt = 1.0f,
             .bf_block_size = 200000,
-            .alignment_id = ALIGNMENT_GROR,
+            .alignment_id = ALIGNMENT_RANSAC,
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
-            .max_iterations = 1000,
+            .max_iterations = 1000000,
             .ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt),
             .fix_seed = true,
             .normals_available = false,
@@ -67,7 +68,7 @@ int main() {
     };
     fs::create_directory(TMP_DIR);
 
-    pcl::Correspondences inliers;
+    Correspondences inliers;
     float metric, error;
     auto alignment_result = alignPointClouds(src, tgt, parameters);
     auto alignment_analysis = AlignmentAnalysis(alignment_result, parameters);

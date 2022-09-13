@@ -97,12 +97,6 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
           correspondences_(std::move(correspondences)),
           parameters_(std::move(parameters)) {
     // Some sanity checks first
-    if (parameters_.inlier_fraction < 0.0f || parameters_.inlier_fraction > 1.0f) {
-        PCL_ERROR("[%s::%s] ", this->getClassName().c_str(), this->getClassName().c_str());
-        PCL_ERROR("Illegal inlier fraction %f, must be in [0,1]!\n", parameters_.inlier_fraction);
-        return;
-    }
-
     if (parameters_.randomness <= 0) {
         PCL_ERROR("[%s::computeTransformation] ", this->getClassName().c_str());
         PCL_ERROR("Illegal correspondence randomness %d, must be > 0!\n", parameters_.randomness);

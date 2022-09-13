@@ -2,7 +2,6 @@
 #include "utils.h"
 #include "common.h"
 
-#include <ceres/ceres.h>
 #include <Eigen/Geometry>
 #include <utility>
 
@@ -11,43 +10,45 @@
 typedef Eigen::Matrix<double, 5, 1> Vector5; // elliptic paraboloid variables/coefficients
 typedef Eigen::Matrix<double, 6, 1> Vector6; // arbitrary quadric variables/coefficients
 
-class QuadraticCostFunction : public ceres::SizedCostFunction<1, 5> {
-public:
-    QuadraticCostFunction(Vector5 coefs, double value) : coefs_(std::move(coefs)), value_(value) {}
-
-    virtual ~QuadraticCostFunction() {}
-
-    virtual bool Evaluate(double const *const *x,
-                          double *residuals,
-                          double **jacobians) const {
-        residuals[0] = 0.0;
-        for (int j = 0; j < 5; ++j) {
-            residuals[0] += x[0][j] * coefs_[j];
+void placeCenterAtBeginning(Eigen::MatrixXd &points, Eigen::VectorXd &values) {
+    if (points.rows() == 0) return;
+    double max_value = std::numeric_limits<double>::lowest();
+    int index = -1;
+    for (int i = 0; i < points.rows(); ++i) {
+        if (values(i) > max_value) {
+            max_value = values(i);
+            index = i;
         }
-        residuals[0] -= value_;
-        // Compute the Jacobian if asked for.
-        if (jacobians != nullptr && jacobians[0] != nullptr) {
-            for (int j = 0; j < 5; ++j) {
-                jacobians[0][j] = coefs_[j];
-            }
-        }
-        return true;
     }
+    std::swap(points(index, 0), points(0, 0));
+    std::swap(points(index, 1), points(0, 1));
+    std::swap(points(index, 2), points(0, 2));
+    std::swap(values(index), points(0));
+}
 
-protected:
-    Vector5 coefs_;
-    double value_;
-};
-
+double estimateRadius(const Eigen::MatrixXd &xs, const Eigen::MatrixXd &ys) {
+    double radius2 = 0.0;
+    for (int i = 0; i < xs.rows(); ++i) {
+        radius2 = std::max(radius2, (xs(i) - xs(0)) * (xs(i) - xs(0)) + (ys(i) - ys(0)) * (ys(i) - ys(0)));
+    }
+    return std::sqrt(radius2);
+}
+std::tuple<double, double, double> estimateMaximumPointOnInterval(const Vector6 &coefs,
+                                                                  double x1, double y1, double x2, double y2) {
+    // p0 * x^2 + p1 * x * y + p2 * y^2 + p3 * x + p4 * y + p5
+    // (x - x1) / (x1 - x2) = (y - y1) / (y1 - y2)
+    // y = (x - x1) / (x1 - x2) * (y1 - y2) + y1
+    return {};
+}
 void saveSaliencies(const Eigen::MatrixXd &xs, const Eigen::MatrixXd &ys, const Eigen::VectorXd &values,
-                    const Vector5 &coefs, int index) {
-    std::cerr << coefs(0) << " " << coefs(1) << " " << coefs(2) << " " << coefs(3) << " " << coefs(4) << "\n";
+                    const Vector6 &coefs, int index) {
     PointNCloud::Ptr pcd(new PointNCloud), pcd_pd(new PointNCloud);
     double m = *std::max_element(values.data(), values.data() + values.size());
     double min_x = std::numeric_limits<double>::max(), max_x = std::numeric_limits<double>::lowest();
     double min_y = std::numeric_limits<double>::max(), max_y = std::numeric_limits<double>::lowest();
     for (int i = 0; i < values.size(); ++i) {
         pcd->push_back(PointN{(float)xs(i), (float)ys(i), (float) (values(i) / m / 200.0)});
+        pcd->push_back(PointN{(float)xs(i), (float)ys(i), 0.f});
         min_x = std::min(min_x, xs(i));
         min_y = std::min(min_y, ys(i));
         max_x = std::max(max_x, xs(i));
@@ -57,8 +58,9 @@ void saveSaliencies(const Eigen::MatrixXd &xs, const Eigen::MatrixXd &ys, const 
         for (int j = 0; j < 100; ++j) {
             float x = min_x + i * (max_x - min_x) / 100;
             float y = min_y + j * (max_y - min_y) / 100;
-            float z = (coefs(0) * x * x + coefs(1) * y * y + coefs(2) * x + coefs(3) * y + coefs(4)) / m / 200.0;
+            float z = (coefs(0) * x * x + coefs(1) * x * y + coefs(2) * y * y + coefs(3) * x + coefs(4) * y + coefs(5)) / m / 200.0;
             pcd_pd->push_back(PointN{x, y, z});
+            pcd_pd->push_back(PointN{x, y, 0.f});
         }
     }
     saveColorizedPointCloud(pcd, Eigen::Matrix4f::Identity(), COLOR_PURPLE, constructPath("saliencies", std::to_string(index), "ply", false));
@@ -67,46 +69,37 @@ void saveSaliencies(const Eigen::MatrixXd &xs, const Eigen::MatrixXd &ys, const 
 
 Eigen::Vector2d estimateMaximumPointEP(const Eigen::VectorXd &xs, const Eigen::VectorXd &ys,
                                        const Eigen::VectorXd &values, int index) {
-    Vector5 estimated_coefs;
-    estimated_coefs.setZero();
+    Vector6 estimated_coefs_cf;
+    Eigen::MatrixXd A;
+    A.resize(xs.rows(), 6);
+    for (int i = 0; i < xs.size(); ++i) {
+        A(i, 0) = xs(i) * xs(i);
+        A(i, 1) = xs(i) * ys(i);
+        A(i, 2) = ys(i) * ys(i);
+        A(i, 3) = xs(i);
+        A(i, 4) = ys(i);
+        A(i, 5) = 1.f;
+    }
+    estimated_coefs_cf = (A.transpose() * A).inverse() * A.transpose() * values;
+    std::cerr << "closed form coefs: " << estimated_coefs_cf.transpose() << "\n";
+    saveSaliencies(xs, ys, values, estimated_coefs_cf, index);
+    Eigen::Matrix2d A_;
+    A_ << 2 * estimated_coefs_cf(0), estimated_coefs_cf(1), estimated_coefs_cf(1), 2 * estimated_coefs_cf(2);
+    Eigen::Vector2d b_;
+    b_ << -estimated_coefs_cf(3), - estimated_coefs_cf(4);
+    Eigen::Vector2d point = A_.inverse() * b_;
+    double radius = estimateRadius(xs, ys);
+    if ((point.x() - xs(0)) * (point.x() - xs(0)) + (point.y() - ys(0)) * (point.y() - ys(0)) < radius * radius) {
+        return point;
+    }
+    std::cerr << "unsuccessful attempt\n";
+    for (int i = 0; i < xs.rows(); ++i) {
+        for (int j = i + 1; j < xs.rows(); ++j) {
+            std::tuple<double, double, double> xyv = estimateMaximumPointOnInterval(estimated_coefs_cf, xs(i), ys(i), xs(j), ys(j));
 
-    ceres::Problem problem;
-    for (int i = 0; i < values.size(); ++i) {
-        Vector5 a;
-        a << xs(i) * xs(i), ys(i) * ys(i), xs(i), ys(i), 1;
-        problem.AddResidualBlock(new QuadraticCostFunction(a, values(i)),
-                                 nullptr, estimated_coefs.data());
-    }
-//    problem.SetParameterUpperBound(estimated_coefs.data(), 0, 0.0);
-//    problem.SetParameterUpperBound(estimated_coefs.data(), 1, 0.0);
-
-    ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_QR;
-    options.minimizer_progress_to_stdout = false;
-    ceres::Solver::Summary summary;
-    ceres::Solve(options, &problem, &summary);
-    saveSaliencies(xs, ys, values, estimated_coefs, index);
-    double x = xs(0), y= ys(0);
-    if (std::fabs(estimated_coefs[0]) >= 1e-9) {
-        x = -estimated_coefs[2] / 2.0 / estimated_coefs[0];
-    }
-    if (std::fabs(estimated_coefs[1]) >= 1e-9) {
-        y = -estimated_coefs[3] / 2.0 / estimated_coefs[1];
-    }
-    if (std::fabs(estimated_coefs[0]) <= 1e-9 && std::fabs(estimated_coefs[1]) <= 1e-9) {
-        std::cerr << xs.transpose() << "\n";
-        std::cerr << ys.transpose() << "\n";
-        std::cerr << values.transpose() << "\n";
-        std::cerr << "coefs: ";
-        for (int i = 0; i < 5; ++i) {
-            std::cerr << estimated_coefs[i] << " ";
         }
-        std::cerr << "\n";
-        x = 1;
-        y = 1;
     }
-    rassert(std::isfinite(x) && std::isfinite(y), 13049387429308932);
-    return {x, y};
+    return {1, 1};
 }
 
 double estimatePointOnQuadric(const Eigen::VectorXd &xs, const Eigen::VectorXd &ys,
@@ -135,8 +128,9 @@ Eigen::Matrix3d calculateRotationToAlignZAxis(const Eigen::Vector3d &vector) {
     return Eigen::AngleAxis(angle, axis).toRotationMatrix();
 }
 
-Eigen::Vector3d estimateMaximumPoint(const Eigen::MatrixXd &points, const Eigen::Vector3d &normal,
-                                     const Eigen::VectorXd &values, int index) {
+Eigen::Vector3d estimateMaximumPoint(Eigen::MatrixXd points, const Eigen::Vector3d &normal,
+                                     Eigen::VectorXd values, int index) {
+    placeCenterAtBeginning(points, values);
     Eigen::Matrix3d rot_matrix = calculateRotationToAlignZAxis(normal);
     Eigen::MatrixXd rotated_points = (rot_matrix * (points.transpose())).transpose();
     Eigen::Vector2d maximum_point = estimateMaximumPointEP(rotated_points.col(0), rotated_points.col(1), values, index);

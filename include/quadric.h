@@ -3,6 +3,6 @@
 
 #include <Eigen/Core>
 
-Eigen::Vector3d estimateMaximumPoint(const Eigen::MatrixXd &points, const Eigen::Vector3d &normal,
-                                     const Eigen::VectorXd &values, int index);
+Eigen::Vector3d estimateMaximumPoint(Eigen::MatrixXd points, const Eigen::Vector3d &normal,
+                                     Eigen::VectorXd values, int index);
 #endif

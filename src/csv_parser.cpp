@@ -1,4 +1,4 @@
-#include "../include/csv_parser.h"
+#include "csv_parser.h"
 
 std::string CSVRow::operator[](std::size_t index) const {
     return std::string(&m_line[m_data[index] + 1], m_data[index + 1] - (m_data[index] + 1));

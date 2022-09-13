@@ -11,7 +11,6 @@
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 
 #include "analysis.h"
-#include "filter.h"
 
 #define N_BINS 100
 
@@ -283,11 +282,10 @@ void AlignmentAnalysis::save(const std::string &testname) {
 
 void printAnalysisHeader(std::ostream &out) {
     out << "version,descriptor,testname,metric,rmse,correspondences,correct_correspondences,inliers,correct_inliers,";
-    out << "voxel_size,nr_points,distance_thr,edge_thr,";
-    out << "iteration,matching,randomness,filter,threshold,n_random,r_err,t_err,pcd_err,";
-    out << "normal_diff,corr_uniformity,lrf,metric_type,time,overlap_rmse,alignment,keypoint,time_cs,time_te,score,";
-    out << "iss_radius_src,normal_nr_points,reestimate,scale,cluster_k,feature_radius";
-    out << "overlap,overlap_area,converged,iss_radius_tgt\n";
+    out << "nr_points,distance_thr,edge_thr,iteration,matching_type,randomness,r_err,t_err,pcd_err,normal_diff,";
+    out << "corr_uniformity,lrf_type,metric_type,overlap_rmse,alignment_type,keypoint_type,time_cs,time_te,score_type,";
+    out << "iss_radius_src,iss_radius_tgt,normal_nr_points,reestimate,scale,cluster_k,feature_radius,";
+    out << "overlap,overlap_area,converged\n";
 }
 
 std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis) {
@@ -297,30 +295,22 @@ std::ostream &operator<<(std::ostream &stream, const AlignmentAnalysis &analysis
            << analysis.metric_ << "," << analysis.rmse_ << ",";
     stream << analysis.correspondences_.size() << "," << analysis.correct_correspondences_.size() << ",";
     stream << analysis.inliers_.size() << "," << analysis.correct_inliers_.size() << ",";
-    stream << analysis.parameters_.distance_thr << ",";
     stream << analysis.parameters_.feature_nr_points << ",";
     stream << analysis.parameters_.distance_thr << ",";
     stream << analysis.parameters_.edge_thr_coef << ",";
     stream << analysis.result_.iterations << ",";
     stream << matching_id << "," << analysis.parameters_.randomness << ",";
-    auto func = getUniquenessFunction(analysis.parameters_.func_id);
-    if (func != nullptr) {
-        stream << analysis.parameters_.func_id << "," << UNIQUENESS_THRESHOLD << "," << N_RANDOM_FEATURES << ",";
-    } else {
-        stream << ",,,";
-    }
     stream << analysis.r_error_ << "," << analysis.t_error_ << "," << analysis.pcd_error_ << ",";
     stream << analysis.normal_diff_ << "," << analysis.corr_uniformity_ << "," << analysis.parameters_.lrf_id << ",";
     stream << analysis.parameters_.metric_id << ",";
-    stream << analysis.result_.time_te + analysis.result_.time_cs << ",";
     stream << analysis.overlap_error_ << ",";
     stream << analysis.parameters_.alignment_id << "," << analysis.parameters_.keypoint_id << ",";
     stream << analysis.result_.time_cs << "," << analysis.result_.time_te << ",";
-    stream << analysis.parameters_.score_id << "," << analysis.parameters_.iss_radius_src << ",";
+    stream << analysis.parameters_.score_id << ",";
+    stream << analysis.parameters_.iss_radius_src << "," << analysis.parameters_.iss_radius_tgt << ",";
     stream << analysis.parameters_.normal_nr_points << "," << analysis.parameters_.reestimate_frames << ",";
     stream << analysis.parameters_.scale_factor << "," << analysis.parameters_.cluster_k << ",";
     if (analysis.parameters_.feature_radius.has_value()) stream << analysis.parameters_.feature_radius.value();
-    stream << "," << analysis.overlap_ << "," << analysis.overlap_area_ << "," << analysis.result_.converged << ",";
-    stream << analysis.parameters_.iss_radius_tgt << "\n";
+    stream << "," << analysis.overlap_ << "," << analysis.overlap_area_ << "," << analysis.result_.converged << "\n";
     return stream;
 }
