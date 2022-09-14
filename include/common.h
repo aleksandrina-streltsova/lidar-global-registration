@@ -19,8 +19,8 @@
 
 #include "config.h"
 #include "utils.h"
-#include "rops_custom_lrf.h"
-#include "shot_debug.h"
+#include "pcl/rops_custom_lrf.h"
+#include "pcl/shot_debug.h"
 
 #define SEED 566ul
 #define COLOR_BEIGE 0xf8c471
@@ -183,7 +183,7 @@ void filterDuplicatePoints(PointNCloud::Ptr &pcd);
 void loadPointClouds(const YamlConfig &config, std::string &testname, PointNCloud::Ptr &src, PointNCloud::Ptr &tgt,
                      std::vector<::pcl::PCLPointField> &fields_src, std::vector<::pcl::PCLPointField> &fields_tgt);
 
-void loadTransformationGt(const YamlConfig &config, const std::string &csv_path,
+void loadTransformationGt(const YamlConfig &config, const std::optional<std::string> &csv_path,
                           std::optional<Eigen::Matrix4f> &transformation_gt);
 
 void loadViewpoint(const std::optional<std::string> &viewpoints_path,

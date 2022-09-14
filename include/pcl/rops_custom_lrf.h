@@ -188,6 +188,6 @@ public:
     PCL_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-#include "impl/rops_custom_lrf.hpp"
+#include "pcl/impl/rops_custom_lrf.hpp"
 
 #endif

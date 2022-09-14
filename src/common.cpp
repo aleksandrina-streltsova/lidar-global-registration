@@ -13,7 +13,7 @@
 #include <pcl/features/shot_lrf.h>
 
 #include "common.h"
-#include "iss_debug.h"
+#include "pcl/iss_debug.h"
 #include "csv_parser.h"
 #include "io.h"
 #include "downsample.h"
@@ -469,13 +469,14 @@ void loadPointClouds(const YamlConfig &config, std::string &testname, PointNClou
                tgt_filename.substr(0, tgt_filename.find_last_of('.'));
 }
 
-void loadTransformationGt(const YamlConfig &config, const std::string &csv_path,
+void loadTransformationGt(const YamlConfig &config, const std::optional<std::string> &csv_path,
                           std::optional<Eigen::Matrix4f> &transformation_gt) {
+    if (!csv_path.has_value()) return;
     std::string src_path = config.get<std::string>("source").value();
     std::string tgt_path = config.get<std::string>("target").value();
     std::string src_filename = src_path.substr(src_path.find_last_of("/\\") + 1);
     std::string tgt_filename = tgt_path.substr(tgt_path.find_last_of("/\\") + 1);
-    transformation_gt = getTransformation(csv_path, src_filename, tgt_filename);
+    transformation_gt = getTransformation(csv_path.value(), src_filename, tgt_filename);
 }
 
 void loadViewpoint(const std::optional<std::string> &viewpoints_path,

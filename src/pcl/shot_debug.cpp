@@ -1,6 +1,6 @@
 #include <pcl/features/shot_lrf.h>
 
-#include "shot_debug.h"
+#include "pcl/shot_debug.h"
 
 #define PST_PI 3.1415926535897932384626433832795
 #define PST_RAD_45 0.78539816339744830961566084581988

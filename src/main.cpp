@@ -24,7 +24,7 @@ std::vector<AlignmentAnalysis> runTest(const YamlConfig &config) {
     std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
     loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth"), tn_gt);
     std::vector<AlignmentAnalysis> analyses;
     for (auto &parameters: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         parameters.testname = testname;

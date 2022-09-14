@@ -1,4 +1,4 @@
-#include "iss_debug.h"
+#include "pcl/iss_debug.h"
 #include "quadric.h"
 
 void ISSKeypoint3DDebug::saveEigenValues(const AlignmentParameters &parameters) {
