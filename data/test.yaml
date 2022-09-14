@@ -1,0 +1,37 @@
+tests:
+  # all parameters
+  - test:
+      keypoint: iss                                 # KeyPoints: algorithm used to estimate points for which correspondences are estimated; options: [ iss, any ]
+      # iss_radius:                                 # KeyPoints: radius of non-maximum suppression in ISS algortihm
+      # feature_radius:                             # Descriptors: when isn't set, descriptors are calculated and matched at different scales
+      feature_nr: 352                               # Descriptors: before descriptors at current scale are calculated, point cloud is downsampled so that the disk with current feature's radius contains specified number of points
+      normal_nr: 30                                 # Descriptors: number of neighbours used in normal estimation
+      reestimate: true                              # Descriptors: when false, the same local reference frames are used at different scales
+      descriptor: shot                              # Descriptors; options: [ fpfh, rops, shot ]
+      lrf: [ default, gravity ]                     # Descriptors: algorithm used to estimate local reference frames; options: [ default, gravity, gt ]
+      bf: true                                      # Matching: when true, opencv brute-force matching is used (otherwise FLANN kd-trees)
+      block_size: 200000                            # Matching: size of blocks used in matching (blocks are necessary because of opencv's issue https://github.com/opencv/opencv/issues/5700)
+      randomness: 1                                 # Matching: number of correspondences containing each key point from source cloud (currently only 1 is supported)
+      matching: cluster                             # Matching: algorithm used to filter out correspondences; options: [ one_sided, lr, cluster ]
+      scale: 2.0                                    # Matching: when feature's radius isn't set, each next radius is 'scale' times bigger
+      cluster_k: 40                                 # Matching: number of neighbours used in cluster filtering
+      alignment: ransac                             # Transformation: algorithm used to estimate transformation from correspondences; options: [ ransac, gror, teaser ]
+      # distance_thr:                               # Transformation: inlier threshold, when isn't set, it is determined automatically
+      edge_thr: 0.95                                # RANSAC: threshold used in correspondence rejection https://pointclouds.org/documentation/classpcl_1_1registration_1_1_correspondence_rejector_poly.html
+      iteration: 1000000                            # RANSAC: maximum number of iterations
+      confidence: 0.999                             # RANSAC: parameter used in automatic estimation number of iterations
+      n_samples: 3                                  # RANSAC: number of random samples
+      metric: uniformity                            # RANSAC: metric used to determine best transformation; options: [ correspondences, uniformity, closest_plane, combination ]
+      score: mse                                    # RANSAC: when metric is 'correspondences', score function is used to determine score of each correspondence; options: [ constant, mae, mse, exp ]
+      save_features: false                          # Debug: when true, calculated descriptors are written to .ply files
+      ground_truth: data/kizhi/ground_truth.csv     # Debug: csv with ground truth transformations used to analyze results
+      # viewpoints:
+      source: data/kizhi/kig_024_23.ply
+      target: data/kizhi/kig_023_22.ply
+  # required parameters, you may also want to set:
+  # - lrf (if z-axis is aligned to gravity's direction)
+  # - viewpoints (if they differ from center of coordinate system)
+  # - ground truth (if it is available for results' analysis)
+  - test:
+      source: data/kizhi/kig_024_23.ply
+      target: data/kizhi/kig_023_22.ply

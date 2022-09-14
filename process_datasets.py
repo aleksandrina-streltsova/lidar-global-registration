@@ -5,6 +5,7 @@ import yaml
 import pandas as pd
 import numpy as np
 import pye57
+import open3d as o3d
 from scipy.spatial.transform import Rotation
 
 from typing import List
@@ -259,6 +260,67 @@ def transform(config_path, current):
             transformation = np.linalg.inv(gt[filename])
         filepath = os.path.join(dirpath, filename)
         transform_and_save(filepath, filepath, transformation)
+
+
+@cli.command('downsample')
+@click.argument('config-path', type=click.Path(dir_okay=False, exists=True))
+@click.option('--with-transformation/--without-transformation', default=True)
+def downsample(config_path, with_transformation):
+    with open(config_path, 'r') as stream:
+        config = yaml.load(stream, Loader=yaml.Loader)
+    filenames = list(sorted(filter(lambda f: f[-4:] == '.ply', os.listdir(config['path']))))
+    voxel_size = config['voxel_size']
+
+    gt = {}
+    if with_transformation:
+        df = pd.read_csv(config['ground_truth'])
+        for _, row in df.iterrows():
+            gt[row[0]] = np.array(list(map(float, row[1:].values))).reshape((4, 4))
+
+    path = os.path.join(config['path'], 'downsampled_' + str(voxel_size))
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    iter_pbar = tqdm(filenames)
+    for i, filename in enumerate(iter_pbar):
+        iter_pbar.set_description(f'Processing {filename}..')
+        pcd = o3d.io.read_point_cloud(os.path.join(config['path'], filename))
+        pcd_down = pcd.voxel_down_sample(voxel_size)
+        if with_transformation and filename in gt:
+            pcd_down = pcd_down.transform(gt[filename])
+        pcd_down.paint_uniform_color([np.random.rand(), np.random.rand(), np.random.rand()])
+        PyntCloud.from_instance("open3d", pcd_down).to_file(os.path.join(path, filename))
+
+
+@cli.command('overlap')
+@click.argument('config-path', type=click.Path(dir_okay=False, exists=True))
+def overlap(config_path):
+    with open(config_path, 'r') as stream:
+        config = yaml.load(stream, Loader=yaml.Loader)
+    dirpath = config['path']
+    filenames = list(sorted(filter(lambda f: f[-4:] == '.ply', os.listdir(dirpath))))
+    overlapping_matrix = np.ones((len(filenames), len(filenames)))
+    for i1, f1 in enumerate(tqdm(filenames)):
+        pcd1 = o3d.io.read_point_cloud(os.path.join(dirpath, f1))
+        pcd1_tree = o3d.geometry.KDTreeFlann(pcd1)
+        for i2, f2 in enumerate(filenames[:i1]):
+            pcd2 = o3d.io.read_point_cloud(os.path.join(dirpath, f2))
+            pcd2_tree = o3d.geometry.KDTreeFlann(pcd2)
+            count1 = 0
+            count2 = 0
+            for p in pcd1.points:
+                [_, _, dist2] = pcd2_tree.search_knn_vector_3d(p, 1)
+                if dist2[0] ** 0.5 < 2 * config['voxel_size']:
+                    count1 += 1
+            for p in pcd2.points:
+                [_, _, dist2] = pcd1_tree.search_knn_vector_3d(p, 1)
+                if dist2[0] ** 0.5 < 2 * config['voxel_size']:
+                    count2 += 1
+            overlap = max(count1 / len(pcd1.points), count2 / len(pcd2.points))
+            overlapping_matrix[i1, i2] = overlap
+            overlapping_matrix[i2, i1] = overlap
+    df = pd.DataFrame(data=overlapping_matrix, columns=filenames, index=pd.Index(filenames, name='reading'))
+    df.to_csv(os.path.join(dirpath, 'overlapping.csv'))
 
 
 if __name__ == '__main__':

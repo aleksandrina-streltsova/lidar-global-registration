@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import click
 
-OVERLAPPING_PATH = '/media/agisoft/nas2_dataset/processing/polarnick/students/global_registration/potemkin/exported/downsampled_0.2/overlapping.csv'
 DIFFICULTY_LEVELS_PATH = 'data/test_levels.csv'
 
 DIRPATHS = ['data/kizhi', 'data/office', 'data/arch', 'data/trees',
@@ -20,22 +19,7 @@ PARAMETERS = '''
         alignment: ransac
         block_size: 200000
 '''
-MIN_OVERLAP = 0.2
 
-
-# def generate_config():
-#     df = pd.read_csv(OVERLAPPING_PATH, index_col='reading')
-#     with open(CONFIG_PATH, 'w') as file:
-#         file.write('tests:\n')
-#         overlaps = df.values
-#         filenames = df.columns
-#         for i, f1 in enumerate(filenames):
-#             for j, f2 in enumerate(filenames[:i]):
-#                 if overlaps[i][j] > MIN_OVERLAP:
-#                     file.write('    - test:')
-#                     file.write(PARAMETERS)
-#                     file.write(f'        source: {os.path.join(DIRPATH, f1)}\n')
-#                     file.write(f'        target: {os.path.join(DIRPATH, f2)}\n')
 
 @click.command()
 @click.argument('config-path', type=click.Path(dir_okay=False))
@@ -60,14 +44,6 @@ def generate_config(config_path, selected, level):
                     file.write(f'        target: {os.path.join(dirpath, f2)}\n')
                     if with_vp == 1:
                         file.write(f'        viewpoints: ' + os.path.join(dirpath, 'viewpoints.csv') + '\n')
-    # filenames = list(sorted(filter(lambda s: s.endswith('.ply'), os.listdir(DIRPATH))))
-    # with open(CONFIG_PATH, 'a') as file:
-    #     for i, f1 in enumerate(filenames):
-    #         for f2 in filenames[:i]:
-    #             file.write('    - test:')
-    #             file.write(PARAMETERS)
-    #             file.write(f'        source: {os.path.join(DIRPATH, f1)}\n')
-    #             file.write(f'        target: {os.path.join(DIRPATH, f2)}\n')
 
 
 if __name__ == '__main__':
