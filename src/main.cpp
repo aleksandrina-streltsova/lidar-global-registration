@@ -218,7 +218,7 @@ void compareHypotheses(const YamlConfig &config) {
 
     for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         params.testname = testname;
-        auto tn_name = constructName(params, "tn");
+        auto tn_name = constructName(params, "transformation");
         auto tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV), tn_name);
         saveTemperatureMaps(src, tgt, "temperature_gt", params, params.distance_thr, tn_gt.value());
         saveTemperatureMaps(src, tgt, "temperature", params, params.distance_thr, tn);
@@ -238,7 +238,7 @@ void generateDebugFiles(const YamlConfig &config) {
     std::string testname;
     float min_voxel_size, error;
     loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
-    loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
+    loadTransformationGt(config, config.get<std::string>("ground_truth"), tn_gt);
 
     for (auto &params: getParametersFromConfig(config, src, tgt, fields_src, fields_tgt)) {
         params.testname = testname;
@@ -251,7 +251,7 @@ void generateDebugFiles(const YamlConfig &config) {
         }
         pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
         tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
-                               constructName(params, "tn"));
+                               constructName(params, "transformation"));
         float error_thr = params.distance_thr;
         indices_src = detectKeyPoints(src, params, params.iss_radius_src);
         indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
