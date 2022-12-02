@@ -1,3 +1,5 @@
+#include <unordered_map>
+
 #include "downsample.h"
 
 void downsamplePointCloud(const PointNCloud::ConstPtr &pcd_fullsize, PointNCloud::Ptr &pcd_down, float voxel_size) {
