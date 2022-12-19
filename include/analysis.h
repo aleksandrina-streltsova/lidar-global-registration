@@ -28,7 +28,12 @@ float calculateCorrespondenceUniformity(const PointNCloud::ConstPtr &src, const 
 float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                 float distance_thr, const Eigen::Matrix4f &transformation_gt);
 
-void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+std::pair<int, float>
+getReproducedKeyPointsAndCalculateRmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                       const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
+                                       float distance_thr, const Eigen::Matrix4f &transformation_gt);
+
+void buildCorrectCorrespondences(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                  const Correspondences &correspondences,
                                  Correspondences &correct_correspondences,
                                  const Eigen::Matrix4f &transformation_gt);
@@ -77,6 +82,7 @@ public:
 
 private:
     PointNCloud::ConstPtr src_, tgt_;
+    PointNCloud::ConstPtr kps_src_, kps_tgt_;
     AlignmentParameters parameters_;
     AlignmentResult result_;
     MetricEstimator::Ptr metric_estimator_;

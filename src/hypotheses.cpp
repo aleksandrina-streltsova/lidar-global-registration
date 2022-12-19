@@ -48,6 +48,7 @@ void updateHypotheses(std::vector<Eigen::Matrix4f> &transformations, std::vector
 }
 
 Eigen::Matrix4f chooseBestHypothesis(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                     const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                      const CorrespondencesConstPtr &correspondences,
                                      const AlignmentParameters &params, std::vector<Eigen::Matrix4f> &tns) {
     PCL_DEBUG("[chooseBestHypothesis] comparing %i saved hypotheses..\n", tns.size());
@@ -70,8 +71,8 @@ Eigen::Matrix4f chooseBestHypothesis(const PointNCloud::ConstPtr &src, const Poi
 
     auto acc_squared = [](float a, float b) { return a + b * b; };
     CorrespondencesMetricEstimator corrs_metric(ScoreFunction::MSE);
-    corrs_metric.setSourceCloud(src);
-    corrs_metric.setTargetCloud(tgt);
+    corrs_metric.setSourceCloud(src, kps_src);
+    corrs_metric.setTargetCloud(tgt, kps_tgt);
     corrs_metric.setCorrespondences(correspondences);
     UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
 

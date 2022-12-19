@@ -33,7 +33,6 @@ void runTest(const PointNCloud::Ptr &src,
              const PointNCloud::Ptr &tgt,
              const AlignmentParameters &params) {
     PointNCloud::Ptr src_aligned(new PointNCloud);
-    PointNCloud::Ptr kps_src(new PointNCloud), kps_tgt(new PointNCloud);
     PointRFCloud::Ptr frames_src(nullptr), frames_tgt(nullptr);
     typename pcl::PointCloud<FeatureT>::Ptr features_src(new pcl::PointCloud<FeatureT>);
     typename pcl::PointCloud<FeatureT>::Ptr features_tgt(new pcl::PointCloud<FeatureT>);
@@ -43,13 +42,11 @@ void runTest(const PointNCloud::Ptr &src,
     tree_tgt->setInputCloud(tgt);
 
     // Detect key points
-    auto indices_src = detectKeyPoints(src, params, params.iss_radius_src);
-    auto indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
+    auto kps_src = detectKeyPoints(src, params, params.iss_radius_src);
+    auto kps_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
 
     // Estimate features
     pcl::console::print_highlight("Estimating features...\n");
-    pcl::copyPointCloud(*src, *indices_src, *kps_src);
-    pcl::copyPointCloud(*tgt, *indices_tgt, *kps_tgt);
     rassert(params.feature_radius.has_value(), 237859320932);
     estimateFeatures<FeatureT>(kps_src, src, features_src, params.feature_radius.value(), params);
     estimateFeatures<FeatureT>(kps_tgt, tgt, features_tgt, params.feature_radius.value(), params);
@@ -59,10 +56,6 @@ void runTest(const PointNCloud::Ptr &src,
     std::vector<MultivaluedCorrespondence> mv_correspondences_local;
 
     auto point_representation = std::shared_ptr<pcl::PointRepresentation<FeatureT>>(new pcl::DefaultPointRepresentation<FeatureT>);
-    int threads = 1;
-#if OPENMP_AVAILABLE_RANSAC_PREREJECTIVE
-    threads = omp_get_num_procs();
-#endif
     AlignmentParameters params_local(params);
     params_local.guess = std::optional<Eigen::Matrix4f>(Eigen::Matrix4f::Identity());
     params_local.match_search_radius = std::numeric_limits<float>::max();

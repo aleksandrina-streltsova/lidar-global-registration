@@ -2,6 +2,7 @@
 #define REGISTRATION_COMMON_H
 
 #include <algorithm>
+#include <unordered_set>
 
 #include <pcl/types.h>
 #include <pcl/point_types.h>
@@ -58,16 +59,12 @@
 #define SPARSE_POINTS_FRACTION 0.01
 #define FINE_VOXEL_SIZE_COEFFICIENT 2
 #define DIST_TO_PLANE_COEFFICIENT 2
-// Types
+
+// Point types
 typedef pcl::PointXYZI Point;
 typedef pcl::PointXYZINormal PointN;
 typedef pcl::ReferenceFrame PointRF;
 typedef pcl::PointXYZRGBNormal PointColoredN;
-typedef pcl::PointCloud<Point> PointCloud;
-typedef pcl::PointCloud<PointColoredN> PointColoredNCloud;
-typedef pcl::PointCloud<pcl::Normal> NormalCloud;
-typedef pcl::PointCloud<PointN> PointNCloud;
-typedef pcl::PointCloud<PointRF> PointRFCloud;
 
 // Feature types
 typedef pcl::Histogram<ROPS_DIM> RoPS135;
@@ -80,6 +77,13 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(pcl::Histogram<ROPS_DIM>, (float[ROPS_DIM], hi
 template<>
 class pcl::DefaultPointRepresentation<RoPS135> : public pcl::DefaultFeatureRepresentation<RoPS135> {
 };
+
+// Point cloud types
+typedef pcl::PointCloud<Point> PointCloud;
+typedef pcl::PointCloud<PointColoredN> PointColoredNCloud;
+typedef pcl::PointCloud<pcl::Normal> NormalCloud;
+typedef pcl::PointCloud<PointN> PointNCloud;
+typedef pcl::PointCloud<PointRF> PointRFCloud;
 
 extern const std::string DATA_DEBUG_PATH;
 extern const std::string TRANSFORMATIONS_CSV;
@@ -164,6 +168,7 @@ struct AlignmentParameters {
 
 struct AlignmentResult {
     PointNCloud::ConstPtr src, tgt;
+    PointNCloud::ConstPtr kps_src, kps_tgt;
     Eigen::Matrix4f transformation;
     CorrespondencesConstPtr correspondences;
     int iterations;
@@ -300,14 +305,8 @@ void estimateNormalsRadius(float radius_search, PointNCloud::Ptr &pcd, const Poi
 void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNCloud::ConstPtr &surface,
                            const std::optional<Eigen::Vector3f> &vp, bool normals_available);
 
-pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
-                                float iss_radius, PointNCloud::Ptr &subvoxel_kps, bool debug = false);
-
-inline pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
-                                       float iss_radius, bool debug = false) {
-    PointNCloud::Ptr subvoxel_kps{nullptr};
-    return detectKeyPoints(pcd, parameters, iss_radius, subvoxel_kps, debug);
-}
+PointNCloud::ConstPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                                      float iss_radius, bool debug = false, bool subvoxel = false);
 
 void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
                              PointRFCloud::Ptr &frames, float radius_search, const AlignmentParameters &parameters);
@@ -418,7 +417,7 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd, const Eigen::Matr
                              int color, const std::string &filepath);
 
 void savePointCloudWithCorrespondences(const PointNCloud::ConstPtr &pcd,
-                                       const pcl::IndicesConstPtr &key_point_indices,
+                                       const PointNCloud::ConstPtr &key_points,
                                        const Correspondences &correspondences,
                                        const Correspondences &correct_correspondences,
                                        const Correspondences &inliers,
@@ -447,7 +446,7 @@ void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCl
                                 const Eigen::Matrix4f &transformation_gt,
                                 const AlignmentParameters &parameters, bool sparse = false);
 
-void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                  const Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt,
                                  const AlignmentParameters &parameters);
@@ -479,10 +478,12 @@ bool pointCloudHasNormals(const std::vector<pcl::PCLPointField> &fields) {
     return normal_x && normal_y && normal_z;
 }
 
-CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success);
+void readKeyPointsAndCorrespondences(CorrespondencesConstPtr &correspondences,
+                                     PointNCloud::ConstPtr &kps_src, PointNCloud::ConstPtr &kps_tgt,
+                                     const AlignmentParameters &params, bool &success);
 
-void saveCorrespondencesToCSV(const std::string &filepath,
-                              const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                              const CorrespondencesConstPtr &correspondences);
+void saveKeyPointsAndCorrespondences(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
+                                     const CorrespondencesConstPtr &correspondences,
+                                     const AlignmentParameters &params);
 
 #endif

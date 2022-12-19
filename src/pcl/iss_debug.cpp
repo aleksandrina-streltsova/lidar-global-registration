@@ -168,27 +168,19 @@ bool ISSKeypoint3DDebug::initCompute() {
     return (true);
 }
 
-void ISSKeypoint3DDebug::estimateSubVoxelKeyPoints(PointNCloud::Ptr &subvoxel_kps) {
-    rassert(subvoxel_kps, 2730954205409203)
+void ISSKeypoint3DDebug::estimateSubVoxelKeyPoints(PointNCloud::Ptr &kps) {
+    rassert(kps, 2730954205409203)
     pcl::NormalEstimation<PointN, PointN> normal_estimation;
     if (!this->surface_) {  // in method compute surface_.reset is called, we need to set it again
         this->surface_ = this->input_;
     }
     auto &indices = this->keypoints_indices_->indices;
     std::sort(indices.begin(), indices.end());
-    indices.resize(std::min(10, (int) indices.size()));
-    subvoxel_kps->resize(indices.size());
+    kps->resize(indices.size());
     pcl::Indices nn_indices;
     std::vector<float> nn_sqr_dists;
     int count = 0;
     for (int i = 0; i < indices.size(); ++i) {
-//        this->searchForNeighbors(indices[i], this->salient_radius_, nn_indices, nn_sqr_dists);
-//        if (nn_indices.size() < 6) {
-//            PCL_DEBUG("[%s::estimateSubVoxelKeyPoints] key point has %i neighbors, "
-//                      "quadric coefficients can't be calculated",
-//                      this->getClassName().c_str(), nn_indices.size());
-//            subvoxel_kps->operator[](i) = this->input_->points[indices[i]];
-//        }
         this->tree_->nearestKSearch(*this->input_, indices[i], 6, nn_indices, nn_sqr_dists);
         Eigen::Vector3f normal;
         float curvature;
@@ -203,16 +195,16 @@ void ISSKeypoint3DDebug::estimateSubVoxelKeyPoints(PointNCloud::Ptr &subvoxel_kp
             points(j, 2) = this->input_->points[nn_indices[j]].z;
             values(j) = this->third_eigen_value_[nn_indices[j]];
         }
-        Eigen::Vector3f kp = estimateMaximumPoint(points, normal.cast<double>(), values, i).cast<float>();
+        Eigen::Vector3f kp = estimateMaximumPoint(points, normal.cast<double>(), values, i + 100).cast<float>();
         if ((kp - this->input_->points[indices[i]].getVector3fMap()).norm() < this->salient_radius_) {
-            subvoxel_kps->operator[](i) = PointN{kp.x(), kp.y(), kp.z()};
+            kps->operator[](i) = PointN{kp.x(), kp.y(), kp.z()};
         } else {
-            subvoxel_kps->operator[](i) = PointN{1.0, 1.0, 1.0};
             count++;
         }
         // TODO: normal estimation?
     }
-    PCL_DEBUG("%i/%i unsuccessful attempts!!\n", count, indices.size());
+    PCL_DEBUG("[%s::estimateSubVoxelKeyPoints] %i/%i unsuccessful attempts\n",
+              this->getClassName().c_str(), count, indices.size());
     if (this->input_ == this->surface_) {
         this->surface_.reset();
     }

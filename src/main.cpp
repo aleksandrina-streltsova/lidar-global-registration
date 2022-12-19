@@ -57,6 +57,7 @@ void estimateTestMetric(const YamlConfig &config) {
     }
 
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
+    PointNCloud::ConstPtr kps_src(new PointNCloud), kps_tgt(new PointNCloud);
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
@@ -83,24 +84,25 @@ void estimateTestMetric(const YamlConfig &config) {
         }
         CorrespondencesMetricEstimator estimator_corr(score_function);
         ClosestPlaneMetricEstimator estimator_icp(false, score_function);
-        CorrespondencesPtr correspondences;
+        CorrespondencesConstPtr correspondences;
         Correspondences inliers_corr, inliers_icp;
         float error, metric_icp, metric_corr;
         bool success = false;
         std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
-        correspondences = readCorrespondencesFromCSV(corrs_path, success);
+
+        readKeyPointsAndCorrespondences(correspondences, kps_src, kps_tgt, params, success);
         if (!success) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", params.testname.c_str());
             exit(1);
         }
 
-        estimator_corr.setSourceCloud(src);
-        estimator_corr.setTargetCloud(tgt);
-        estimator_corr.setCorrespondences(correspondences);
-
-        estimator_icp.setSourceCloud(src);
-        estimator_icp.setTargetCloud(tgt);
-        estimator_icp.setCorrespondences(correspondences);
+//        estimator_corr.setSourceCloud(src);
+//        estimator_corr.setTargetCloud(tgt);
+//        estimator_corr.setCorrespondences(correspondences);
+//
+//        estimator_icp.setSourceCloud(src);
+//        estimator_icp.setTargetCloud(tgt);
+//        estimator_icp.setCorrespondences(correspondences);
 
         fout << constructName(params, "metric", true, true, false);
         std::array<Eigen::Matrix4f, 2> transformations{tn, tn_gt.value()};
@@ -229,7 +231,8 @@ void compareHypotheses(const YamlConfig &config) {
 void generateDebugFiles(const YamlConfig &config) {
     PointNCloud::Ptr src(new PointNCloud), tgt(new PointNCloud);
     PointNCloud::Ptr src_aligned(new PointNCloud), src_aligned_gt(new PointNCloud);
-    CorrespondencesPtr correspondences(new Correspondences);
+    PointNCloud::ConstPtr kps_src, kps_tgt;
+    CorrespondencesConstPtr correspondences(new Correspondences);
     CorrespondencesPtr correct_correspondences(new Correspondences);
     Correspondences inliers;
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
@@ -244,34 +247,33 @@ void generateDebugFiles(const YamlConfig &config) {
         params.testname = testname;
         bool success = false;
         std::string corrs_path = constructPath(params, "correspondences", "csv", true, false, false);
-        correspondences = readCorrespondencesFromCSV(corrs_path, success);
+        readKeyPointsAndCorrespondences(correspondences, kps_src, kps_tgt, params, success);
         if (!success) {
             pcl::console::print_error("Failed to read correspondences for %s!\n", params.testname.c_str());
             exit(1);
         }
-        pcl::IndicesPtr indices_src{nullptr}, indices_tgt{nullptr};
+
         tn = getTransformation(fs::path(DATA_DEBUG_PATH) / fs::path(TRANSFORMATIONS_CSV),
                                constructName(params, "transformation"));
         float error_thr = params.distance_thr;
-        indices_src = detectKeyPoints(src, params, params.iss_radius_src);
-        indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
+
 
         UniformRandIntGenerator rand(0, std::numeric_limits<int>::max(), SEED);
         auto metric_estimator = getMetricEstimatorFromParameters(params);
-        metric_estimator->setSourceCloud(src);
-        metric_estimator->setTargetCloud(tgt);
+        metric_estimator->setSourceCloud(src, kps_src);
+        metric_estimator->setTargetCloud(tgt, kps_tgt);
         metric_estimator->setCorrespondences(correspondences);
         metric_estimator->buildInliers(tn, inliers, error, rand);
         if (tn_gt.has_value()) {
-            buildCorrectCorrespondences(src, tgt, *correspondences, *correct_correspondences, tn_gt.value());
-//            saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params);
-//            saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params, true);
-//            saveCorrespondenceDistances(src, tgt, *correspondences, tn_gt.value(), params);
-            savePointCloudWithCorrespondences(src, indices_src, *correspondences, *correct_correspondences,
+            buildCorrectCorrespondences(kps_src, kps_tgt, *correspondences, *correct_correspondences, tn_gt.value());
+            // saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params);
+            // saveCorrespondences(src, tgt, *correspondences, tn_gt.value(), params, true);
+            saveCorrespondenceDistances(kps_src, kps_tgt, *correspondences, tn_gt.value(), params);
+            savePointCloudWithCorrespondences(src, kps_src, *correspondences, *correct_correspondences,
                                               inliers, params, tn_gt.value(), true);
-//            saveTemperatureMaps(src, tgt, "temperature_gt", params, error_thr, tn_gt.value());
+            saveTemperatureMaps(src, tgt, "temperature_gt", params, error_thr, tn_gt.value());
         }
-        savePointCloudWithCorrespondences(tgt, indices_tgt, *correspondences, *correct_correspondences,
+        savePointCloudWithCorrespondences(tgt, kps_tgt, *correspondences, *correct_correspondences,
                                           inliers, params, Eigen::Matrix4f::Identity(), false);
 
         if (params.metric_id == METRIC_WEIGHTED_CLOSEST_PLANE) {
@@ -289,7 +291,6 @@ void analyzeKeyPoints(const YamlConfig &config) {
     std::vector<::pcl::PCLPointField> fields_src, fields_tgt;
     std::optional<Eigen::Matrix4f> tn_gt;
     std::string testname;
-    float min_voxel_size;
     loadPointClouds(config, testname, src, tgt, fields_src, fields_tgt);
     loadTransformationGt(config, config.get<std::string>("ground_truth").value(), tn_gt);
     if (!tn_gt) {
@@ -299,13 +300,28 @@ void analyzeKeyPoints(const YamlConfig &config) {
         params.testname = testname;
         estimateNormalsPoints(params.normal_nr_points, src, {nullptr}, params.vp_src, params.normals_available);
         estimateNormalsPoints(params.normal_nr_points, tgt, {nullptr}, params.vp_tgt, params.normals_available);
-        auto indices_src = detectKeyPoints(src, params, params.iss_radius_src, subvoxel_kps_src, true);
-        auto indices_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt, subvoxel_kps_tgt, true);
+        auto kps_src = detectKeyPoints(src, params, params.iss_radius_src);
+        auto kps_tgt = detectKeyPoints(tgt, params, params.iss_radius_tgt);
+        auto kps_src_subvoxel = detectKeyPoints(src, params, params.iss_radius_src, false, true);
+        auto kps_tgt_subvoxel = detectKeyPoints(tgt, params, params.iss_radius_tgt, false, true);
+        float kps_distance_thr = std::max(params.iss_radius_src, params.iss_radius_tgt);
+        auto[repr_kps, error_kps] = getReproducedKeyPointsAndCalculateRmse(src, tgt, kps_src, kps_tgt,
+                                                                           kps_distance_thr, tn_gt.value());
+        auto [repr_subvoxel_kps, error_subvoxel_kps] = getReproducedKeyPointsAndCalculateRmse(src, tgt,
+                                                                                              kps_src_subvoxel,
+                                                                                              kps_tgt_subvoxel,
+                                                                                              kps_distance_thr,
+                                                                                              tn_gt.value());
+        pcl::console::print_highlight("%d key points were reproduced with rmse %0.7f\n", repr_kps, error_kps);
+        pcl::console::print_highlight("%d subvoxel key points were reproduced with rmse %0.7f\n",
+                                      repr_subvoxel_kps, error_subvoxel_kps);
+
         saveColorizedPointCloud(subvoxel_kps_src, tn_gt.value(), COLOR_RED, constructPath(params, "subvoxel_kps_src"));
         saveColorizedPointCloud(subvoxel_kps_tgt, Eigen::Matrix4f::Identity(), COLOR_RED,
                                 constructPath(params, "subvoxel_kps_tgt"));
-        savePointCloudWithCorrespondences(src, indices_src, {}, {}, {}, params, tn_gt.value(), true);
-        savePointCloudWithCorrespondences(tgt, indices_tgt, {}, {}, {}, params, Eigen::Matrix4f::Identity(), false);
+        savePointCloudWithCorrespondences(src, kps_src_subvoxel, {}, {}, {}, params, tn_gt.value(), true);
+        savePointCloudWithCorrespondences(tgt, kps_tgt_subvoxel, {}, {}, {}, params, Eigen::Matrix4f::Identity(),
+                                          false);
     }
 }
 
@@ -407,11 +423,13 @@ void processTests(const std::vector<YAML::Node> &tests, const std::string &comma
 }
 
 int main(int argc, char **argv) {
+    std::string error_message = "Syntax is: " + std::string(argv[0]) + " [" +
+                                 ALIGNMENT + ", " + METRIC_ANALYSIS + ", " + DEBUG +
+                                 "] config.yaml\n";
+    if (argc != 3) pcl::console::print_error(error_message.c_str());
     std::string command(argv[1]);
     if (argc != 3 && !(command == ALIGNMENT || command == METRIC_ANALYSIS || command == DEBUG)) {
-        pcl::console::print_error(("Syntax is: [" +
-                                   ALIGNMENT + ", " + METRIC_ANALYSIS + ", " + DEBUG +
-                                   "] %s config.yaml\n").c_str(), argv[0]);
+        pcl::console::print_error(error_message.c_str());
         exit(1);
     }
     pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);

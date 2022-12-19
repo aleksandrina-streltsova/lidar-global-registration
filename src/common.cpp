@@ -1,7 +1,7 @@
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
-#include <unordered_set>
 
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
@@ -199,7 +199,7 @@ void saveIterationsInfo(const std::string &csv_path, const std::string &name,
     }
 }
 
-float calculatePointCloudDensity(const typename pcl::PointCloud<PointN>::ConstPtr &pcd, float quantile) {
+float calculatePointCloudDensity(const PointNCloud::ConstPtr &pcd, float quantile) {
     rassert(quantile >= 0.f && quantile <= 1.f, 3487234892347);
     std::vector<float> densities = calculateSmoothedDensities(pcd, 8);
     int k = std::max(std::min((int) (quantile * (float) densities.size() - 1), (int) densities.size() - 1), 0);
@@ -654,11 +654,11 @@ void estimateNormalsPoints(int k_points, PointNCloud::Ptr &pcd, const PointNClou
     postprocessNormals(pcd, normals_available);
 }
 
-pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
-                                float iss_radius, PointNCloud::Ptr &subvoxel_kps, bool debug) {
+PointNCloud::ConstPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const AlignmentParameters &parameters,
+                                      float iss_radius, bool debug, bool subvoxel) {
+    PointNCloud::Ptr key_points(new PointNCloud);
     pcl::IndicesPtr indices(new pcl::Indices);
     if (parameters.keypoint_id == KEYPOINT_ISS) {
-        PointNCloud key_points;
         pcl::search::KdTree<PointN>::Ptr tree(new pcl::search::KdTree<PointN>());
         ISSKeypoint3DDebug iss_detector;
         iss_detector.setSearchMethod(tree);
@@ -669,25 +669,25 @@ pcl::IndicesPtr detectKeyPoints(const PointNCloud::ConstPtr &pcd, const Alignmen
         iss_detector.setMinNeighbors(4);
         iss_detector.setInputCloud(pcd);
         iss_detector.setNormals(pcd);
-        iss_detector.compute(key_points);
+        iss_detector.compute(*key_points);
         indices = std::make_shared<pcl::Indices>(iss_detector.getKeypointsIndices()->indices);
         if (parameters.fix_seed) {
             std::sort(indices->begin(), indices->end());
+            for (int i = 0; i < indices->size(); ++i) {
+                key_points->points[i] = pcd->points[indices->operator[](i)];
+            }
         }
         PCL_DEBUG("[detectKeyPoints] %d key points\n", indices->size());
         if (debug) iss_detector.saveEigenValues(parameters);
-        if (subvoxel_kps) iss_detector.estimateSubVoxelKeyPoints(subvoxel_kps);
+        if (subvoxel) iss_detector.estimateSubVoxelKeyPoints(key_points);
     } else {
         if (parameters.keypoint_id != KEYPOINT_ANY) {
             PCL_WARN("[detectKeyPoints] Detection method %s isn't supported, no detection method will be applied.\n",
                      parameters.keypoint_id.c_str());
         }
-        indices->resize(pcd->size());
-        for (int i = 0; i < pcd->size(); ++i) {
-            indices->operator[](i) = i;
-        }
+        return pcd;
     }
-    return indices;
+    return key_points;
 }
 
 void estimateReferenceFrames(const PointNCloud::ConstPtr &pcd, const PointNCloud::ConstPtr &surface,
@@ -769,45 +769,58 @@ void saveColorizedPointCloud(const PointNCloud::ConstPtr &pcd, const Eigen::Matr
 }
 
 void savePointCloudWithCorrespondences(const PointNCloud::ConstPtr &pcd,
-                                       const pcl::IndicesConstPtr &key_point_indices,
+                                       const PointNCloud::ConstPtr &kps,
                                        const Correspondences &correspondences,
                                        const Correspondences &correct_correspondences,
                                        const Correspondences &inliers,
                                        const AlignmentParameters &parameters,
                                        const Eigen::Matrix4f &transformation_gt, bool is_source) {
-    PointNCloud pcd_aligned;
+    int n = pcd->size();
+    bool kps_any = pcd->size() == kps->size();
+
+    PointNCloud pcd_aligned, kps_aligned;
     pcl::transformPointCloudWithNormals(*pcd, pcd_aligned, transformation_gt);
 
     PointColoredNCloud dst;
-    dst.resize(pcd->size());
-    for (int i = 0; i < pcd->size(); ++i) {
+    dst.resize(n);
+    for (int i = 0; i < n; ++i) {
         pcl::copyPoint(pcd_aligned.points[i], dst.points[i]);
-        setPointColor(dst.points[i], key_point_indices ? COLOR_PARAKEET : COLOR_BEIGE);
+        setPointColor(dst.points[i], kps_any ? COLOR_BEIGE : COLOR_PARAKEET);
     }
-    if (key_point_indices) {
-        for (int idx: *key_point_indices) {
-            setPointColor(dst.points[idx], COLOR_BEIGE);
+    if (!kps_any) {
+        pcl::transformPointCloudWithNormals(*kps, kps_aligned, transformation_gt);
+        dst.points.resize(n + kps->size());
+
+        for (int i = 0; i < kps->size(); ++i) {
+            pcl::copyPoint(kps_aligned.points[i], dst.points[n + i]);
+            setPointColor(dst.points[n + i], COLOR_BEIGE);
         }
     }
     for (const auto &correspondence: correspondences) {
         if (is_source) {
-            setPointColor(dst.points[correspondence.index_query], COLOR_RED);
+            int index_query = kps_any ? correspondence.index_query : n + correspondence.index_query;
+            setPointColor(dst.points[index_query], COLOR_RED);
         } else {
-            setPointColor(dst.points[correspondence.index_match], COLOR_RED);
+            int index_match = kps_any ? correspondence.index_match : n + correspondence.index_match;
+            setPointColor(dst.points[index_match], COLOR_RED);
         }
     }
     for (const auto &inlier: inliers) {
         if (is_source) {
-            setPointColor(dst.points[inlier.index_query], COLOR_BLUE);
+            int index_query = kps_any ? inlier.index_query : n + inlier.index_query;
+            setPointColor(dst.points[index_query], COLOR_BLUE);
         } else {
-            setPointColor(dst.points[inlier.index_match], COLOR_BLUE);
+            int index_match = kps_any ? inlier.index_match : n + inlier.index_match;
+            setPointColor(dst.points[index_match], COLOR_BLUE);
         }
     }
     for (const auto &correspondence: correct_correspondences) {
         if (is_source) {
-            mixPointColor(dst.points[correspondence.index_query], COLOR_WHITE);
+            int index_query = kps_any ? correspondence.index_query : n + correspondence.index_query;
+            mixPointColor(dst.points[index_query], COLOR_WHITE);
         } else {
-            mixPointColor(dst.points[correspondence.index_match], COLOR_WHITE);
+            int index_match = kps_any ? correspondence.index_match : n + correspondence.index_match;
+            mixPointColor(dst.points[index_match], COLOR_WHITE);
         }
     }
     std::string filepath = constructPath(parameters, std::string("downsampled_") + (is_source ? "src" : "tgt"),
@@ -1014,111 +1027,112 @@ void writeFacesToPLYFileASCII(const PointColoredNCloud::Ptr &pcd, std::size_t ma
     fs::rename(filepath_tmp, filepath);
 }
 
-void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                         const Correspondences &correspondences,
-                         const Eigen::Matrix4f &transformation_gt,
-                         const AlignmentParameters &parameters, bool sparse) {
-    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
-    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
-    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
-    float diagonal = getAABBDiagonal(src_aligned_gt);
+// TODO: fix
+//void saveCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+//                         const Correspondences &correspondences,
+//                         const Eigen::Matrix4f &transformation_gt,
+//                         const AlignmentParameters &parameters, bool sparse) {
+//    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
+//    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
+//    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
+//    float diagonal = getAABBDiagonal(src_aligned_gt);
+//
+//    dst->resize(src_aligned_gt->size() + tgt->size());
+//    for (int i = 0; i < src_aligned_gt->size(); ++i) {
+//        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
+//        setPointColor(dst->points[i], COLOR_BEIGE);
+//    }
+//    for (int i = 0; i < tgt->size(); ++i) {
+//        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
+//        dst->points[src_aligned_gt->size() + i].x += diagonal;
+//        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
+//    }
+//    UniformRandIntGenerator rand_generator(0, 255);
+//    for (const auto &corr: correspondences) {
+//        std::uint8_t red = rand_generator(), green = rand_generator(), blue = rand_generator();
+//        setPointColor(dst->points[corr.index_query], red, green, blue);
+//        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], red, green, blue);
+//    }
+//    std::string filepath;
+//    if (sparse) {
+//        filepath = constructPath(parameters, "correspondences_sparse");
+//    } else {
+//        filepath = constructPath(parameters, "correspondences");
+//    }
+//    pcl::io::savePLYFileASCII(filepath, *dst);
+//    if (sparse) {
+//        std::vector correspondences_sparse(correspondences);
+//        std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
+//                     std::mt19937(std::random_device()()));
+//        correspondences_sparse.resize(std::min(correspondences_sparse.size(), DEBUG_N_EDGES));
+//        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
+//    } else {
+//        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
+//    }
+//}
+//
+//void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+//                                const Correspondences &correspondences,
+//                                const Correspondences &correct_correspondences,
+//                                const Eigen::Matrix4f &transformation_gt,
+//                                const AlignmentParameters &parameters, bool sparse) {
+//    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
+//    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
+//    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
+//    float half_diagonal = 0.5 * getAABBDiagonal(src_aligned_gt);
+//
+//    dst->resize(src_aligned_gt->size() + tgt->size());
+//    for (int i = 0; i < src_aligned_gt->size(); ++i) {
+//        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
+//        setPointColor(dst->points[i], COLOR_BEIGE);
+//    }
+//    for (int i = 0; i < tgt->size(); ++i) {
+//        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
+//        dst->points[src_aligned_gt->size() + i].x += half_diagonal;
+//        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
+//    }
+//    UniformRandIntGenerator rand_generator(0, 255);
+//    for (const auto &corr: correspondences) {
+//        setPointColor(dst->points[corr.index_query], COLOR_ROSE);
+//        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_ROSE);
+//    }
+//    for (const auto &corr: correct_correspondences) {
+//        setPointColor(dst->points[corr.index_query], COLOR_PARAKEET);
+//        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_PARAKEET);
+//    }
+//    std::string filepath;
+//    if (sparse) {
+//        filepath = constructPath(parameters, "correspondences_sparse");
+//    } else {
+//        filepath = constructPath(parameters, "correspondences");
+//    }
+//    pcl::io::savePLYFileASCII(filepath, *dst);
+//    if (sparse) {
+//        std::vector correspondences_sparse(correspondences);
+//        std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
+//                     std::mt19937(std::random_device()()));
+//        correspondences_sparse.resize((int) (0.02 * correspondences_sparse.size()));
+//        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
+//    } else {
+//        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
+//    }
+//}
 
-    dst->resize(src_aligned_gt->size() + tgt->size());
-    for (int i = 0; i < src_aligned_gt->size(); ++i) {
-        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
-        setPointColor(dst->points[i], COLOR_BEIGE);
-    }
-    for (int i = 0; i < tgt->size(); ++i) {
-        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
-        dst->points[src_aligned_gt->size() + i].x += diagonal;
-        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
-    }
-    UniformRandIntGenerator rand_generator(0, 255);
-    for (const auto &corr: correspondences) {
-        std::uint8_t red = rand_generator(), green = rand_generator(), blue = rand_generator();
-        setPointColor(dst->points[corr.index_query], red, green, blue);
-        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], red, green, blue);
-    }
-    std::string filepath;
-    if (sparse) {
-        filepath = constructPath(parameters, "correspondences_sparse");
-    } else {
-        filepath = constructPath(parameters, "correspondences");
-    }
-    pcl::io::savePLYFileASCII(filepath, *dst);
-    if (sparse) {
-        std::vector correspondences_sparse(correspondences);
-        std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
-                     std::mt19937(std::random_device()()));
-        correspondences_sparse.resize(std::min(correspondences_sparse.size(), DEBUG_N_EDGES));
-        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
-    } else {
-        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
-    }
-}
-
-void saveCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                                const Correspondences &correspondences,
-                                const Correspondences &correct_correspondences,
-                                const Eigen::Matrix4f &transformation_gt,
-                                const AlignmentParameters &parameters, bool sparse) {
-    PointColoredNCloud::Ptr dst(new PointColoredNCloud);
-    PointNCloud::Ptr src_aligned_gt(new PointNCloud);
-    pcl::transformPointCloudWithNormals(*src, *src_aligned_gt, transformation_gt);
-    float half_diagonal = 0.5 * getAABBDiagonal(src_aligned_gt);
-
-    dst->resize(src_aligned_gt->size() + tgt->size());
-    for (int i = 0; i < src_aligned_gt->size(); ++i) {
-        pcl::copyPoint(src_aligned_gt->points[i], dst->points[i]);
-        setPointColor(dst->points[i], COLOR_BEIGE);
-    }
-    for (int i = 0; i < tgt->size(); ++i) {
-        pcl::copyPoint(tgt->points[i], dst->points[src_aligned_gt->size() + i]);
-        dst->points[src_aligned_gt->size() + i].x += half_diagonal;
-        setPointColor(dst->points[src_aligned_gt->size() + i], COLOR_PURPLE);
-    }
-    UniformRandIntGenerator rand_generator(0, 255);
-    for (const auto &corr: correspondences) {
-        setPointColor(dst->points[corr.index_query], COLOR_ROSE);
-        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_ROSE);
-    }
-    for (const auto &corr: correct_correspondences) {
-        setPointColor(dst->points[corr.index_query], COLOR_PARAKEET);
-        setPointColor(dst->points[src_aligned_gt->size() + corr.index_match], COLOR_PARAKEET);
-    }
-    std::string filepath;
-    if (sparse) {
-        filepath = constructPath(parameters, "correspondences_sparse");
-    } else {
-        filepath = constructPath(parameters, "correspondences");
-    }
-    pcl::io::savePLYFileASCII(filepath, *dst);
-    if (sparse) {
-        std::vector correspondences_sparse(correspondences);
-        std::shuffle(correspondences_sparse.begin(), correspondences_sparse.end(),
-                     std::mt19937(std::random_device()()));
-        correspondences_sparse.resize((int) (0.02 * correspondences_sparse.size()));
-        writeFacesToPLYFileASCII(dst, src->size(), correspondences_sparse, filepath);
-    } else {
-        writeFacesToPLYFileASCII(dst, src->size(), correspondences, filepath);
-    }
-}
-
-void saveCorrespondenceDistances(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+void saveCorrespondenceDistances(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                  const Correspondences &correspondences,
                                  const Eigen::Matrix4f &transformation_gt, const AlignmentParameters &parameters) {
     std::string filepath = constructPath(parameters, "distances", "csv");
     std::fstream fout(filepath, std::ios_base::out);
     if (!fout.is_open())
         perror(("error while opening file " + filepath).c_str());
-    PointNCloud src_aligned_gt;
-    pcl::transformPointCloudWithNormals(*src, src_aligned_gt, transformation_gt);
+    PointNCloud kps_src_aligned_gt;
+    pcl::transformPointCloudWithNormals(*kps_src, kps_src_aligned_gt, transformation_gt);
 
     fout << "distance\n";
     for (const auto &correspondence: correspondences) {
-        PointN source_point(src_aligned_gt.points[correspondence.index_query]);
-        PointN target_point(tgt->points[correspondence.index_match]);
-        float dist = pcl::L2_Norm(source_point.data, target_point.data, 3) / parameters.distance_thr;
+        PointN point_src(kps_src_aligned_gt.points[correspondence.index_query]);
+        PointN point_tgt(kps_tgt->points[correspondence.index_match]);
+        float dist = pcl::L2_Norm(point_src.data, point_tgt.data, 3) / parameters.distance_thr;
         fout << dist << "\n";
     }
     fout.close();
@@ -1218,11 +1232,16 @@ std::string constructName(const AlignmentParameters &parameters, const std::stri
     return full_name;
 }
 
-CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool &success) {
-    bool file_exists = std::filesystem::exists(filepath);
-    CorrespondencesPtr correspondences(new Correspondences);
+void readKeyPointsAndCorrespondences(CorrespondencesConstPtr &correspondences,
+                                     PointNCloud::ConstPtr &kps_src, PointNCloud::ConstPtr &kps_tgt,
+                                     const AlignmentParameters &params, bool &success) {
+    std::string filepath_corrs = constructPath(params, "correspondences", "csv", true, false, false);
+
+    bool file_exists = std::filesystem::exists(filepath_corrs);
+    CorrespondencesPtr correspondences_ = std::make_shared<Correspondences>();
+    PointNCloud::Ptr kps_src_(new PointNCloud), kps_tgt_(new PointNCloud);
     if (file_exists) {
-        std::ifstream fin(filepath);
+        std::ifstream fin(filepath_corrs);
         if (fin.is_open()) {
             std::string line;
             std::vector<std::string> tokens;
@@ -1232,33 +1251,45 @@ CorrespondencesPtr readCorrespondencesFromCSV(const std::string &filepath, bool 
                 split(line, tokens, ",");
                 Correspondence corr{std::stoi(tokens[0]), std::stoi(tokens[1]),
                                     std::stof(tokens[2]), std::stof(tokens[3])};
-                correspondences->push_back(corr);
+                correspondences_->push_back(corr);
             }
-            success = true;
+            correspondences = correspondences_;
         } else {
-            perror(("error while opening file " + filepath).c_str());
+            perror(("error while opening file " + filepath_corrs).c_str());
         }
+
+        if (pcl::io::loadPLYFile(constructPath(params, "key_points_src", "ply", true, false, false), *kps_src_) < 0 ||
+            pcl::io::loadPLYFile(constructPath(params, "key_points_tgt", "ply", true, false, false), *kps_tgt_) < 0) {
+            perror("error loading src/tgt key points file!");
+        }
+        kps_src = kps_src_;
+        kps_tgt = kps_tgt_;
+
+        success = true;
     }
-    return correspondences;
 }
 
-void saveCorrespondencesToCSV(const std::string &filepath,
-                              const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                              const CorrespondencesConstPtr &correspondences) {
-    std::ofstream fout(filepath);
+void saveKeyPointsAndCorrespondences(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
+                                     const CorrespondencesConstPtr &correspondences,
+                                     const AlignmentParameters &params) {
+    std::string filepath_corrs = constructPath(params, "correspondences", "csv", true, false, false);
+
+    std::ofstream fout(filepath_corrs);
     if (fout.is_open()) {
         fout << "query_idx,match_idx,distance,threshold,x_s,y_s,z_s,x_t,y_t,z_t\n";
         for (const auto &corr: *correspondences) {
             fout << corr.index_query << "," << corr.index_match << "," << corr.distance << "," << corr.threshold << ",";
-            fout << src->points[corr.index_query].x << ","
-                 << src->points[corr.index_query].y << ","
-                 << src->points[corr.index_query].z << ",";
-            fout << tgt->points[corr.index_match].x << ","
-                 << tgt->points[corr.index_match].y << ","
-                 << tgt->points[corr.index_match].z << '\n';
+            fout << kps_src->points[corr.index_query].x << ","
+                 << kps_src->points[corr.index_query].y << ","
+                 << kps_src->points[corr.index_query].z << ",";
+            fout << kps_tgt->points[corr.index_match].x << ","
+                 << kps_tgt->points[corr.index_match].y << ","
+                 << kps_tgt->points[corr.index_match].z << '\n';
         }
         fout.close();
     } else {
-        perror(("error while opening file " + filepath).c_str());
+        perror(("error while opening file " + filepath_corrs).c_str());
     }
+    pcl::io::savePLYFileBinary(constructPath(params, "key_points_src", "ply", true, false, false), *kps_src);
+    pcl::io::savePLYFileBinary(constructPath(params, "key_points_tgt", "ply", true, false, false), *kps_tgt);
 }

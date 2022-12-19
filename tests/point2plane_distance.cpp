@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <Eigen/Core>
 #include <pcl/common/transforms.h>
+#include <pcl/io/ply_io.h>
 
 #include "common.h"
 #include "alignment.h"
@@ -43,8 +44,8 @@ int main() {
     tgt->width = tgt->points.size();
     tgt->height = 1;
 
-//    pcl::io::savePLYFileBinary("corner1.ply", *src);
-//    pcl::io::savePLYFileBinary("corner2.ply", *tgt);
+    pcl::io::savePLYFileBinary("corner1.ply", *src);
+    pcl::io::savePLYFileBinary("corner2.ply", *tgt);
 
     Eigen::Matrix4f transformation_gt;
     transformation_gt << 0.0803703, -0.996763, -0.00201846, 1.2143,
@@ -73,9 +74,9 @@ int main() {
     auto alignment_result = alignPointClouds(src, tgt, parameters);
     auto alignment_analysis = AlignmentAnalysis(alignment_result, parameters);
 
-//    PointNCloud src_aligned;
-//    pcl::transformPointCloudWithNormals(*src, src_aligned, alignment_result.getFinalTransformation());
-//    pcl::io::savePLYFileBinary("corner1_aligned.ply",  src_aligned);
+    PointNCloud src_aligned;
+    pcl::transformPointCloudWithNormals(*src, src_aligned, alignment_result.transformation);
+    pcl::io::savePLYFileBinary("corner1_aligned.ply",  src_aligned);
 
     auto transformation = alignment_result.transformation;
     auto metric_estimator = alignment_analysis.getMetricEstimator();

@@ -45,12 +45,14 @@ public:
         correspondences_ = correspondences;
     }
 
-    virtual inline void setSourceCloud(const PointNCloud::ConstPtr &src) {
+    virtual inline void setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) {
         src_ = src;
+        kps_src_ = kps_src;
     }
 
-    virtual inline void setTargetCloud(const PointNCloud::ConstPtr &tgt) {
+    virtual inline void setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) {
         tgt_ = tgt;
+        kps_tgt_ = kps_tgt;
     }
 
     virtual std::string getClassName() const = 0;
@@ -58,6 +60,7 @@ public:
 protected:
     CorrespondencesConstPtr correspondences_;
     PointNCloud::ConstPtr src_, tgt_;
+    PointNCloud::ConstPtr kps_src_, kps_tgt_;
     ScoreFunction score_function_;
 };
 
@@ -98,7 +101,7 @@ public:
         return 0.3;
     }
 
-    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+    void setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) override;
 
     void buildInliersAndEstimateMetric(const Eigen::Matrix4f &transformation,
                                        Correspondences &inliers,
@@ -132,7 +135,7 @@ public:
                                        Correspondences &inliers,
                                        float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
-    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) override;
 
     inline std::string getClassName() const override {
         return "ClosestPlaneMetricEstimator";
@@ -169,9 +172,9 @@ public:
                                        Correspondences &inliers,
                                        float &rmse, float &metric, UniformRandIntGenerator &rand) const override;
 
-    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+    void setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) override;
 
-    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) override;
 
     inline std::string getClassName() const override {
         return "WeightedClosestPlaneMetricEstimator";
@@ -208,9 +211,9 @@ public:
 
     void setCorrespondences(const CorrespondencesConstPtr &correspondences) override;
 
-    void setSourceCloud(const PointNCloud::ConstPtr &src) override;
+    void setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) override;
 
-    void setTargetCloud(const PointNCloud::ConstPtr &tgt) override;
+    void setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) override;
 
     inline std::string getClassName() const override {
         return "CombinationMetricEstimator";

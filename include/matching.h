@@ -97,14 +97,15 @@ template<typename FeatureT>
 class FeatureBasedMatcherImpl : public FeatureBasedMatcher {
 public:
     FeatureBasedMatcherImpl(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
-                            const pcl::IndicesConstPtr &indices_src, const pcl::IndicesConstPtr &indices_tgt,
+                            const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                             AlignmentParameters parameters) : parameters_(std::move(parameters)) {
         st_src_.pcd = src;
         st_tgt_.pcd = tgt;
-        st_src_.kps_indices = indices_src;
-        st_tgt_.kps_indices = indices_tgt;
+        st_src_.kps = kps_src;
+        st_tgt_.kps = kps_tgt;
     }
 
+    // correspondences contain indices of corresponding key points (not the indices of points in point clouds)
     CorrespondencesPtr match() override;
 
 protected:
@@ -114,11 +115,10 @@ protected:
     struct Storage {
         int min_log2_radius{std::numeric_limits<int>::max()}, max_log2_radius{std::numeric_limits<int>::lowest()};
         PointNCloud::ConstPtr pcd;
-        PointNCloud::Ptr kps{new PointNCloud};
+        PointNCloud::ConstPtr kps{new PointNCloud};
         typename KdTree::Ptr kps_tree{new KdTree};
-        typename pcl::IndicesConstPtr kps_indices; // indices in pcd
         std::vector<PointNCloud::Ptr> pcds_ds;
-        std::vector<pcl::Indices> kps_indices_multiscale; // indices in kps_indices
+        std::vector<pcl::Indices> kps_indices_multiscale; // indices in kps
         std::vector<PointNCloud::Ptr> kps_multiscale;
         std::vector<typename FeatureCloud::Ptr> kps_features_multiscale;
         std::vector<typename KdTree::Ptr> kps_tree_multiscale;
@@ -130,13 +130,11 @@ protected:
                     const std::optional<Eigen::Vector3f> &viewpoint, float iss_radius);
 
     // get correspondences from features calculated on different scales (this function should be used in match_impl)
-    // query and match indices are local, use finalize to get global
+    // correspondences contain query and match indices of key points
     std::vector<MultivaluedCorrespondence> match_multiscale(const Storage &st_query, const Storage &st_train,
                                                             bool inverse_tn = false);
 
     virtual CorrespondencesPtr match_impl() = 0;
-
-    void finalize(const CorrespondencesPtr &correspondences);
 
     // downsampling and normal estimation time, feature estimation time
     double time_ds_ne_{0.0}, time_fe_{0.0};
@@ -155,16 +153,13 @@ CorrespondencesPtr FeatureBasedMatcherImpl<FeatureT>::match() {
     initialize(st_tgt_, parameters, parameters.vp_tgt, parameters.iss_radius_tgt);
     std::cerr << "Downsampling and normal estimation took " << 1000.0 * time_ds_ne_ << "ms.\n";
     std::cerr << "Feature estimation took " << 1000.0 * time_fe_ << "ms.\n";
-    auto correspondences = match_impl();
-    finalize(correspondences);
-    return correspondences;
+    return match_impl();
 }
 
 template<typename FeatureT>
 void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const AlignmentParameters &parameters,
                                                    const std::optional<Eigen::Vector3f> &viewpoint, float iss_radius) {
     storage.iss_radius = iss_radius;
-    pcl::copyPointCloud(*storage.pcd, *storage.kps_indices, *storage.kps);
     storage.kps_tree->setInputCloud(storage.kps);
     std::vector<int> log2_radii(storage.kps->size());
     if (parameters.feature_radius.has_value()) {
@@ -180,7 +175,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const Align
         std::vector<float> nn_sqr_dists;
         int k = 5;
         for (int i = 0; i < storage.kps->size(); ++i) {
-            tree.nearestKSearch(*storage.pcd, storage.kps_indices->operator[](i), k, nn_indices, nn_sqr_dists);
+            tree.nearestKSearch(storage.kps->points[i], k, nn_indices, nn_sqr_dists);
             float density = sqrtf(nn_sqr_dists[k - 1]);
             float feature_radius = sqrtf((float) parameters.feature_nr_points * density * density / M_PI);
             log2_radii[i] = (int) std::floor(std::log2(feature_radius) / std::log2(parameters_.scale_factor));
@@ -215,7 +210,7 @@ void FeatureBasedMatcherImpl<FeatureT>::initialize(Storage &storage, const Align
     for (int i = 0; i < nr_scales; ++i) {
         storage.pcds_ds[i] = std::make_shared<PointNCloud>();
         storage.kps_multiscale[i] = std::make_shared<PointNCloud>();
-        storage.kps_indices_multiscale[i].reserve(storage.kps_indices->size());
+        storage.kps_indices_multiscale[i].reserve(storage.kps->size());
         storage.kps_tree_multiscale[i] = std::make_shared<KdTree>();
         storage.kps_features_multiscale[i] = std::make_shared<FeatureCloud>();
     }
@@ -341,7 +336,7 @@ std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_
         std::pair<float, float> best_match{0.f, 0.f};
         MultivaluedCorrespondence final_mv_corr;
         for (int m = 0; m < mv_corr.match_indices.size(); ++m) {
-            auto[count, dist] = counter[m];
+            auto [count, dist] = counter[m];
             if (count > best_match.first || (count == best_match.first && dist < best_match.second)) {
                 best_match = {count, dist};
                 final_mv_corr = {{mv_corr.match_indices[m]},
@@ -351,14 +346,6 @@ std::vector<MultivaluedCorrespondence> FeatureBasedMatcherImpl<FeatureT>::match_
         mv_correspondences[i] = final_mv_corr;
     }
     return mv_correspondences;
-}
-
-template<typename FeatureT>
-void FeatureBasedMatcherImpl<FeatureT>::finalize(const CorrespondencesPtr &correspondences) {
-    for (auto &corr: *correspondences) {
-        corr.index_query = st_src_.kps_indices->operator[](corr.index_query);
-        corr.index_match = st_tgt_.kps_indices->operator[](corr.index_match);
-    }
 }
 
 template<typename FeatureT>
@@ -388,9 +375,9 @@ public:
     OneSidedMatcher() = delete;
 
     OneSidedMatcher(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                    pcl::IndicesConstPtr indices_src, pcl::IndicesConstPtr indices_tgt,
-                    AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
-                                                                                        indices_tgt, parameters) {}
+                    PointNCloud::ConstPtr kps_src, PointNCloud::ConstPtr kps_tgt,
+                    AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, kps_src, kps_tgt,
+                                                                                        parameters) {}
 
     CorrespondencesPtr match_impl() override {
         std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
@@ -398,7 +385,7 @@ public:
         std::vector<MultivaluedCorrespondence> mv_corrs_ij = this->match_multiscale(this->st_src_, this->st_tgt_);
         this->printDebugInfo(mv_corrs_ij);
         CorrespondencesPtr correspondences(new Correspondences);
-        int nr_kps = this->st_src_.kps_indices->size();
+        int nr_kps = this->st_src_.kps->size();
         correspondences->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
             if (mv_corrs_ij[i].match_indices.empty()) continue;
@@ -421,9 +408,9 @@ public:
     LeftToRightMatcher() = delete;
 
     LeftToRightMatcher(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                       pcl::IndicesConstPtr indices_src, pcl::IndicesConstPtr indices_tgt,
-                       AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
-                                                                                           indices_tgt, parameters) {}
+                       PointNCloud::ConstPtr kps_src, PointNCloud::ConstPtr kps_tgt,
+                       AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, kps_src, kps_tgt,
+                                                                                           parameters) {}
 
     CorrespondencesPtr match_impl() override {
         std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
@@ -432,7 +419,7 @@ public:
         std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_, true);
         this->printDebugInfo(mv_corrs_ij);
         CorrespondencesPtr correspondences_mutual(new Correspondences);
-        int nr_kps = this->st_src_.kps_indices->size();
+        int nr_kps = this->st_src_.kps->size();
         correspondences_mutual->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
             for (const int &j: mv_corrs_ij[i].match_indices) {
@@ -463,9 +450,9 @@ public:
     RatioMatcher() = delete;
 
     RatioMatcher(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                 pcl::IndicesConstPtr indices_src, pcl::IndicesConstPtr indices_tgt,
-                 AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
-                                                                                     indices_tgt, parameters) {}
+                 PointNCloud::ConstPtr kps_src, PointNCloud::ConstPtr kps_tgt,
+                 AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, kps_src, kps_tgt,
+                                                                                     parameters) {}
 
     CorrespondencesPtr match_impl() override {
         // TODO: implement
@@ -485,9 +472,9 @@ public:
     ClusterMatcher() = delete;
 
     ClusterMatcher(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
-                   pcl::IndicesConstPtr indices_src, pcl::IndicesConstPtr indices_tgt,
-                   AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, indices_src,
-                                                                                       indices_tgt, parameters) {}
+                   PointNCloud::ConstPtr kps_src, PointNCloud::ConstPtr kps_tgt,
+                   AlignmentParameters parameters) : FeatureBasedMatcherImpl<FeatureT>(src, tgt, kps_src, kps_tgt,
+                                                                                       parameters) {}
 
     CorrespondencesPtr match_impl() override {
         std::vector<float> thresholds_src = calculateSmoothedDensities(this->st_src_.kps);
@@ -496,7 +483,7 @@ public:
         std::vector<MultivaluedCorrespondence> mv_corrs_ji = this->match_multiscale(this->st_tgt_, this->st_src_, true);
         this->printDebugInfo(mv_corrs_ij);
         CorrespondencesPtr correspondences_cluster(new Correspondences);
-        int nr_kps = this->st_src_.kps_indices->size();
+        int nr_kps = this->st_src_.kps->size();
         correspondences_cluster->reserve(nr_kps);
         for (int i = 0; i < nr_kps; ++i) {
             for (int j: mv_corrs_ij[i].match_indices) {
@@ -679,8 +666,8 @@ std::vector<MultivaluedCorrespondence> matchLocal(const PointNCloud::ConstPtr &q
 
 FeatureBasedMatcher::Ptr getFeatureBasedMatcherFromParameters(const PointNCloud::ConstPtr &src,
                                                               const PointNCloud::ConstPtr &tgt,
-                                                              const pcl::IndicesConstPtr &indices_src,
-                                                              const pcl::IndicesConstPtr &indices_tgt,
+                                                              const PointNCloud::ConstPtr &kps_src,
+                                                              const PointNCloud::ConstPtr &kps_tgt,
                                                               const AlignmentParameters &parameters);
 
 #endif

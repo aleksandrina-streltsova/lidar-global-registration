@@ -12,6 +12,7 @@ void updateHypotheses(std::vector<Eigen::Matrix4f> &transformations, std::vector
                       const AlignmentParameters &parameters);
 
 Eigen::Matrix4f chooseBestHypothesis(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                     const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                      const CorrespondencesConstPtr &correspondences,
                                      const AlignmentParameters &params, std::vector<Eigen::Matrix4f> &tns);
 

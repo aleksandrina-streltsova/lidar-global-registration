@@ -26,6 +26,7 @@ public:
     SampleConsensusPrerejectiveOMP() = delete;
 
     SampleConsensusPrerejectiveOMP(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
+                                   PointNCloud::ConstPtr kps_src, PointNCloud::ConstPtr kps_tgt,
                                    CorrespondencesConstPtr correspondences, AlignmentParameters parameters);
 
     AlignmentResult align();
@@ -36,6 +37,7 @@ public:
 
 protected:
     PointNCloud::ConstPtr src_, tgt_;
+    PointNCloud::ConstPtr kps_src_, kps_tgt_;
     CorrespondencesConstPtr correspondences_;
     AlignmentParameters parameters_;
 

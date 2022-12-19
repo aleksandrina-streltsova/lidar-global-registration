@@ -1,9 +1,0 @@
-iss_radius: 0.004
-feature_radius: 0.03
-distance_thr: 0.008
-keypoint: any
-bf: false
-save_features: true
-ground_truth: data/bun/ground_truth.csv
-source: data/bun/bun000.ply
-target: data/bun/bun045.ply

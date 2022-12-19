@@ -52,9 +52,7 @@ void buildClosestPlaneInliers(const PointNCloud &src,
         rmse = std::numeric_limits<float>::max();
 }
 
-float calculateScore(const Correspondences &inliers, ScoreFunction score_function,
-                     const std::vector<float> &weights = {}) {
-    bool with_weights = !weights.empty();
+float calculateScore(const Correspondences &inliers, ScoreFunction score_function) {
     float score = 0.f, value;
     for (const auto &inlier: inliers) {
         switch (score_function) {
@@ -72,9 +70,6 @@ float calculateScore(const Correspondences &inliers, ScoreFunction score_functio
                 value = (std::exp(-inlier.distance * inlier.distance / (2 * inlier.threshold * inlier.threshold)));
                 break;
         }
-        if (with_weights) {
-            value *= weights[inlier.index_query];
-        }
         score += value;
     }
     return score;
@@ -86,14 +81,14 @@ void MetricEstimator::buildCorrectInliers(const Correspondences &inliers,
     correct_inliers.clear();
     correct_inliers.reserve(inliers.size());
 
-    PointNCloud src_transformed;
-    src_transformed.resize(src_->size());
-    pcl::transformPointCloudWithNormals(*src_, src_transformed, transformation_gt);
+    PointNCloud kps_src_transformed;
+    kps_src_transformed.resize(src_->size());
+    pcl::transformPointCloudWithNormals(*kps_src_, kps_src_transformed, transformation_gt);
 
     for (const auto &inlier: inliers) {
-        PointN source_point(src_transformed.points[inlier.index_query]);
-        PointN target_point(tgt_->points[inlier.index_match]);
-        float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
+        PointN point_src(kps_src_transformed.points[inlier.index_query]);
+        PointN point_tgt(kps_tgt_->points[inlier.index_match]);
+        float e = pcl::L2_Norm(point_src.data, point_tgt.data, 3);
         if (e < inlier.threshold) {
             correct_inliers.push_back(inlier);
         }
@@ -104,11 +99,11 @@ int MetricEstimator::estimateMaxIterations(const Eigen::Matrix4f &transformation
                                            float confidence, int nr_samples) const {
     int count_supporting_corrs = 0;
     for (const auto &corr: *correspondences_) {
-        Eigen::Vector4f source_point(0, 0, 0, 1);
-        source_point.block(0, 0, 3, 1) = src_->points[corr.index_query].getArray3fMap();
-        Eigen::Vector4f target_point(0, 0, 0, 1);
-        target_point.block(0, 0, 3, 1) = tgt_->points[corr.index_match].getArray3fMap();
-        float e = (transformation * source_point - target_point).block(0, 0, 3, 1).norm();
+        Eigen::Vector4f point_src(0, 0, 0, 1);
+        point_src.block(0, 0, 3, 1) = kps_src_->points[corr.index_query].getArray3fMap();
+        Eigen::Vector4f point_tgt(0, 0, 0, 1);
+        point_tgt.block(0, 0, 3, 1) = kps_tgt_->points[corr.index_match].getArray3fMap();
+        float e = (transformation * point_src - point_tgt).block(0, 0, 3, 1).norm();
         if (e < corr.threshold) {
             count_supporting_corrs++;
         }
@@ -134,8 +129,8 @@ void CorrespondencesMetricEstimator::buildInliers(const Eigen::Matrix4f &transfo
     for (const auto &corr: *correspondences_) {
         int query_idx = corr.index_query;
         int match_idx = corr.index_match;
-        source_point = transformation * src_->points[query_idx].getVector4fMap();
-        target_point = tgt_->points[match_idx].getVector4fMap();
+        source_point = transformation * kps_src_->points[query_idx].getVector4fMap();
+        target_point = kps_tgt_->points[match_idx].getVector4fMap();
 
         // Calculate correspondence distance
         float dist = (source_point - target_point).norm();
@@ -164,8 +159,8 @@ void CorrespondencesMetricEstimator::buildInliersAndEstimateMetric(const Eigen::
     metric = score / (float) correspondences_->size();
 }
 
-void UniformityMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
-    src_ = src;
+void UniformityMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) {
+    MetricEstimator::setSourceCloud(src, kps_src);
     bbox_ = calculateBoundingBox<PointN>(src_);
 }
 
@@ -178,8 +173,8 @@ void UniformityMetricEstimator::buildInliersAndEstimateMetric(const Eigen::Matri
     else metric = calculateCorrespondenceUniformity(src_, bbox_, inliers);
 }
 
-void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
-    tgt_ = tgt;
+void ClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) {
+    MetricEstimator::setTargetCloud(tgt, kps_tgt);
     tree_tgt_.setInputCloud(tgt);
     inlier_threshold_ = calculatePointCloudDensity(tgt_);
 }
@@ -210,12 +205,12 @@ void WeightedClosestPlaneMetricEstimator::buildInliersAndEstimateMetric(const Ei
                                                                         float &rmse, float &metric,
                                                                         UniformRandIntGenerator &rand) const {
     buildInliers(transformation, inliers, rmse, rand);
-    float score = calculateScore(inliers, this->score_function_, weights_);
+    float score = calculateScore(inliers, this->score_function_);
     metric = score / ((sparse_ ? SPARSE_POINTS_FRACTION : 1.f) * weights_sum_);
 }
 
-void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
-    src_ = src;
+void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) {
+    MetricEstimator::setSourceCloud(src, kps_src);
     auto weight_function = getWeightFunction(weight_id_);
     weights_ = weight_function(nr_points_, src_);
     weights_sum_ = 0.f;
@@ -224,8 +219,8 @@ void WeightedClosestPlaneMetricEstimator::setSourceCloud(const PointNCloud::Cons
     }
 }
 
-void WeightedClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
-    tgt_ = tgt;
+void WeightedClosestPlaneMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) {
+    MetricEstimator::setTargetCloud(tgt, kps_tgt);
     tree_tgt_.setInputCloud(tgt);
     inlier_threshold_ = calculatePointCloudDensity(tgt_);
 }
@@ -255,16 +250,16 @@ void CombinationMetricEstimator::setCorrespondences(const CorrespondencesConstPt
     closest_plane_estimator.setCorrespondences(correspondences);
 }
 
-void CombinationMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src) {
-    src_ = src;
-    correspondences_estimator.setSourceCloud(src);
-    closest_plane_estimator.setSourceCloud(src);
+void CombinationMetricEstimator::setSourceCloud(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &kps_src) {
+    MetricEstimator::setSourceCloud(src, kps_src);
+    correspondences_estimator.setSourceCloud(src, kps_src);
+    closest_plane_estimator.setSourceCloud(src, kps_src);
 }
 
-void CombinationMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt) {
-    tgt_ = tgt;
-    correspondences_estimator.setTargetCloud(tgt);
-    closest_plane_estimator.setTargetCloud(tgt);
+void CombinationMetricEstimator::setTargetCloud(const PointNCloud::ConstPtr &tgt, const PointNCloud::ConstPtr &kps_tgt) {
+    MetricEstimator::setTargetCloud(tgt, kps_tgt);
+    correspondences_estimator.setTargetCloud(tgt, kps_tgt);
+    closest_plane_estimator.setTargetCloud(tgt, kps_tgt);
 }
 
 // if sparse is true then only fixed percentage of points from source point cloud will be used

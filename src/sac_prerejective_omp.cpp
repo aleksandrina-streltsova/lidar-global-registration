@@ -91,9 +91,12 @@ unsigned int SampleConsensusPrerejectiveOMP::getNumberOfThreads() const {
 }
 
 SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::ConstPtr src, PointNCloud::ConstPtr tgt,
+                                                               PointNCloud::ConstPtr kps_src,
+                                                               PointNCloud::ConstPtr kps_tgt,
                                                                CorrespondencesConstPtr correspondences,
                                                                AlignmentParameters parameters)
         : src_(std::move(src)), tgt_(std::move(tgt)),
+          kps_src_(std::move(kps_src)), kps_tgt_(std::move(kps_tgt)),
           correspondences_(std::move(correspondences)),
           parameters_(std::move(parameters)) {
     // Some sanity checks first
@@ -103,12 +106,12 @@ SampleConsensusPrerejectiveOMP::SampleConsensusPrerejectiveOMP(PointNCloud::Cons
         return;
     }
     correspondence_rejector_poly_.setSimilarityThreshold(parameters_.edge_thr_coef);
-    correspondence_rejector_poly_.setInputSource(src_);
-    correspondence_rejector_poly_.setInputTarget(tgt_);
+    correspondence_rejector_poly_.setInputSource(kps_src_);
+    correspondence_rejector_poly_.setInputTarget(kps_tgt_);
     correspondence_rejector_poly_.setCardinality(parameters.n_samples);
     metric_estimator_ = getMetricEstimatorFromParameters(parameters_, true);
-    metric_estimator_->setSourceCloud(src_);
-    metric_estimator_->setTargetCloud(tgt_);
+    metric_estimator_->setSourceCloud(src_, kps_src_);
+    metric_estimator_->setTargetCloud(tgt_, kps_tgt_);
     metric_estimator_->setCorrespondences(correspondences_);
 }
 
@@ -201,23 +204,23 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
 
             // Temporary containers
             pcl::Indices sample_indices;
-            pcl::Indices source_indices;
-            pcl::Indices target_indices;
+            pcl::Indices indices_src;
+            pcl::Indices indices_tgt;
 
             // Draw nr_samples_ random samples
             selectCorrespondences(correspondences_->size(), parameters_.n_samples, sample_indices, rand);
 
             // Find corresponding features in the target cloud
-            buildIndices(sample_indices, source_indices, target_indices);
+            buildIndices(sample_indices, indices_src, indices_tgt);
 
             // Apply prerejection
-            if (!correspondence_rejector_poly_.thresholdPolygon(source_indices, target_indices)) {
+            if (!correspondence_rejector_poly_.thresholdPolygon(indices_src, indices_tgt)) {
                 ++num_rejections;
                 continue;
             }
 
             // Estimate the transform from the correspondences, write to transformation_
-            transformation_estimation_.estimateRigidTransformation(*src_, source_indices, *tgt_, target_indices, tn);
+            transformation_estimation_.estimateRigidTransformation(*kps_src_, indices_src, *kps_tgt_, indices_tgt, tn);
             // If the new fit is better, update hypotheses, re-estimate number of required iterations
             metric_estimator_->buildInliersAndEstimateMetric(tn, inliers, error, metric, rand);
             if (inliers.size() < MIN_NR_INLIERS) continue;
@@ -279,7 +282,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
         if (enough_inliers && metric > metric_estimator_->getMinTolerableMetric()) {
             converged = true;
         }
-        estimateOptimalRigidTransformation(src_, tgt_, inliers, tn);
+        estimateOptimalRigidTransformation(kps_src_, kps_tgt_, inliers, tn);
         metric_estimator_->buildInliersAndEstimateMetric(tn, inliers, error, metric, rand);
         if (metric < final_metrics[i]) {
             PCL_WARN("[%s::computeTransformation] number of inliers decreased "
@@ -290,7 +293,7 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
         final_metrics[i] = metric;
     }
 #if SAVE_MULTIPLE_HYPOTHESES
-    Eigen::Matrix4f final_tn = chooseBestHypothesis(src_, tgt_, correspondences_, parameters_, final_tns);
+    Eigen::Matrix4f final_tn = chooseBestHypothesis(src_, tgt_, kps_src_, kps_tgt_ correspondences_, parameters_, final_tns);
 #else
     final_tn = final_tns[0];
 #endif
@@ -310,5 +313,6 @@ AlignmentResult SampleConsensusPrerejectiveOMP::align() {
     PCL_DEBUG("[%s::computeTransformation] Minimum of estimated iterations: %i\n",
               this->getClassName().c_str(), estimated_iters);
 
-    return AlignmentResult{src_, tgt_, final_tn, correspondences_, ransac_iterations, converged, t.getTimeSeconds()};
+    return AlignmentResult{src_, tgt_, kps_src_, kps_tgt_,
+                           final_tn, correspondences_, ransac_iterations, converged, t.getTimeSeconds()};
 }

@@ -9,6 +9,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/common/norms.h>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/common/io.h>
 
 #include "analysis.h"
 
@@ -144,7 +145,7 @@ float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCl
         std::vector<float> nn_sqr_distances;
 #pragma omp for
         for (int i = 0; i < src_aligned->size(); ++i) {
-            (float) tree->nearestKSearch(*src_aligned, i, 1, nn_indices, nn_sqr_distances);
+            tree->nearestKSearch(*src_aligned, i, 1, nn_indices, nn_sqr_distances);
             const PointN &p_src(src_aligned->points[i]), p_tgt(tgt->points[nn_indices[0]]);
             if (std::sqrt(nn_sqr_distances[0]) < distance_thr && std::isfinite(p_src.normal_x) &&
                 std::isfinite(p_tgt.normal_x)) {
@@ -172,20 +173,54 @@ float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCl
     return result;
 }
 
-void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+std::pair<int, float>
+getReproducedKeyPointsAndCalculateRmse(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
+                                       const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
+                                       float distance_thr, const Eigen::Matrix4f &transformation_gt) {
+    PointNCloud::Ptr kps_src_aligned(new PointNCloud);
+    pcl::transformPointCloudWithNormals(*kps_src, *kps_src_aligned, transformation_gt);
+
+    pcl::KdTreeFLANN<PointN> tree_kps_tgt;
+    tree_kps_tgt.setInputCloud(kps_tgt);
+
+    float rmse = 0.f;
+    int kps_overlap_size = 0;
+#pragma omp parallel default(none) firstprivate(distance_thr) \
+    shared(kps_src_aligned, kps_tgt, tree_kps_tgt) \
+    reduction(+:kps_overlap_size, rmse)
+    {
+        float distance;
+        pcl::Indices nn_indices;
+        std::vector<float> nn_sqr_dists;
+#pragma omp for
+        for (int i = 0; i < kps_src_aligned->size(); ++i) {
+            tree_kps_tgt.radiusSearch(kps_src_aligned->points[i], distance_thr, nn_indices, nn_sqr_dists, 1);
+            if (nn_indices.empty()) continue;
+            rmse += nn_sqr_dists[0];
+            kps_overlap_size++;
+        }
+    }
+    if (kps_overlap_size != 0) {
+        rmse = std::sqrt(rmse / (float) kps_overlap_size);
+    } else {
+        rmse = std::numeric_limits<float>::quiet_NaN();
+    }
+    return {kps_overlap_size, rmse};
+}
+
+void buildCorrectCorrespondences(const PointNCloud::ConstPtr &kps_src, const PointNCloud::ConstPtr &kps_tgt,
                                  const Correspondences &correspondences,
                                  Correspondences &correct_correspondences,
                                  const Eigen::Matrix4f &transformation_gt) {
     correct_correspondences.clear();
     correct_correspondences.reserve(correspondences.size());
 
-    PointNCloud input_transformed;
-    input_transformed.resize(src->size());
-    pcl::transformPointCloudWithNormals(*src, input_transformed, transformation_gt);
+    PointNCloud kps_src_transformed;
+    pcl::transformPointCloudWithNormals(*kps_src, kps_src_transformed, transformation_gt);
 
     for (const auto &correspondence: correspondences) {
-        PointN source_point(input_transformed.points[correspondence.index_query]);
-        PointN target_point(tgt->points[correspondence.index_match]);
+        PointN source_point(kps_src_transformed.points[correspondence.index_query]);
+        PointN target_point(kps_tgt->points[correspondence.index_match]);
         float e = pcl::L2_Norm(source_point.data, target_point.data, 3);
         if (e < correspondence.threshold) {
             correct_correspondences.push_back(correspondence);
@@ -194,11 +229,12 @@ void buildCorrectCorrespondences(const PointNCloud::ConstPtr &src, const PointNC
 }
 
 AlignmentAnalysis::AlignmentAnalysis(AlignmentResult result, AlignmentParameters parameters)
-        : src_(result.src), tgt_(result.tgt), parameters_(std::move(parameters)), result_(std::move(result)) {
+        : src_(result.src), tgt_(result.tgt), kps_src_(result.kps_src), kps_tgt_(result.kps_tgt),
+          parameters_(std::move(parameters)), result_(std::move(result)) {
     transformation_ = result_.transformation;
     metric_estimator_ = getMetricEstimatorFromParameters(parameters_);
-    metric_estimator_->setSourceCloud(src_);
-    metric_estimator_->setTargetCloud(tgt_);
+    metric_estimator_->setSourceCloud(src_, kps_src_);
+    metric_estimator_->setTargetCloud(tgt_, kps_tgt_);
     metric_estimator_->setCorrespondences(result_.correspondences);
     correspondences_ = *result_.correspondences;
 }
@@ -220,7 +256,7 @@ void AlignmentAnalysis::start(const std::optional<Eigen::Matrix4f> &transformati
         auto acc_squared = [](float a, float b) { return a + b * b; };
         overlap_area_ = std::accumulate(ds_overlap.begin(), ds_overlap.end(), 0.f, acc_squared) /
                         std::accumulate(ds_src.begin(), ds_src.end(), 0.f, acc_squared);
-        buildCorrectCorrespondences(src_, tgt_, correspondences_, correct_correspondences_, transformation_gt_.value());
+        buildCorrectCorrespondences(kps_src_, kps_tgt_, correspondences_, correct_correspondences_, transformation_gt_.value());
         metric_estimator_->buildCorrectInliers(inliers_, correct_inliers_, transformation_gt_.value());
         pcd_error_ = calculatePointCloudRmse(src_, transformation_, transformation_gt_.value());
         overlap_error_ = calculateOverlapRmse(src_, tgt_, transformation_, transformation_gt_.value(), error_thr);
