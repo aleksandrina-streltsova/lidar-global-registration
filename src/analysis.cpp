@@ -130,8 +130,20 @@ float calculateCorrespondenceUniformity(const PointNCloud::ConstPtr &src, const 
     return std::cbrt(entropy[0] * entropy[1] * entropy[2]);
 }
 
+void checkNormals(const PointNCloud::ConstPtr &pcd) {
+    float sum = 0;
+    for (auto p: pcd->points) {
+        sum += p.getNormalVector3fMap().norm();
+    }
+    float averageNorm = pcd->size() == 0 ? 1.f : sum / (float)pcd->size();
+    rassert(std::fabs(averageNorm - 1.f) < 1e-2, 92441239824234);
+}
+
 float calculateNormalDifference(const PointNCloud::ConstPtr &src, const PointNCloud::ConstPtr &tgt,
                                 float distance_thr, const Eigen::Matrix4f &transformation_gt) {
+    checkNormals(src);
+    checkNormals(tgt);
+
     PointNCloud::Ptr src_aligned(new PointNCloud);
     pcl::transformPointCloudWithNormals(*src, *src_aligned, transformation_gt);
     pcl::KdTreeFLANN<PointN>::Ptr tree(new pcl::KdTreeFLANN<PointN>());
