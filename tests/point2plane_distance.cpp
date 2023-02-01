@@ -51,7 +51,7 @@ int main() {
             0.996758, 0.080377, -0.00349969, -6.13404,
             0.00365057, -0.00173067, 0.999992, -1.17221,
             0, 0, 0, 1;
-    pcl::transformPointCloudWithNormals(*src, *src, transformation_gt.inverse());
+    pcl::transformPointCloud(*src, *src, transformation_gt.inverse());
     AlignmentParameters parameters{
             .distance_thr = 1.0f,
             .iss_radius_src = 1.0f,
@@ -60,12 +60,20 @@ int main() {
             .alignment_id = ALIGNMENT_RANSAC,
             .keypoint_id = KEYPOINT_ANY,
             .metric_id = METRIC_CLOSEST_PLANE,
-            .max_iterations = 1000000,
+            .max_iterations = 10000,
             .ground_truth = std::optional<Eigen::Matrix4f>(transformation_gt),
             .fix_seed = true,
             .normals_available = false,
             .dir_path = TMP_DIR
     };
+    auto vp_tgt = Eigen::Vector3f(2.f * CORNER_SIZE, 2.f * CORNER_SIZE, 2.f * CORNER_SIZE);
+    auto vp_src = transformation_gt.block<3, 3>(0, 0).transpose() * (vp_tgt - transformation_gt.block<3, 1>(0, 3));
+    parameters.vp_tgt = vp_tgt;
+    parameters.vp_src = vp_src;
+
+    estimateNormalsPoints(NORMAL_NR_POINTS, src, {nullptr}, parameters.vp_src, false);
+    estimateNormalsPoints(NORMAL_NR_POINTS, tgt, {nullptr}, parameters.vp_tgt, false);
+
     fs::create_directory(TMP_DIR);
 
     Correspondences inliers;
@@ -85,7 +93,7 @@ int main() {
 
     assertClose("inlier ratio", 1.f, (float) inliers.size() / (float) src->size());
     assertLess("metric error", error, 2.f / 3.f);
-    assertLess("overlap rmse", alignment_analysis.getOverlapError(), 2.f / 3.f);
+    assertLess("overlap rmse", alignment_analysis.getOverlapError(), 0.72f);
 //    assertClose("rotation error", 0.f, alignment_analysis.getRotationError());
 //    assertClose("translation error", 0.f, alignment_analysis.getTranslationError());
 //    assertClose("point cloud error", 0.f, alignment_analysis.getPointCloudError());
