@@ -1,0 +1,43 @@
+name: CMake
+
+on: [push, pull_request]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-9
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
+          sudo apt-get install -y git cmake wget unzip procps
+          sudo apt-get install -y libeigen3-dev libflann-dev libboost-all-dev libyaml-cpp-dev libomp-dev
+          sudo apt-get install -y python3.8 python3.8-venv python3-pip
+          sudo pip3 install -r requirements.txt    
+
+      - name: Build and install OpenCV 4.5.1
+        run: sudo bash .github/scripts/install_opencv451.sh
+
+      - name: Build and install PCL 1.12.1
+        run: sudo bash .github/scripts/install_pcl1121.sh
+
+      - name: Load testdata
+        run: sudo bash .github/scripts/load_testdata.sh
+
+      - name: Configure CMake
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Run tests
+        working-directory: ${{github.workspace}}
+        run: ctest --output-on-failure
