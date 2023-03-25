@@ -851,7 +851,9 @@ void saveColorizedWeights(const PointNCloud::ConstPtr &pcd, std::vector<float> &
 
 void saveHistogram(const std::string &values_path, const std::string &hist_path) {
     std::string command = "python3 plots.py histogram " + values_path + " " + hist_path;
-    system(command.c_str());
+    if (system(command.c_str()) == -1) {
+        PCL_WARN("[saveHistogram] %s", strerror(errno));
+    }
 }
 
 void calculateTemperatureMap(PointColoredNCloud::Ptr &compared,
