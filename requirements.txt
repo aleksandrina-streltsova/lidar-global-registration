@@ -6,4 +6,4 @@ click
 tqdm
 PyYAML
 pyntcloud
-pye57
+#pye57

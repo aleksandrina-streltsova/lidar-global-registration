@@ -4,7 +4,7 @@ import click
 import yaml
 import pandas as pd
 import numpy as np
-import pye57
+# import pye57
 import open3d as o3d
 from scipy.spatial.transform import Rotation
 
@@ -153,39 +153,39 @@ def other_to_common(input_dir):
             cloud.to_file(os.path.join(output_dir, filename))
 
 
-@cli.command('e57')
-@click.argument('input-dir', type=click.Path(exists=True, file_okay=False))
-@click.option('--indices', '-i', multiple=True, type=int)
-def e57_to_common(input_dir, indices):
-    output_dir = input_dir
-    for f in tqdm(os.listdir(input_dir)):
-        if f[-4:] != '.e57':
-            continue
-        e57_path = os.path.join(input_dir, f)
-        e57 = pye57.E57(str(e57_path))
-        input_dir = os.path.dirname(e57_path)
-        testname = os.path.basename(e57_path)[:-4]
-        gt_path = os.path.join(input_dir, COMMON_GT_FILENAME)
-        if os.path.exists(gt_path):
-            df = pd.read_csv(gt_path)
-        else:
-            df = pd.DataFrame(columns=GROUND_TRUTH_COLUMNS)
-        rng = range(e57.scan_count) if len(indices) == 0 else indices
-        for i in rng:
-            scan = e57.read_scan(i, transform=False)
-            header = e57.get_header(i)
-            data = np.stack((scan['cartesianX'], scan['cartesianY'], scan['cartesianZ']), axis=1)
-            cloud_df = pd.DataFrame(data, columns=['x', 'y', 'z'])
-            cloud = PyntCloud(cloud_df)
-            filename = f'{testname}_{i}.ply'
-            cloud.to_file(os.path.join(output_dir, filename))
-            transformation_gt = np.eye(4)
-            if header.has_pose():
-                transformation_gt[:3, :3] = header.rotation_matrix
-                transformation_gt[:3, 3] = header.translation
-            df.drop(df[df['reading'] == filename].index, inplace=True)
-            df = df.append(pd.DataFrame([[filename] + transformation_gt.flatten().tolist()], columns=df.columns))
-        df.to_csv(gt_path, index=False)
+# @cli.command('e57')
+# @click.argument('input-dir', type=click.Path(exists=True, file_okay=False))
+# @click.option('--indices', '-i', multiple=True, type=int)
+# def e57_to_common(input_dir, indices):
+#     output_dir = input_dir
+#     for f in tqdm(os.listdir(input_dir)):
+#         if f[-4:] != '.e57':
+#             continue
+#         e57_path = os.path.join(input_dir, f)
+#         e57 = pye57.E57(str(e57_path))
+#         input_dir = os.path.dirname(e57_path)
+#         testname = os.path.basename(e57_path)[:-4]
+#         gt_path = os.path.join(input_dir, COMMON_GT_FILENAME)
+#         if os.path.exists(gt_path):
+#             df = pd.read_csv(gt_path)
+#         else:
+#             df = pd.DataFrame(columns=GROUND_TRUTH_COLUMNS)
+#         rng = range(e57.scan_count) if len(indices) == 0 else indices
+#         for i in rng:
+#             scan = e57.read_scan(i, transform=False)
+#             header = e57.get_header(i)
+#             data = np.stack((scan['cartesianX'], scan['cartesianY'], scan['cartesianZ']), axis=1)
+#             cloud_df = pd.DataFrame(data, columns=['x', 'y', 'z'])
+#             cloud = PyntCloud(cloud_df)
+#             filename = f'{testname}_{i}.ply'
+#             cloud.to_file(os.path.join(output_dir, filename))
+#             transformation_gt = np.eye(4)
+#             if header.has_pose():
+#                 transformation_gt[:3, :3] = header.rotation_matrix
+#                 transformation_gt[:3, 3] = header.translation
+#             df.drop(df[df['reading'] == filename].index, inplace=True)
+#             df = df.append(pd.DataFrame([[filename] + transformation_gt.flatten().tolist()], columns=df.columns))
+#         df.to_csv(gt_path, index=False)
 
 
 @cli.command('las')
