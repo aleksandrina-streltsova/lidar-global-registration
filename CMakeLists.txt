@@ -5,14 +5,14 @@ set(CMAKE_CXX_STANDARD 20)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
-    set(OpenMP_CXX_FLAGS "-Xclang -fopenmp -I/opt/homebrew/Cellar/libomp/15.0.5/include")
+    set(OpenMP_CXX_FLAGS "-Xclang -fopenmp -I/opt/homebrew/opt/libomp/include")
     set(OpenMP_CXX_LIB_NAMES "libomp")
     set(OpenMP_libomp_LIBRARY "omp")
 endif()
 
 if (CMAKE_C_COMPILER_ID MATCHES "Clang")
     set(OpenMP_C "${CMAKE_C_COMPILER}")
-    set(OpenMP_C_FLAGS "-Xclang -fopenmp -I/opt/homebrew/Cellar/libomp/15.0.5/include")
+    set(OpenMP_C_FLAGS "-Xclang -fopenmp -I/opt/homebrew/opt/libomp/include")
     set(OpenMP_C_LIB_NAMES "libomp")
     set(OpenMP_libomp_LIBRARY "omp")
 endif()
@@ -43,8 +43,8 @@ target_link_libraries(registration ${PCL_LIBRARIES} ${OpenCV_LIBS} yaml-cpp) #te
 target_include_directories(registration PUBLIC include/)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    link_directories("/opt/homebrew/Cellar/libomp/15.0.5/lib/")
-    target_link_directories(${PROJECT_NAME} PRIVATE "/opt/homebrew/Cellar/libomp/15.0.5/lib/")
+    link_directories("/opt/homebrew/opt/libomp/lib/")
+    target_link_directories(${PROJECT_NAME} PRIVATE "/opt/homebrew/opt/libomp/lib/")
 endif()
 
 enable_testing()
